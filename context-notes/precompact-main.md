@@ -2,15 +2,15 @@
 type: Context Note
 title: 'Pre-compact handoff: merged release safety and active predecessors'
 description: >-
-  PR #210 passed implementation, review, QA, and local runtime gates at 5a5a622,
-  but GitHub Actions omitted the final dispatch; all agents completed and no
-  merge was performed.
-actor: codex-pr210-ci-diagnosis
-timestamp: '2026-08-06T20:13:49.035Z'
+  PR #210 has tree-identical CI-retrigger head caa94a0 over reviewed 5a5a622;
+  GitHub Actions is in an official major outage, all agents completed, hosted CI
+  is pending, and no merge was performed.
+actor: codex-pr210-ci-retrigger
+timestamp: '2026-08-06T20:19:14.516Z'
 ---
 # Summary
 
-PR #210 is implementation-, review-, QA-, and local-runtime-gated at exact head `5a5a6229c840992e94cf26e91bd1f82b4bf18488` on `fix/pr207-hook-ownership-housekeeping`, based on `28cbf9139ec62f2ebeaf5b4ebb230911e4e72071`. GitHub reports the PR OPEN, MERGEABLE, and CLEAN. The branch ref, `origin/fix/pr207-hook-ownership-housekeeping`, and GitHub head all match. Hosted CI did not dispatch for the final SHA, so do not describe it as hosted-CI green or fully merge-ready until that is resolved. No merge was performed; Brian owns the merge gate.
+PR #210 is implementation-, review-, QA-, and local-runtime-gated at exact head `caa94a061c0ecd60715ed886d4063a86b29675c3` on `fix/pr207-hook-ownership-housekeeping`, based on `28cbf9139ec62f2ebeaf5b4ebb230911e4e72071`. The new head is an empty CI-retrigger commit directly on reviewed SHA `5a5a6229c840992e94cf26e91bd1f82b4bf18488`; both commits have identical tree `7279c8f2000508bbac363e109c7c12602ffd42e1`. GitHub reports the PR OPEN, MERGEABLE, and CLEAN. Hosted CI did not dispatch because GitHub Actions is in a major outage, so do not describe it as hosted-CI green or fully merge-ready until that resolves. No merge was performed; Brian owns the merge gate.
 
 The primary workspace remains on the separate `feat/init-create-only` branch at `81b3c39ff252013e318b1a714b63430a24074d70`; PR #210 was repaired and gated in isolated worktrees. Do not mistake the primary workspace head for PR #210's head.
 
@@ -34,12 +34,12 @@ Hook compatibility is an ownership boundary shared by status, install/deduplicat
 - Focused source, built lifecycle, installed-package, poisoned-environment, preflight no-write, byte/mode/tree preservation, and history matrix proofs: PASS.
 - Worktree/tree/diff checks for the gated PR worktrees are clean; tracked plugin artifacts are unchanged.
 
-GitHub did not enqueue an Actions suite for the branch push or reversible close/reopen, so `statusCheckRollup` remains empty. The workflow is active, Actions is enabled, the trigger has no filters, the PR is open/non-draft/clean, and the commit has no skip marker. GitHub recorded the final push and created Cloudflare and Devin suites one second later, but the GitHub Actions app created no suite. The previous SHA received the same workflow when the PR opened. Available APIs expose no internal delivery reason; the evidence points to a GitHub-side Actions dispatch omission rather than a PR or workflow configuration error. The active workflow commands were reproduced locally at the exact SHA and the exception is disclosed in the final evidence comment: https://github.com/Holaxis-ai/agentstate-lite/pull/210#issuecomment-5208761858
+GitHub did not enqueue an Actions suite for the original branch push or reversible close/reopen. A tree-identical empty commit `caa94a0` was then pushed at Brian's direction; GitHub updated the PR/merge refs and again created empty Cloudflare and Devin suites, but no Actions suite. Devin did not run a check or agent. Manual workflow dispatch returned HTTP 422 because `ci-tests.yml` does not declare `workflow_dispatch`. GitHub's official status API reports an unresolved critical Actions incident beginning `2026-08-06T15:22:49Z`, with Actions in `major_outage`; Git Operations and Webhooks remain operational. This explains the successful pushes/app notifications and absent Actions orchestration. Incident: https://stspg.io/rcz3fcm83sff
 
 ## Persistent records
 
 - Task `tasks/hook-compatibility-ownership` is `done`, version `sha256:352a05297ea2d0b521900f53a3c5f13cd7931d7e4b2924a4e464398f24eb4052`.
-- Orchestration note `context-notes/pr210-merge-readiness-orchestration-2026-08-06`, version `sha256:509cd7662683daf9be46a0cd56566f2b1530901c0bd2fe01163533b94414d3a0`.
+- Orchestration note `context-notes/pr210-merge-readiness-orchestration-2026-08-06` records the exact hosted-CI outage diagnosis and retrigger commit.
 - Aggregate QA note `context-notes/pr210-adversarial-qa-aggregate-5a5a622-2026-08-06`, version `sha256:052b66626169fce2ee33400f91b6a03e085c5503cdc4f087f333ca8319f254a4`.
 - Exact review note `context-notes/pr210-exact-review-5a5a622-2026-08-06`, version `sha256:5e1fd3eabb36a82fc71d00b88439f666d96fe8efac9a23a8e224ee58845c870b`.
 - Supplemental QA notes: `context-notes/pr210-opencode-qa-5a5a622-2026-08-06` and `context-notes/pr210-authority-qa-5a5a622-2026-08-06`.
@@ -50,4 +50,4 @@ All orchestration sub-agents have completed. The named tmux session `aslite-code
 
 Skills loaded for the completed work: `holaxis-self-awareness`, `holaxis-cognitive-ecosystem`, `agentstate-lite`, `holaxis-orchestrator`, `holaxis-agent-launcher`, and `browser:control-in-app-browser`.
 
-No additional product implementation or semantic review is currently indicated. The remaining gate is to obtain hosted CI on the final tree. If Brian asks to retrigger it, a tree-identical empty commit is the least invasive new `synchronize` event; record the new exact SHA and verify the tree identity before relying on the existing review. Do not merge unless he explicitly asks.
+No additional product implementation or semantic review is currently indicated. The remaining gate is hosted CI on tree `7279c8f`. Do not emit more commits during the outage. Monitor GitHub recovery and exact SHA `caa94a0`; once Actions recovers, retrigger only if GitHub does not process the queued synchronization. Do not merge unless Brian explicitly asks.

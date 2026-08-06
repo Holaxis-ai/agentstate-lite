@@ -1,22 +1,19 @@
 ---
 type: Task
 title: Make hook ownership and mutation compatibility exact
-status: done
+status: in_progress
 priority: '1'
 description: >-
-  MERGE-READY HANDOFF for PR #210 at exact SHA
-  5a5a6229c840992e94cf26e91bd1f82b4bf18488. Independent exact-SHA review PASS;
-  aggregate adversarial QA PASS; full npm run check PASS on Node 25.2.1, Node
-  22.23.2, and Node 26.7.0; exact Node 20.20.2 engines-floor smoke 8/8;
-  installed-package/poisoned-environment proofs PASS; plugin and tracked trees
-  clean; local/remote SHA match; GitHub reports OPEN, MERGEABLE, CLEAN. GitHub
-  did not enqueue an Actions suite for the automated push/reopen, so the active
-  workflow commands were reproduced locally at the exact SHA and the empty check
-  rollup is disclosed. Final evidence:
-  https://github.com/Holaxis-ai/agentstate-lite/pull/210#issuecomment-5208761858.
-  No merge performed; Brian owns the merge gate.
-actor: codex-pr210-orchestrator
-timestamp: '2026-08-06T20:02:15.961Z'
+  HOSTED CI pending for PR #210 at exact head
+  caa94a061c0ecd60715ed886d4063a86b29675c3. This is a tree-identical empty
+  retrigger commit over reviewed SHA 5a5a622; both have tree 7279c8f. GitHub
+  processed the push but Actions created no run because the official Actions
+  component is in a major outage (critical incident qcvjkzcs7j74). Product
+  implementation, independent review, aggregate QA, and local Node 20/22/25/26
+  gates remain complete. Monitor recovery, then retrigger only if the
+  synchronization is not processed. No merge performed.
+actor: codex-pr210-ci-retrigger
+timestamp: '2026-08-06T20:19:09.389Z'
 ---
 # Goal
 

@@ -2,15 +2,15 @@
 type: Context Note
 title: PR 210 merge-readiness orchestration start
 description: >-
-  PR #210 implementation, exact-SHA review, aggregate QA, and local Node
-  20/22/25/26 gates passed at 5a5a622; GitHub received the push but omitted the
-  Actions dispatch, so hosted CI remains absent and no merge was performed.
+  PR #210 now has tree-identical CI-retrigger head caa94a0 over reviewed
+  5a5a622; GitHub Actions is in an official major outage, so hosted CI remains
+  pending and no merge was performed.
 tags:
   - pr210
   - orchestration
   - hook-ownership
-actor: codex-pr210-ci-diagnosis
-timestamp: '2026-08-06T20:13:24.334Z'
+actor: codex-pr210-ci-retrigger
+timestamp: '2026-08-06T20:19:02.350Z'
 ---
 ---
 type: Context Note
@@ -80,8 +80,12 @@ Proximate diagnostic goal: determine why the final exact SHA lacks hosted CI and
 
 The CI workflow at base SHA `28cbf9139ec62f2ebeaf5b4ebb230911e4e72071` is active, Actions is repository-enabled, and `.github/workflows/ci-tests.yml` has an unrestricted `pull_request` trigger with no path filter. PR #210 is open, non-draft, mergeable, and clean. The final commit message contains no skip marker. GitHub recorded the `4e394db` -> `5a5a622` push at `2026-08-06T19:18:07Z` while the PR was open, and Cloudflare and Devin check suites were created for the new SHA at `19:18:08Z`, proving GitHub received and distributed the push event. However, the GitHub Actions app created no check suite or workflow run for `5a5a622`. GitHub also recorded a close at `19:25:22Z` and reopen at `19:25:28Z`, but no Actions run followed.
 
-The previous head `4e394db` did receive CI run `31057746922` when the PR opened, so the workflow itself parses and is eligible on this PR. No `GH_TOKEN`/`GITHUB_TOKEN` or Actions environment was present in the local process, the branch push used the repository's SSH remote, and the push actor was the normal `briand-ai` account. Available repository APIs therefore rule out disabled Actions, an ineligible trigger, a path filter, draft state, a skip directive, an unreceived push, and the usual recursive `GITHUB_TOKEN` suppression. They do not expose the internal Actions event-delivery reason. The remaining evidence supports a GitHub-side Actions dispatch omission/transient failure, but that causal label is an inference rather than a provable API field.
+The previous head `4e394db` did receive CI run `31057746922` when the PR opened, so the workflow itself parses and is eligible on this PR. No `GH_TOKEN`/`GITHUB_TOKEN` or Actions environment was present in the local process, the branch push used a personal SSH key authenticated as `briand-ai`, and the push actor was the normal `briand-ai` account. Available repository APIs therefore rule out disabled Actions, an ineligible trigger, a path filter, draft state, a skip directive, an unreceived push, and recursive token suppression.
 
-Until a hosted run is attached to the final tree, describe the PR as locally gated and GitHub-mergeable, not as having passed hosted CI. A tree-identical empty commit pushed to the PR branch is the least invasive new `synchronize` event if Brian asks to retrigger; it changes the exact SHA and therefore requires final SHA bookkeeping, but not a new semantic review of the tree.
+At Brian's direction, a tree-identical empty commit `caa94a061c0ecd60715ed886d4063a86b29675c3` (`chore: retrigger PR checks`) was created directly on top of reviewed SHA `5a5a622`. Both commits have tree `7279c8f2000508bbac363e109c7c12602ffd42e1`, and `git diff-tree` is empty. The push updated the PR head and synthetic merge ref. Cloudflare and Devin again created empty check suites at `2026-08-06T20:15:50Z`; Devin did not run a check or agent. GitHub Actions again created no suite. The manual dispatch endpoint was also attempted, but correctly returned HTTP 422 because this workflow does not declare `workflow_dispatch`.
+
+The causal evidence is now definitive: GitHub's official status API reports an unresolved critical `Incident with Actions` beginning `2026-08-06T15:22:49Z`, with the Actions component in `major_outage`. The latest incident update says capacity is constrained and workflow runs may be delayed or fail. Git Operations and Webhooks remain operational, exactly matching the successful pushes/app notifications and missing Actions orchestration. Incident: https://stspg.io/rcz3fcm83sff
+
+Until a hosted run is attached to the new exact SHA, describe the PR as locally gated and GitHub-mergeable, not as having passed hosted CI. Do not emit more commits during the outage. Monitor GitHub recovery and the new SHA for a delayed run; once Actions recovers, retrigger only if GitHub does not process the queued synchronization.
 
 [tracks](../tasks/hook-compatibility-ownership.md)
