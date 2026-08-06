@@ -5,7 +5,13 @@ status: in_progress
 priority: '1'
 assignee: openai/codex
 actor: openai/codex
-timestamp: '2026-08-06T13:12:11.099Z'
+description: >-
+  PR #211 is open at exact SHA 742af48. Implementation makes user canonical
+  across skill/hook/help/README/generated guidance/update verification,
+  preserves global as a silent alias, and normalizes receipts to user. Focused
+  tests: 132 passed. Full npm run check passed. Awaiting independent exact-SHA
+  review and CI.
+timestamp: '2026-08-06T13:21:26.299Z'
 ---
 # Problem
 
