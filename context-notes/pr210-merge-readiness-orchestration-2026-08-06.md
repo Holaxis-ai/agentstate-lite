@@ -2,14 +2,14 @@
 type: Context Note
 title: PR 210 merge-readiness orchestration start
 description: >-
-  Bounded two-blocker repair pipeline from 4e394db through review, QA, and CI;
-  stop before merge.
+  Bounded two-blocker repair pipeline with reproduced red baseline from 4e394db
+  through review, QA, and CI; stop before merge.
 tags:
   - pr210
   - orchestration
   - hook-ownership
 actor: codex-pr210-orchestrator
-timestamp: '2026-08-06T18:48:29Z'
+timestamp: '2026-08-06T18:55:07.962Z'
 ---
 # Summary
 
@@ -40,5 +40,13 @@ Backbone: bounded sequential pipeline with Generator-Critic gates.
 6. Record merge-ready SHA and evidence; stop before merge.
 
 Do not modify or merge `main`, broaden scope into unrelated hook design, weaken foreign-state preservation, or treat a focused green suite as a substitute for the installed-package and repository gates.
+
+## Reproduced diagnostic baseline
+
+In the isolated clean worktree, `npm ci` and the prerequisite `npm run build` pass. The subsequent `npm run verify:npm-package` fails at the installed package's `aslite hook install --scope project --json`, reproducing blocker 2 independently of CI.
+
+An ad-hoc source probe at the same SHA proves that same-prefix npm pairs containing `/./`, `//`, or `/a/../` all classify as `current`. The independent skeptic found the same normalization-before-proof flaw in direct npm/local-dev/marketplace executable recognition and in Node launches for local-dev/marketplace entries. The repair invariant is therefore one bounded shared rule: every absolute runtime or executable token admitted as generated must already be in canonical lexical path form. This is a string-provenance check, not filesystem existence or `realpath` resolution; symlink policy remains unchanged. Any legitimate historical noncanonical spelling must be explicitly proven as writer output rather than accepted through normalization.
+
+The local installed-tarball repair must preserve ordinary repository local-dev launches while using stable same-prefix npm evidence when a local-dev artifact is physically installed into the supported npm-global layout. It must not add a generic cross-prefix npm exception to the command recognizer.
 
 [tracks](../tasks/hook-compatibility-ownership.md)
