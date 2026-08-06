@@ -13,9 +13,10 @@ description: >-
   npm layout composes an intentionally rejected cross-prefix runtime/executable
   pair. Repair both without reopening the generic npm fallback, add pure plus
   built byte-preservation tests, restore the full gate, then request a fresh
-  exact-SHA review before QA.
-actor: codex-pr210-reviewer
-timestamp: '2026-08-06T00:01:15.862Z'
+  exact-SHA review before QA. Review findings posted:
+  https://github.com/Holaxis-ai/agentstate-lite/pull/210#issuecomment-5208268039
+actor: codex-pr210-review-delivery
+timestamp: '2026-08-06T18:39:03.265Z'
 ---
 # Goal
 
