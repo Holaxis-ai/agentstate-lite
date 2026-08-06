@@ -177,10 +177,13 @@ function isBareManagedBin(value: string): boolean {
 
 type ManagedExecutableLayout = "npm" | "local_dev" | "marketplace";
 
+function isCanonicalAbsolutePath(value: string): boolean {
+  return isAbsolute(value) && normalize(value) === value;
+}
+
 function managedExecutableLayout(value: string): ManagedExecutableLayout | undefined {
-  if (!isAbsolute(value)) return undefined;
-  const normalized = normalize(value);
-  const portable = normalized.split(sep).join("/");
+  if (!isCanonicalAbsolutePath(value)) return undefined;
+  const portable = value.split(sep).join("/");
   if (
     /\/node_modules\/(?:@holaxis\/aslite|aslite|agentstate-lite)\/dist\/agentstate-lite\.mjs$/.test(portable)
   ) {
@@ -197,7 +200,7 @@ function managedExecutableLayout(value: string): ManagedExecutableLayout | undef
 }
 
 function stableNpmRuntimePair(program: string, executable: string): boolean {
-  if (!isAbsolute(program) || !isAbsolute(executable)) return false;
+  if (!isCanonicalAbsolutePath(program) || !isCanonicalAbsolutePath(executable)) return false;
   const runtimeSuffix = `${sep}bin${sep}node`;
   const executableSuffix = `${sep}lib${sep}node_modules${sep}@holaxis${sep}aslite${sep}dist${sep}agentstate-lite.mjs`;
   if (!program.endsWith(runtimeSuffix) || !executable.endsWith(executableSuffix)) return false;
@@ -247,8 +250,8 @@ export function classifyHookCommand(command: string): HookCompatibility {
   const executableLayout = tokens.length === 3 ? managedExecutableLayout(tokens[1]!) : undefined;
   if (
     tokens.length === 3 &&
-    isAbsolute(tokens[0]!) &&
-    normalize(tokens[0]!).endsWith(`${sep}bin${sep}node`) &&
+    isCanonicalAbsolutePath(tokens[0]!) &&
+    tokens[0]!.endsWith(`${sep}bin${sep}node`) &&
     (executableLayout === "local_dev" || executableLayout === "marketplace") &&
     tokens[2] === "session-start"
   ) {

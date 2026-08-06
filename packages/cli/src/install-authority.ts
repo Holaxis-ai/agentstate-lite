@@ -4,7 +4,7 @@
 // durable host changes. npm-package bytes must prove the supported POSIX npm-global layout.
 import { execFileSync } from "node:child_process";
 import { realpathSync } from "node:fs";
-import { delimiter, isAbsolute, join, normalize } from "node:path";
+import { delimiter, isAbsolute, join, normalize, sep } from "node:path";
 import type { ArtifactChannel } from "./build-identity.js";
 import { buildIdentityEnvelope } from "./build-identity.js";
 import { BIN_NAMES } from "./invocation.js";
@@ -77,6 +77,20 @@ function containsNpxCache(candidate: string | null | undefined): boolean {
   return candidate?.split(/[\\/]/).includes("_npx") ?? false;
 }
 
+function isScopedNpmPackageExecutable(candidate: string | null): boolean {
+  if (!candidate || !isAbsolute(candidate)) return false;
+  const suffix = join(
+    "lib",
+    "node_modules",
+    "@holaxis",
+    "aslite",
+    "dist",
+    "agentstate-lite.mjs",
+  );
+  const normalized = normalize(candidate);
+  return normalized.endsWith(`${sep}${suffix}`);
+}
+
 /** Classify an already-resolved running distribution. Performs no writes. */
 export function classifyPersistentInstallAuthority(
   input: PersistentInstallAuthorityInput,
@@ -87,13 +101,15 @@ export function classifyPersistentInstallAuthority(
     executable_path: input.executable_path,
     runtime_path: input.runtime_path,
   };
-  if (input.artifact_channel === "local-dev") {
+  const installedLocalDev =
+    input.artifact_channel === "local-dev" && isScopedNpmPackageExecutable(input.executable_path);
+  if (input.artifact_channel === "local-dev" && !installedLocalDev) {
     return { allowed: true, state: "local_dev", reason: "developer build", evidence };
   }
   if (input.artifact_channel === "marketplace-legacy") {
     return { allowed: true, state: "marketplace_legacy", reason: "legacy marketplace build", evidence };
   }
-  if (input.artifact_channel !== "npm-package") {
+  if (input.artifact_channel !== "npm-package" && !installedLocalDev) {
     return unknown(input, "running build channel cannot authorize persistent integration changes");
   }
   if (input.platform !== "darwin" && input.platform !== "linux") {
@@ -157,8 +173,8 @@ export function classifyPersistentInstallAuthority(
 
   return {
     allowed: true,
-    state: "durable_global",
-    reason: "durable npm-global executable",
+    state: installedLocalDev ? "local_dev" : "durable_global",
+    reason: installedLocalDev ? "installed developer build" : "durable npm-global executable",
     evidence: {
       npm_prefix: prefix,
       bin_path: selectedBin,

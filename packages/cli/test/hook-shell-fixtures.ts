@@ -80,6 +80,59 @@ export const stableNodePair = (segment: string): [string, string] => [
 export const MISMATCHED_NPM_NODE_COMMAND =
   "/opt/runtime-a/bin/node /opt/npm-b/lib/node_modules/@holaxis/aslite/dist/agentstate-lite.mjs session-start";
 
+/** Lexically valid path spellings that no hook writer emits and therefore never establish ownership. */
+export const NONCANONICAL_MANAGED_PATH_CASES: ReadonlyArray<{
+  family: string;
+  program: string;
+  args: string[];
+  command: string;
+}> = [
+  {
+    family: "npm pair with current-directory segments",
+    program: "/opt/npm/./bin/node",
+    args: ["/opt/npm/./lib/node_modules/@holaxis/aslite/dist/agentstate-lite.mjs", "session-start"],
+  },
+  {
+    family: "npm pair with duplicate separators",
+    program: "/opt/npm//bin/node",
+    args: ["/opt/npm//lib/node_modules/@holaxis/aslite/dist/agentstate-lite.mjs", "session-start"],
+  },
+  {
+    family: "npm pair with parent-directory segments",
+    program: "/opt/npm/a/../bin/node",
+    args: ["/opt/npm/a/../lib/node_modules/@holaxis/aslite/dist/agentstate-lite.mjs", "session-start"],
+  },
+  {
+    family: "direct npm entry with current-directory segment",
+    program: "/opt/npm/./lib/node_modules/@holaxis/aslite/dist/agentstate-lite.mjs",
+    args: ["session-start"],
+  },
+  {
+    family: "direct local-dev entry with duplicate separator",
+    program: "/workspace/agentstate-lite//packages/cli/dist/agentstate-lite.mjs",
+    args: ["session-start"],
+  },
+  {
+    family: "direct marketplace entry with parent-directory segment",
+    program:
+      "/Users/u/.codex/plugins/cache/holaxis/agentstate-lite/1.0.0/../1.0.0/skills/agentstate-lite/scripts/agentstate-lite.mjs",
+    args: ["session-start"],
+  },
+  {
+    family: "noncanonical runtime with canonical local-dev entry",
+    program: "/opt/runtime/./bin/node",
+    args: ["/workspace/agentstate-lite/packages/cli/dist/agentstate-lite.mjs", "session-start"],
+  },
+  {
+    family: "noncanonical runtime with canonical marketplace entry",
+    program: "/opt/runtime//bin/node",
+    args: [
+      "/Users/u/.codex/plugins/cache/holaxis/agentstate-lite/1.0.0/skills/agentstate-lite/scripts/agentstate-lite.mjs",
+      "session-start",
+    ],
+  },
+].map((fixture) => ({ ...fixture, command: [fixture.program, ...fixture.args].join(" ") }));
+
 /** Semantic provenance matrix: lexical validity alone does not establish a generated Node pair. */
 export const NODE_PACKAGE_PAIR_CASES: ReadonlyArray<{
   family: string;

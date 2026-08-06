@@ -68,6 +68,7 @@ import {
 import {
   LEXICAL_ENVELOPE_FOREIGN_COMMANDS,
   MISMATCHED_NPM_NODE_COMMAND,
+  NONCANONICAL_MANAGED_PATH_CASES,
   SHELL_FOREIGN_COMMANDS,
   localDevExecutable,
   stableNodePair,
@@ -1290,6 +1291,97 @@ test("built install and uninstall preserve mismatched npm Node/package pairs acr
       assert.equal(await readFile(target, "utf8"), uninstallSettings, `${target} must remain byte-identical`);
     }
     assert.equal(await readFile(pluginTarget(uninstallBase), "utf8"), mismatchedPlugin);
+  } finally {
+    await rm(control, { recursive: true, force: true });
+    await rm(installBase, { recursive: true, force: true });
+    await rm(uninstallBase, { recursive: true, force: true });
+  }
+});
+
+test("built lifecycle preserves noncanonical managed-path near-matches across all hosts", async () => {
+  const control = await mkdtemp(path.join(tmpdir(), "aslite-hook-path-control-"));
+  const installBase = await mkdtemp(path.join(tmpdir(), "aslite-hook-path-install-"));
+  const uninstallBase = await mkdtemp(path.join(tmpdir(), "aslite-hook-path-uninstall-"));
+  const jsonTargets = (base: string): string[] => [
+    path.join(base, ".claude", "settings.json"),
+    path.join(base, ".codex", "hooks.json"),
+  ];
+  const pluginTarget = (base: string): string =>
+    path.join(base, ".config", "opencode", "plugins", "axi-agentstate-lite.js");
+  const foreignEntries = NONCANONICAL_MANAGED_PATH_CASES.map(({ command }) => ({
+    type: "command",
+    command,
+    timeout: 10,
+  }));
+  try {
+    const controlInstall = await runCliHook(["hook", "install", "--json"], { cwd: control });
+    assert.equal(controlInstall.status, 0, controlInstall.stdout + controlInstall.stderr);
+    const controlSettings = JSON.parse(await readFile(jsonTargets(control)[0]!, "utf8"));
+    const currentCommand = controlSettings.hooks.SessionStart[0].hooks[0].command as string;
+
+    const installSettings = JSON.stringify(
+      {
+        hooks: {
+          SessionStart: [
+            { matcher: "", hooks: foreignEntries },
+            { matcher: "", hooks: [{ type: "command", command: currentCommand, timeout: 10 }] },
+          ],
+        },
+      },
+      null,
+      2,
+    ) + "\n";
+    for (const target of jsonTargets(installBase)) {
+      await mkdir(path.dirname(target), { recursive: true });
+      await writeFile(target, installSettings);
+    }
+    await writeFile(path.join(installBase, ".codex", "config.toml"), "[features]\nhooks = true\n");
+
+    const install = await runCliHook(["hook", "install", "--json"], { cwd: installBase });
+    assert.equal(install.status, 0, install.stdout + install.stderr);
+    for (const target of jsonTargets(installBase)) {
+      assert.equal(await readFile(target, "utf8"), installSettings, `${target} must remain byte-identical`);
+    }
+
+    const uninstallSettings = JSON.stringify(
+      { hooks: { SessionStart: [{ matcher: "", hooks: foreignEntries }] } },
+      null,
+      2,
+    ) + "\n";
+    for (const target of jsonTargets(uninstallBase)) {
+      await mkdir(path.dirname(target), { recursive: true });
+      await writeFile(target, uninstallSettings);
+    }
+    const uninstall = await runCliHook(["hook", "uninstall", "--json"], { cwd: uninstallBase });
+    assert.equal(uninstall.status, 0, uninstall.stdout + uninstall.stderr);
+    assert.equal(JSON.parse(uninstall.stdout).hook.changed, false);
+    for (const target of jsonTargets(uninstallBase)) {
+      assert.equal(await readFile(target, "utf8"), uninstallSettings, `${target} must remain byte-identical`);
+    }
+
+    for (const { family, program, args } of NONCANONICAL_MANAGED_PATH_CASES) {
+      const base = await mkdtemp(path.join(tmpdir(), "aslite-hook-path-opencode-"));
+      const plugin = pluginTarget(base);
+      const source = buildOpenCodePluginSource(program, args);
+      try {
+        await mkdir(path.dirname(plugin), { recursive: true });
+        await writeFile(plugin, source);
+        const status = await runCliHook(["hook", "status", "--json"], { cwd: base });
+        assert.equal(status.status, 0, status.stdout + status.stderr);
+        assert.equal(JSON.parse(status.stdout).hook.hosts.opencode.state, "unmanaged", family);
+
+        const remove = await runCliHook(["hook", "uninstall", "--json"], { cwd: base });
+        assert.equal(remove.status, 0, remove.stdout + remove.stderr);
+        assert.equal(JSON.parse(remove.stdout).hook.changed, false, family);
+        assert.equal(await readFile(plugin, "utf8"), source, `${family}: OpenCode bytes changed`);
+
+        const reinstall = await runCliHook(["hook", "install", "--json"], { cwd: base });
+        assert.equal(reinstall.status, 1, family);
+        assert.equal(await readFile(plugin, "utf8"), source, `${family}: OpenCode install overwrote bytes`);
+      } finally {
+        await rm(base, { recursive: true, force: true });
+      }
+    }
   } finally {
     await rm(control, { recursive: true, force: true });
     await rm(installBase, { recursive: true, force: true });

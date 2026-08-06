@@ -11,6 +11,7 @@ import {
 } from "../src/hook-compatibility.js";
 import {
   LEXICAL_ENVELOPE_FOREIGN_COMMANDS,
+  NONCANONICAL_MANAGED_PATH_CASES,
   NODE_PACKAGE_PAIR_CASES,
   SHELL_FOREIGN_COMMANDS,
   localDevExecutable,
@@ -211,6 +212,13 @@ test("Node/package semantic provenance requires same-prefix npm but permits enum
   for (const { family, command, state } of NODE_PACKAGE_PAIR_CASES) {
     assert.notEqual(tokenizeGeneratedHookCommand(command), undefined, `${family}: lexical precondition`);
     assert.equal(classifyHookCommand(command).state, state, family);
+  }
+});
+
+test("managed path ownership requires the writer's canonical absolute spelling", () => {
+  for (const { family, command } of NONCANONICAL_MANAGED_PATH_CASES) {
+    assert.notEqual(tokenizeGeneratedHookCommand(command), undefined, `${family}: lexical precondition`);
+    assert.equal(classifyHookCommand(command).state, "unmanaged", family);
   }
 });
 

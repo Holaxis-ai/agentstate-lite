@@ -14,7 +14,10 @@ import {
 } from "../src/commands/hook.js";
 import { CliError } from "../src/errors.js";
 import type { PersistentInstallAuthority } from "../src/install-authority.js";
-import { MISMATCHED_NPM_NODE_COMMAND } from "./hook-shell-fixtures.js";
+import {
+  MISMATCHED_NPM_NODE_COMMAND,
+  NONCANONICAL_MANAGED_PATH_CASES,
+} from "./hook-shell-fixtures.js";
 
 const FOREIGN = [
   { type: "command", command: "echo agentstate-lite", timeout: 10 },
@@ -74,6 +77,40 @@ test("mismatched npm Node/package prefixes remain foreign through pure status, i
   const [uninstalled, uninstalledChanged] = computeHookUninstall(settings);
   assert.equal(uninstalledChanged, false);
   assert.equal(uninstalled, settings);
+});
+
+test("noncanonical managed-path near-matches remain foreign through pure status, install, and uninstall", () => {
+  const foreign = NONCANONICAL_MANAGED_PATH_CASES.map(({ command }) => ({
+    type: "command",
+    command,
+    timeout: 10,
+  }));
+  for (const entry of foreign) {
+    const status = readHookCompatibilityStatus({
+      hooks: { SessionStart: [{ matcher: "", hooks: [entry] }] },
+    });
+    assert.equal(status.installed, false, entry.command);
+    assert.equal(status.compatibility.state, "unmanaged", entry.command);
+  }
+
+  const settings = {
+    hooks: {
+      SessionStart: [
+        { matcher: "", hooks: foreign },
+        { matcher: "", hooks: [{ type: "command", command: "aslite session-start", timeout: 10 }] },
+      ],
+    },
+  };
+  const [installed, installedChanged] = computeSessionStartHookInstall(settings, {
+    command: "aslite session-start",
+  });
+  assert.equal(installedChanged, false);
+  assert.equal(installed, settings);
+
+  const foreignOnly = { hooks: { SessionStart: [{ matcher: "", hooks: foreign }] } };
+  const [uninstalled, uninstalledChanged] = computeHookUninstall(foreignOnly);
+  assert.equal(uninstalledChanged, false);
+  assert.equal(uninstalled, foreignOnly);
 });
 
 test("a familiar command under a non-generated matcher is preserved and a managed group is appended", () => {
