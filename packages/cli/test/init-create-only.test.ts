@@ -450,3 +450,136 @@ test("a claim-time index.md racer gets the accurate already-a-bundle refusal", a
     await rm(base, { recursive: true, force: true });
   }
 });
+
+// ── QA round: findings from the adversarial QA of b42a4ae ──
+
+test("QA F1: parent/child concurrent creates never leave a silent nested pair", async () => {
+  const { verifyCreateOnlyIsolation } = await import("../src/bundle.js");
+  const base = await tempDir();
+  try {
+    // Deterministic re-creation of the race's END STATE, both directions.
+    // Child committed first, parent's verify must yield and roll back the parent's index.md only.
+    const parent = path.join(base, "p");
+    await mkdir(path.join(parent, "deep", "c"), { recursive: true });
+    await writeFile(path.join(parent, "deep", "c", "index.md"), "---\nokf_version: '0.1'\n---\n# c\n");
+    await writeFile(path.join(parent, "index.md"), "---\nokf_version: '0.1'\n---\n# p\n"); // "our" CAS
+    await assert.rejects(
+      () => verifyCreateOnlyIsolation(parent),
+      (err: unknown) =>
+        err instanceof CliError &&
+        err.code === "ALREADY_EXISTS" &&
+        /nested bundle at .*deep\/c/.test(err.message) &&
+        /rolled back/.test(err.message),
+    );
+    assert.equal(existsSync(path.join(parent, "index.md")), false, "our index.md rolled back");
+    assert.equal(
+      readFileSync(path.join(parent, "deep", "c", "index.md"), "utf8").includes("# c"),
+      true,
+      "the racer's bundle survives untouched",
+    );
+
+    // Parent committed first, child's verify must yield.
+    const parent2 = path.join(base, "p2");
+    const child2 = path.join(parent2, "deep", "c");
+    await mkdir(child2, { recursive: true });
+    await writeFile(path.join(parent2, "index.md"), "---\nokf_version: '0.1'\n---\n# p2\n");
+    await writeFile(path.join(child2, "index.md"), "---\nokf_version: '0.1'\n---\n# c2\n"); // "our" CAS
+    await assert.rejects(
+      () => verifyCreateOnlyIsolation(child2),
+      (err: unknown) =>
+        err instanceof CliError && /enclosing bundle at/.test(err.message),
+    );
+    assert.equal(existsSync(path.join(child2, "index.md")), false, "child's index.md rolled back");
+    assert.equal(existsSync(path.join(parent2, "index.md")), true, "parent's bundle survives");
+
+    // A clean isolated create passes the verify untouched.
+    const clean = path.join(base, "clean");
+    await mkdir(clean, { recursive: true });
+    await writeFile(path.join(clean, "index.md"), "---\nokf_version: '0.1'\n---\n# clean\n");
+    await verifyCreateOnlyIsolation(clean);
+    assert.equal(existsSync(path.join(clean, "index.md")), true);
+  } finally {
+    await rm(base, { recursive: true, force: true });
+  }
+});
+
+test("QA F1 (live): simultaneous parent/child create-only processes never both succeed", async () => {
+  const { spawn } = await import("node:child_process");
+  const base = await tempDir();
+  try {
+    for (let round = 0; round < 6; round += 1) {
+      const parent = path.join(base, `r${round}`, "p");
+      const child = path.join(base, `r${round}`, "p", "deep", "c");
+      const runOne = (dir: string) =>
+        new Promise<number | null>((resolve) => {
+          const proc = spawn(
+            process.execPath,
+            [cliBin, "init", "--create-only", "--dir", dir, "--recipe", "none", "--json"],
+            { stdio: "ignore" },
+          );
+          proc.once("exit", (code) => resolve(code));
+        });
+      const [parentCode, childCode] = await Promise.all([runOne(parent), runOne(child)]);
+      const winners = [parentCode, childCode].filter((code) => code === 0).length;
+      assert.ok(winners <= 1, `round ${round}: both succeeded (parent=${parentCode}, child=${childCode})`);
+      // Whatever remains on disk must be at most ONE bundle when scanned from the parent root.
+      const parentIsBundle = existsSync(path.join(parent, "index.md"));
+      const childIsBundle = existsSync(path.join(child, "index.md"));
+      assert.ok(!(parentIsBundle && childIsBundle), `round ${round}: nested bundle pair on disk`);
+    }
+  } finally {
+    await rm(base, { recursive: true, force: true });
+  }
+});
+
+test("QA F2: a recipe typo fails at exit 2 with NOTHING created; the corrected retry succeeds", async () => {
+  const base = await tempDir();
+  try {
+    const target = path.join(base, "w");
+    let thrown: unknown;
+    try {
+      await runInit(["--create-only", "--dir", target, "--recipe", "contextnotes"]);
+    } catch (err) {
+      thrown = err;
+    }
+    assert.ok(thrown instanceof CliError);
+    assert.equal(thrown.code, "USAGE");
+    assert.match(thrown.message, /unknown recipe 'contextnotes'/);
+    assert.equal(existsSync(target), false, "a recipe typo must not create the bundle");
+    // The wedge is gone: the corrected retry succeeds on the same target.
+    const retry = await runInit(["--create-only", "--dir", target, "--recipe", "context-notes"]);
+    assert.equal(retry.init, "ok");
+    // Plain init gets the same protection.
+    const plain = path.join(base, "w2");
+    await assert.rejects(() => runInit(["--dir", plain, "--recipe", "bogus"]));
+    assert.equal(existsSync(plain), false);
+  } finally {
+    await rm(base, { recursive: true, force: true });
+  }
+});
+
+test("QA F3: a denied target mkdir is a structured refusal carrying the recovery help", async (t) => {
+  if (process.getuid?.() === 0) {
+    t.skip("running as root");
+    return;
+  }
+  const { claimCreateOnlyTarget } = await import("../src/bundle.js");
+  const { chmod } = await import("node:fs/promises");
+  const base = await tempDir();
+  try {
+    const sealed = path.join(base, "sealed");
+    await mkdir(sealed);
+    await chmod(sealed, 0o555);
+    try {
+      await assert.rejects(
+        () => claimCreateOnlyTarget(path.join(sealed, "nb")),
+        (err: unknown) =>
+          err instanceof CliError && err.code === "RUNTIME" && /recipe add/.test(String(err.help)),
+      );
+    } finally {
+      await chmod(sealed, 0o755);
+    }
+  } finally {
+    await rm(base, { recursive: true, force: true });
+  }
+});

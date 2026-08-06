@@ -9,7 +9,12 @@ import { parseArgs } from "node:util";
 import { existsSync } from "node:fs";
 import path from "node:path";
 import { initBundle, loadKinds, VersionConflict } from "@agentstate-lite/core";
-import { assertCreateOnlyTarget, claimCreateOnlyTarget, resolveTargetDir } from "../bundle.js";
+import {
+  assertCreateOnlyTarget,
+  claimCreateOnlyTarget,
+  resolveTargetDir,
+  verifyCreateOnlyIsolation,
+} from "../bundle.js";
 import { CliError } from "../errors.js";
 import { parseOrUsage } from "../args.js";
 import { render, resolveMode } from "../output.js";
@@ -102,6 +107,18 @@ export async function init(argv: string[], deps: Partial<InitCliDeps> = {}): Pro
     );
   }
 
+  // Recipe RESOLUTION is hoisted before any write (QA F2): a recipe typo must fail at exit 2
+  // with NOTHING created — under --create-only the old ordering left a bundle behind and wedged
+  // the retry at exit 5. Resolution needs no bundle; APPLICATION still runs after create.
+  const recipeRef = values.recipe?.trim() || DEFAULT_RECIPE_REF;
+  let loadedRecipe: Awaited<ReturnType<typeof resolveRecipe>> | undefined;
+  if (recipeRef !== "none") {
+    loadedRecipe = await resolveRecipe(recipeRef);
+    if (!loadedRecipe.ok) {
+      throw new CliError("USAGE", loadedRecipe.error.message, { help: `${cliInvocation()} recipes` });
+    }
+  }
+
   const createOnly = Boolean(values["create-only"]);
   // Create-only preflight (the shared onboarding target-safety boundary): resolve the PHYSICAL
   // target and refuse existing/bound/enclosing/ambiguous targets BEFORE any write. The concurrent
@@ -137,18 +154,20 @@ export async function init(argv: string[], deps: Partial<InitCliDeps> = {}): Pro
     }
     throw err;
   }
-  const recipeRef = values.recipe?.trim() || DEFAULT_RECIPE_REF;
+  // QA F1: the enclosing-bundle check is preflight-only, so two SIMULTANEOUS create-onlys at a
+  // parent and its child can both pass preflight and CAS DIFFERENT index.md files — minting the
+  // exact nested pair the guard forbids. Post-CAS, re-check both directions; the later committer
+  // provably sees the earlier one (its verify runs after its own CAS, hence after the other's),
+  // yields, and rolls back exactly its own writes. Runs BEFORE the recipe so the rollback set is
+  // index.md alone.
+  if (createOnly) await verifyCreateOnlyIsolation(root);
   let recipeApplied = "none";
   let selectedRecipeKinds: string[] = [];
   let warnings: unknown[] = [];
-  if (recipeRef !== "none") {
-    const loaded = await resolveRecipe(recipeRef);
-    if (!loaded.ok) {
-      throw new CliError("USAGE", loaded.error.message, { help: `${cliInvocation()} recipes` });
-    }
-    const result = await applyRecipe(bundle, loaded.recipe);
+  if (loadedRecipe?.ok) {
+    const result = await applyRecipe(bundle, loadedRecipe.recipe);
     recipeApplied = result.id;
-    selectedRecipeKinds = loaded.recipe.governs;
+    selectedRecipeKinds = loadedRecipe.recipe.governs;
     // Duplicate-`governs` against the TARGET bundle (approved §B decision 8(ii)), same as
     // `recipe add` — surfaced via the EXISTING `loadKinds` machinery, no new conflict machinery.
     const registry = await loadKinds(bundle);

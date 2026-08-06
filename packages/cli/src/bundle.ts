@@ -522,7 +522,13 @@ export async function claimCreateOnlyTarget(target: string): Promise<void> {
     await fs.mkdir(target);
     return;
   } catch (err) {
-    if ((err as NodeJS.ErrnoException).code !== "EEXIST") throw err;
+    if ((err as NodeJS.ErrnoException).code !== "EEXIST") {
+      throw new CliError(
+        "RUNTIME",
+        `cannot prepare the create-only target ${target}: ${err instanceof Error ? err.message : String(err)}`,
+        { help: recoveryHelp },
+      );
+    }
   }
   const info = await fs.lstat(target).catch(() => null);
   if (info === null || info.isSymbolicLink() || !info.isDirectory()) {
@@ -537,6 +543,71 @@ export async function claimCreateOnlyTarget(target: string): Promise<void> {
         : `create-only target ${target} gained content after preflight — a new workspace must not adopt concurrent files`,
     );
   }
+}
+
+/**
+ * Post-CAS isolation check for `init --create-only` (QA finding F1). The preflight's
+ * enclosing-bundle walk cannot see a bundle that COMMITS during the preflight-to-write window,
+ * and index.md's expect-absent CAS cannot arbitrate a parent/child pair — the two runs write
+ * DIFFERENT files. So after our own index.md commit, look BOTH ways:
+ *
+ *   - UP: an enclosing bundle at any ancestor means a parent racer committed — we are nested;
+ *   - DOWN: any index.md below the target (which was empty/fresh at claim) means a child racer
+ *     committed under us.
+ *
+ * Ordering argument (why two silent winners are impossible): each run verifies strictly AFTER its
+ * own CAS. For run A to miss run B, A's verify must precede B's CAS — so B's verify, which
+ * follows B's CAS, follows A's CAS and SEES A. At least one run always yields. The yielder rolls
+ * back exactly its own writes: unlinking `<target>/index.md` is provably safe because a won
+ * expect-absent CAS means that exact file is ours, and this runs BEFORE any recipe is applied so
+ * index.md is the whole write set; the claim-created directory is removed only via plain rmdir
+ * (never recursive), so a racer's content is never deleted. Both runs may yield in a tight race —
+ * an honest double-refusal with a clean disk beats one silent nested pair.
+ */
+export async function verifyCreateOnlyIsolation(target: string): Promise<void> {
+  const recoveryHelp =
+    `${cliInvocation()} recipe add <name> --dir <existing-bundle>  (modify an existing bundle), or ` +
+    `${cliInvocation()} init --create-only --dir <new-path>  (a different, genuinely new location)`;
+
+  // The up-walk can find OUR OWN just-committed index.md when the target IS a conventional
+  // `.agentstate-lite` folder (the parent's conventional-child check resolves to us) — self is
+  // never a conflict.
+  const enclosing = await findBundleRoot(path.dirname(target));
+  let conflict: string | null = null;
+  if (enclosing !== null && enclosing !== target) {
+    conflict = `a concurrent create committed the enclosing bundle at ${enclosing}`;
+  } else {
+    const nestedIndex = await (async function scan(dir: string): Promise<string | null> {
+      for (const entry of await fs.readdir(dir, { withFileTypes: true }).catch(() => [])) {
+        const child = path.join(dir, entry.name);
+        if (entry.isDirectory()) {
+          if (await exists(path.join(child, "index.md"))) return child;
+          const deeper = await scan(child);
+          if (deeper !== null) return deeper;
+        }
+      }
+      return null;
+    })(target);
+    if (nestedIndex !== null) conflict = `a concurrent create committed a nested bundle at ${nestedIndex}`;
+  }
+  if (conflict === null) return;
+
+  // Yield: remove OUR index.md (ours by the won CAS), then best-effort empty-only rmdirs upward.
+  await fs.unlink(path.join(target, "index.md")).catch(() => {});
+  let dir = target;
+  for (;;) {
+    try {
+      await fs.rmdir(dir); // never recursive — refuses non-empty, so racer content survives
+    } catch {
+      break;
+    }
+    dir = path.dirname(dir);
+  }
+  throw new CliError(
+    "ALREADY_EXISTS",
+    `create-only target ${target} lost a concurrent-create race — ${conflict}; this run's write was rolled back and nothing of this run remains`,
+    { help: recoveryHelp },
+  );
 }
 
 /**
