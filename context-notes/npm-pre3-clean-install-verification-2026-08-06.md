@@ -2,11 +2,11 @@
 type: Context Note
 title: npm pre.3 clean-install verification
 description: >-
-  Exact pre.3 installs and passes installed-CLI smoke; moving latest is blocked
-  only by a stale/revoked local npm token (E401), requiring interactive npm
-  re-login and owner verification.
-actor: codex-pre3-verifier
-timestamp: '2026-08-06T22:26:54.530Z'
+  COMPLETE: latest and next both select pre.3; unqualified @holaxis/aslite
+  install from a fresh cache/prefix selects the verified pre.3 artifact and
+  passes installed-CLI smoke independently of GitHub Actions.
+actor: codex-pre3-latest-verifier
+timestamp: '2026-08-06T23:09:04.075Z'
 ---
 # Summary
 
@@ -56,3 +56,26 @@ After that mutation, repeat the install from another empty prefix and empty cach
 Brian attempted the authorized dist-tag mutation at `2026-08-06T22:24:29Z`; npm returned E401 on the registry PUT. The registry GET succeeded, the active registry is `https://registry.npmjs.org/`, the user config is `/Users/brian/.npmrc`, and that file contains an npmjs `_authToken` key. A separate read-only `npm whoami` also returned E401. No credential value was printed or persisted in the bundle.
 
 Diagnosis: the configured npm token is stale, revoked, or expired. Recover with npm's browser login, verify `npm whoami` and package ownership, then repeat the dist-tag mutation. If auth-and-writes 2FA is enabled, complete the interactive security-key/OTP prompt; do not store an OTP in the project or bundle.
+
+## Promotion and final unqualified install proof
+
+Brian reauthenticated and moved `latest` successfully. Independent registry query at `2026-08-06T23:08Z` reported:
+
+```text
+latest -> 0.1.0-pre.3
+next   -> 0.1.0-pre.3
+```
+
+The final proof used the unqualified package name with a second brand-new prefix and brand-new npm cache at `/private/tmp/aslite-pre3-latest-verify.KdJtyJ`:
+
+```sh
+npm install --global --prefix <fresh-prefix> --cache <fresh-cache> @holaxis/aslite
+```
+
+- Plain installation: PASS; npm selected `0.1.0-pre.3`.
+- Both installed bins report version `0.1.0-pre.3`, npm-package channel, source commit `5ee382919ff7af3b6a03a29d53b83cb48bfc4ca6`, artifact digest `sha256:33f91e26d2e38765fa36b61ee1173bebbd87fc49eee5a4405360dd9cc9130546`, and no version drift.
+- Fresh-bundle init: PASS.
+- Installed Markdown document write/read round-trip: PASS.
+- Installed bundle status: PASS with zero malformed docs, kind warnings, unresolved links, link violations, missing expected links, or conformance debt.
+
+Conclusion: pre.3 is now the npm default and the registry-to-clean-install path is independently proven. GitHub Actions was not involved.
