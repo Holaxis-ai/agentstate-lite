@@ -2,11 +2,11 @@
 type: Context Note
 title: npm pre.3 clean-install verification
 description: >-
-  Exact pre.3 installs and passes installed-CLI smoke from a fresh cache/prefix;
-  unqualified plain-install proof awaits an authorized latest dist-tag move, not
-  GitHub Actions.
+  Exact pre.3 installs and passes installed-CLI smoke; moving latest is blocked
+  only by a stale/revoked local npm token (E401), requiring interactive npm
+  re-login and owner verification.
 actor: codex-pre3-verifier
-timestamp: '2026-08-06T22:13:42.207Z'
+timestamp: '2026-08-06T22:26:54.530Z'
 ---
 # Summary
 
@@ -50,3 +50,9 @@ npm dist-tag add @holaxis/aslite@0.1.0-pre.3 latest
 After that mutation, repeat the install from another empty prefix and empty cache using the unqualified package name, then assert `version --json` resolves exactly `0.1.0-pre.3` and repeat the smoke above. GitHub Actions is not involved in either the dist-tag mutation or npm installation.
 
 [registry diagnosis](npm-pre3-default-channel-2026-08-06.md)
+
+## Authentication blocker observed
+
+Brian attempted the authorized dist-tag mutation at `2026-08-06T22:24:29Z`; npm returned E401 on the registry PUT. The registry GET succeeded, the active registry is `https://registry.npmjs.org/`, the user config is `/Users/brian/.npmrc`, and that file contains an npmjs `_authToken` key. A separate read-only `npm whoami` also returned E401. No credential value was printed or persisted in the bundle.
+
+Diagnosis: the configured npm token is stale, revoked, or expired. Recover with npm's browser login, verify `npm whoami` and package ownership, then repeat the dist-tag mutation. If auth-and-writes 2FA is enabled, complete the interactive security-key/OTP prompt; do not store an OTP in the project or bundle.
