@@ -4,19 +4,19 @@ title: Make hook ownership and mutation compatibility exact
 status: in_progress
 priority: '1'
 description: >-
-  INDEPENDENT EXACT-SHA REVIEW FAIL at PR #210 head
-  4e394db65346d957676e590d7ca287d20b39dafb. Blocker 1: stableNpmRuntimePair
-  grants ownership to noncanonical npm paths with dot segments or duplicate
-  separators; built lifecycle probes show install rewrites and uninstall deletes
-  these foreign near-matches. Blocker 2: the required installed-tarball proof
-  fails locally and in Node 22/26 CI because local-dev authority installed in
-  npm layout composes an intentionally rejected cross-prefix runtime/executable
-  pair. Repair both without reopening the generic npm fallback, add pure plus
-  built byte-preservation tests, restore the full gate, then request a fresh
-  exact-SHA review before QA. Review findings posted:
+  BUILDER REPAIR PUSHED for PR #210 at exact SHA
+  5a5a6229c840992e94cf26e91bd1f82b4bf18488. Canonical absolute-path admission
+  now rejects dot-segment and duplicate-separator near-matches across npm,
+  local-dev, and marketplace layouts; installed local-dev npm-layout authority
+  now emits a proven stable same-prefix Node launch without any generic npm
+  fallback. Evidence: focused source 22/22, freshly built lifecycle 3/3,
+  poisoned-lifecycle proof 1/1, complete npm package proof exit 0, full npm run
+  check exit 0 with loopback permission, diff check clean. Status remains
+  in_progress pending fresh independent exact-SHA review, then adversarial QA
+  and GitHub CI. Original review:
   https://github.com/Holaxis-ai/agentstate-lite/pull/210#issuecomment-5208268039
-actor: codex-pr210-review-delivery
-timestamp: '2026-08-06T18:39:03.265Z'
+actor: codex-pr210-repair-builder
+timestamp: '2026-08-06T19:18:45.421Z'
 ---
 # Goal
 
