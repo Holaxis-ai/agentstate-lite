@@ -4,16 +4,18 @@ title: Make hook ownership and mutation compatibility exact
 status: in_progress
 priority: '1'
 description: >-
-  HOSTED CI pending for PR #210 at exact head
-  caa94a061c0ecd60715ed886d4063a86b29675c3. This is a tree-identical empty
-  retrigger commit over reviewed SHA 5a5a622; both have tree 7279c8f. GitHub
-  processed the push but Actions created no run because the official Actions
-  component is in a major outage (critical incident qcvjkzcs7j74). Product
-  implementation, independent review, aggregate QA, and local Node 20/22/25/26
-  gates remain complete. Monitor recovery, then retrigger only if the
-  synchronization is not processed. No merge performed.
+  WAITING ON GITHUB ACTIONS RECOVERY for PR #210 at exact head
+  caa94a061c0ecd60715ed886d4063a86b29675c3, a tree-identical empty commit over
+  reviewed 5a5a622 (tree 7279c8f). A read-only monitor from 20:19:45Z through
+  20:50:04Z found the official Actions component in major_outage throughout and
+  no hosted run. PR remains OPEN, MERGEABLE, CLEAN, and unmerged; local/origin
+  branch is exact and clean. Product implementation, independent review,
+  aggregate QA, and local Node 20/22/25/26 gates are complete. On continuation
+  inspect the official incident and exact-SHA run list first; after recovery,
+  retrigger once only if the queued event was not processed, then monitor hosted
+  CI to completion.
 actor: codex-pr210-ci-retrigger
-timestamp: '2026-08-06T20:19:09.389Z'
+timestamp: '2026-08-06T20:50:54.094Z'
 ---
 # Goal
 

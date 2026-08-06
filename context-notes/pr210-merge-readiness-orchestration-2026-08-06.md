@@ -2,15 +2,15 @@
 type: Context Note
 title: PR 210 merge-readiness orchestration start
 description: >-
-  PR #210 now has tree-identical CI-retrigger head caa94a0 over reviewed
-  5a5a622; GitHub Actions is in an official major outage, so hosted CI remains
-  pending and no merge was performed.
+  PR #210 has tree-identical CI-retrigger head caa94a0; a 30-minute monitor
+  ended with GitHub Actions still in major outage and no hosted run, so the task
+  remains pending recovery and no merge was performed.
 tags:
   - pr210
   - orchestration
   - hook-ownership
 actor: codex-pr210-ci-retrigger
-timestamp: '2026-08-06T20:19:02.350Z'
+timestamp: '2026-08-06T20:50:48.761Z'
 ---
 ---
 type: Context Note
@@ -87,5 +87,7 @@ At Brian's direction, a tree-identical empty commit `caa94a061c0ecd60715ed886d40
 The causal evidence is now definitive: GitHub's official status API reports an unresolved critical `Incident with Actions` beginning `2026-08-06T15:22:49Z`, with the Actions component in `major_outage`. The latest incident update says capacity is constrained and workflow runs may be delayed or fail. Git Operations and Webhooks remain operational, exactly matching the successful pushes/app notifications and missing Actions orchestration. Incident: https://stspg.io/rcz3fcm83sff
 
 Until a hosted run is attached to the new exact SHA, describe the PR as locally gated and GitHub-mergeable, not as having passed hosted CI. Do not emit more commits during the outage. Monitor GitHub recovery and the new SHA for a delayed run; once Actions recovers, retrigger only if GitHub does not process the queued synchronization.
+
+A continuous read-only monitor ran from `2026-08-06T20:19:45Z` through `20:50:04Z`. Every official status sample remained `major_outage`; no Actions run appeared for `caa94a0`. At the boundary the PR was still OPEN, MERGEABLE, CLEAN, and unmerged, with an empty check rollup; the local branch matched origin and remained clean. Leave the task `in_progress` pending external recovery. The next continuation should first inspect the official incident and exact-SHA run list. If Actions is operational but no delayed run exists, create one fresh synchronization event only, then monitor the hosted jobs through completion.
 
 [tracks](../tasks/hook-compatibility-ownership.md)
