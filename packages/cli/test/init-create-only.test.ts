@@ -416,3 +416,37 @@ test("a project-root target holding a conventional workspace is refused BY NAME,
     await rm(base, { recursive: true, force: true });
   }
 });
+
+test("a target path running THROUGH an existing file refuses structurally, never a raw fs error", async () => {
+  const base = await tempDir();
+  try {
+    const file = path.join(base, "blocker");
+    await writeFile(file, "x\n");
+    const err = await expectRefusal(
+      ["--create-only", "--dir", path.join(file, "sub", "deep")],
+      /runs through an existing file/,
+    );
+    assert.equal(err.code, "ALREADY_EXISTS");
+    assert.match(String(err.help), /recipe add/);
+    assert.equal(readFileSync(file, "utf8"), "x\n");
+  } finally {
+    await rm(base, { recursive: true, force: true });
+  }
+});
+
+test("a claim-time index.md racer gets the accurate already-a-bundle refusal", async () => {
+  const { claimCreateOnlyTarget } = await import("../src/bundle.js");
+  const base = await tempDir();
+  try {
+    const raced = path.join(base, "raced");
+    const target = await assertCreateOnlyTarget(raced);
+    await mkdir(target);
+    await writeFile(path.join(target, "index.md"), "---\nokf_version: '0.1'\n---\n# raced\n");
+    await assert.rejects(
+      () => claimCreateOnlyTarget(target),
+      (err: unknown) => err instanceof CliError && /is already an OKF bundle — another process created it first/.test(err.message),
+    );
+  } finally {
+    await rm(base, { recursive: true, force: true });
+  }
+});

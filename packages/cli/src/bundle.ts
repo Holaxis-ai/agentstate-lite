@@ -502,7 +502,22 @@ export async function claimCreateOnlyTarget(target: string): Promise<void> {
   // mkdir-first so both branches are deterministic: success claims a fresh directory atomically;
   // EEXIST (pre-existing OR concurrently created) falls through to re-verification, where an
   // empty real directory converges — same acceptance as the preflight — and anything else refuses.
-  await fs.mkdir(path.dirname(target), { recursive: true });
+  // The parent mkdir is guarded too: a path that runs THROUGH an existing file (lexists maps
+  // ENOTDIR to "missing", so the preflight walk cannot see it) is a structured conflict here,
+  // never a raw fs error.
+  try {
+    await fs.mkdir(path.dirname(target), { recursive: true });
+  } catch (err) {
+    const code = (err as NodeJS.ErrnoException).code;
+    if (code === "EEXIST" || code === "ENOTDIR") {
+      refuse(`create-only target ${target} runs through an existing file — pass a directory path`);
+    }
+    throw new CliError(
+      "RUNTIME",
+      `cannot prepare the create-only target ${target}: ${err instanceof Error ? err.message : String(err)}`,
+      { help: recoveryHelp },
+    );
+  }
   try {
     await fs.mkdir(target);
     return;
@@ -513,8 +528,14 @@ export async function claimCreateOnlyTarget(target: string): Promise<void> {
   if (info === null || info.isSymbolicLink() || !info.isDirectory()) {
     refuse(`create-only target ${target} changed shape after preflight — refusing to write`);
   }
-  if ((await fs.readdir(target)).length > 0) {
-    refuse(`create-only target ${target} gained content after preflight — a new workspace must not adopt concurrent files`);
+  const gained = await fs.readdir(target);
+  if (gained.length > 0) {
+    // A racer that already wrote index.md deserves the accurate refusal, not the generic one.
+    refuse(
+      gained.includes("index.md")
+        ? `create-only target ${target} is already an OKF bundle — another process created it first`
+        : `create-only target ${target} gained content after preflight — a new workspace must not adopt concurrent files`,
+    );
   }
 }
 
