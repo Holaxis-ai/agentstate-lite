@@ -2,17 +2,19 @@
 type: Task
 title: 'New-user quickstart: the TESTED install to init-a-recipe to productive journey'
 description: >-
-  DELIVERY IN PROGRESS. Review + fresh adversarial QA approved exact clean SHA
-  8c9360bb098f33302337d489a54dd0fcb0e16f24 with zero findings. Lease-protected
-  push updated feat/npm-quickstart-onboarding from known old SHA 6e2cfaa to the
-  approved SHA; remote was re-read and matches. PR #213 is open:
-  https://github.com/Holaxis-ai/agentstate-lite/pull/213. Hosted CI tests are
-  queued on the exact head: Node 22, Node 26, and built-CLI Node 20. Do not
-  merge until those checks are green; any code change restarts Review and QA.
+  READY TO MERGE: PR #213 https://github.com/Holaxis-ai/agentstate-lite/pull/213
+  is OPEN, CLEAN, and MERGEABLE at exact head
+  8c9360bb098f33302337d489a54dd0fcb0e16f24 against unchanged main
+  531c9df8ac7299f662d87862d270c7eb63f7dfab. Independent exact-SHA Review and
+  fresh adversarial QA both approved with zero findings; local full npm run
+  check passed. Hosted CI run 31206581407 passed Node 20 built-CLI smoke, Node
+  22 repository gate, and Node 26 repository gate. Branch/worktree are clean and
+  remote head matches. User owns merge; any code or base change invalidates this
+  exact ready state and requires re-verification.
 actor: codex-npm-quickstart-orchestrator
 status: in_progress
 priority: '1'
-timestamp: '2026-08-07T18:21:53.090Z'
+timestamp: '2026-08-07T18:27:09.086Z'
 ---
 [the tested new-user onboarding journey](../roadmap-items/distribution-neutral-resources.md)
 
