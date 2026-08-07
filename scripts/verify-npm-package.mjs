@@ -230,7 +230,7 @@ export async function fileSha256(file) {
  * the bytes we prove are the bytes that ship.
  */
 async function runInstalledProof(spec) {
-  const scratch = await mkdtemp(path.join(tmpdir(), "agentstate-lite-npm-proof-"));
+  const scratch = await realpath(await mkdtemp(path.join(tmpdir(), "agentstate-lite-npm-proof-")));
   const packDir = path.join(scratch, "pack");
   const prefix = path.join(scratch, "prefix");
   const home = path.join(scratch, "home");
@@ -316,7 +316,7 @@ async function runInstalledProof(spec) {
       await symlink(process.execPath, path.join(binDir, "node"));
     }
     const commandEnv = {
-      ...process.env,
+      ...sanitizedNpmEnvironment(process.env, npmUserConfig, npmCache),
       PATH: `${binDir}${path.delimiter}${path.dirname(process.execPath)}`,
       npm_config_prefix: prefix,
       HOME: home,
@@ -570,9 +570,7 @@ async function runInstalledProof(spec) {
       assert.deepEqual(
         hookCommands,
         [
-          `${
-            spec.expectedChannel === "npm-package" ? path.join(prefix, "bin", "node") : process.execPath
-          } ${installedEntrypointRealPath} session-start`,
+          `${path.join(prefix, "bin", "node")} ${installedEntrypointRealPath} session-start`,
         ],
         "the installed hook must use absolute Node and package-entry paths",
       );

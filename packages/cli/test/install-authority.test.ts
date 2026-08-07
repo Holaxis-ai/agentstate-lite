@@ -89,8 +89,31 @@ test("durable npm-package proof fails closed for every missing or transient fact
 });
 
 test("local-dev and marketplace legacy policies remain explicit while unknown fails closed", () => {
+  const installedLocalDev = classifyPersistentInstallAuthority({
+    ...durableFixture(),
+    artifact_channel: "local-dev",
+  });
+  assert.equal(installedLocalDev.allowed, true);
+  assert.equal(installedLocalDev.state, "local_dev");
+  assert.deepEqual(installedLocalDev.evidence, {
+    npm_prefix: "/opt/aslite-npm",
+    bin_path: "/opt/aslite-npm/bin/aslite",
+    executable_path: "/opt/aslite-npm/lib/node_modules/@holaxis/aslite/dist/agentstate-lite.mjs",
+    runtime_path: "/opt/aslite-npm/bin/node",
+  });
+
+  const repoExecutable = "/workspace/agentstate-lite/packages/cli/dist/agentstate-lite.mjs";
+  let npmPrefixCalls = 0;
   assert.deepEqual(
-    classifyPersistentInstallAuthority({ ...durableFixture(), artifact_channel: "local-dev" }),
+    classifyPersistentInstallAuthority({
+      ...durableFixture(),
+      artifact_channel: "local-dev",
+      executable_path: repoExecutable,
+      npm_prefix_global: () => {
+        npmPrefixCalls += 1;
+        return "/should/not/be/read";
+      },
+    }),
     {
       allowed: true,
       state: "local_dev",
@@ -98,11 +121,25 @@ test("local-dev and marketplace legacy policies remain explicit while unknown fa
       evidence: {
         npm_prefix: null,
         bin_path: null,
-        executable_path: durableFixture().executable_path,
+        executable_path: repoExecutable,
         runtime_path: durableFixture().runtime_path,
       },
     },
   );
+  assert.equal(npmPrefixCalls, 0, "repository local-dev must not probe npm-global authority");
+
+  const refusedInstalledLocalDev = classifyPersistentInstallAuthority({
+    ...durableFixture(),
+    artifact_channel: "local-dev",
+    realpath: (candidate: string) => {
+      const normalized = path.normalize(candidate);
+      if (normalized === "/opt/aslite-npm/bin/node") return "/opt/other-node/bin/node";
+      return durableFixture().realpath(normalized);
+    },
+  });
+  assert.equal(refusedInstalledLocalDev.allowed, false);
+  assert.equal(refusedInstalledLocalDev.state, "unknown");
+
   assert.equal(
     classifyPersistentInstallAuthority({ ...durableFixture(), artifact_channel: "marketplace-legacy" }).state,
     "marketplace_legacy",

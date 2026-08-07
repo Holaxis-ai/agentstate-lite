@@ -49,7 +49,7 @@ import {
   type HookSettings,
   type HookEntry,
 } from "axi-sdk-js";
-import { cliInvocation, collapseHomeDirectory, hookCommand, shellArg } from "../invocation.js";
+import { cliInvocation, collapseHomeDirectory, hookCommand } from "../invocation.js";
 import { render, resolveMode } from "../output.js";
 import { CliError } from "../errors.js";
 import { parseOrUsage } from "../args.js";
@@ -58,6 +58,7 @@ import {
   classifyHookCommand,
   classifyHookEntry,
   isOwnedHookCompatibility,
+  renderGeneratedHookToken,
   type HookCompatibility,
 } from "../hook-compatibility.js";
 import {
@@ -114,15 +115,11 @@ const OPENCODE_MANAGED_MARKER = `axi-sdk-js managed opencode plugin: ${HOOK_MARK
  * status, duplicated by reinstall, stranded by uninstall. An exotic/future channel outside the
  * explicit grammar fails closed here.
  */
-function generatedShellArg(value: string): string {
-  return /^[A-Za-z0-9_@%+=:,./-]+$/.test(value) ? value : shellArg(value);
-}
-
 export function sessionStartHookCommand(
   base: string = hookCommand(),
   args: string[] = [HOOK_SUBCOMMAND],
 ): string {
-  const command = [base, ...args].map(generatedShellArg).join(" ");
+  const command = [base, ...args].map(renderGeneratedHookToken).join(" ");
   if (!isManagedHookCommand(command)) {
     throw new Error(
       `composed hook command ${JSON.stringify(command)} would not be recognized as managed — refusing to install an orphan hook`,
@@ -726,7 +723,7 @@ function readOpenCodeHookStatus(path: string, expectedSource?: string): OpenCode
     source === buildOpenCodePluginSource(command, args as string[], timeoutMs / 1000)
   ) {
     const compatibility = classifyHookCommand(
-      [command, ...(args as string[])].map(generatedShellArg).join(" "),
+      [command, ...(args as string[])].map(renderGeneratedHookToken).join(" "),
     );
     if (!isOwnedHookCompatibility(compatibility)) return { installed: false, compatibility };
     if (timeoutMs !== HOOK_TIMEOUT_SECONDS * 1000) {
@@ -1045,6 +1042,7 @@ export async function hook(argv: string[], deps: Partial<HookDeps> = {}): Promis
   // uninstall: remove the managed hook from the JSON targets + delete the OpenCode plugin file. The
   // Codex config.toml [features].hooks flag is left in place (harmless; other hooks may rely on it).
   let changed = false;
+  const notes: string[] = [];
   for (const path of [targets.claudeSettings, targets.codexHooks]) {
     const [updated, didChange] = computeHookUninstall(readSettings(path));
     if (didChange) {
@@ -1052,9 +1050,14 @@ export async function hook(argv: string[], deps: Partial<HookDeps> = {}): Promis
       changed = true;
     }
   }
-  if (readOpenCodeHookStatus(targets.opencodePlugin).installed) {
+  const openCodeStatus = readOpenCodeHookStatus(targets.opencodePlugin);
+  if (openCodeStatus.installed) {
     rmSync(targets.opencodePlugin, { force: true });
     changed = true;
+  } else if (openCodeStatus.compatibility.state === "unmanaged") {
+    notes.push(
+      `preserved unmanaged OpenCode plugin: ${collapseHomeDirectory(targets.opencodePlugin)}`,
+    );
   }
   stdout(
     render(
@@ -1064,6 +1067,7 @@ export async function hook(argv: string[], deps: Partial<HookDeps> = {}): Promis
           scope,
           installed: false,
           changed,
+          ...(notes.length > 0 ? { notes } : {}),
           targets: {
             claude_code: collapseHomeDirectory(targets.claudeSettings),
             codex: collapseHomeDirectory(targets.codexHooks),

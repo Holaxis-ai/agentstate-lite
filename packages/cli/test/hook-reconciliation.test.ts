@@ -14,13 +14,19 @@ import {
 } from "../src/commands/hook.js";
 import { CliError } from "../src/errors.js";
 import type { PersistentInstallAuthority } from "../src/install-authority.js";
+import {
+  MISMATCHED_NPM_NODE_COMMAND,
+  NONCANONICAL_MANAGED_PATH_CASES,
+} from "./hook-shell-fixtures.js";
 
 const FOREIGN = [
   { type: "command", command: "echo agentstate-lite", timeout: 10 },
   { type: "command", command: "agentstate-lite backup", timeout: 10 },
   { type: "command", command: "npx -y @holaxis/aslite session-start", timeout: 10 },
   { type: "command", command: "aslite\nsession-start", timeout: 10 },
+  { type: "command", command: String.raw`"\u0061slite" session-start`, timeout: 10 },
   { type: "command", command: "node /tmp/agentstate-lite.mjs session-start", timeout: 10 },
+  { type: "command", command: MISMATCHED_NPM_NODE_COMMAND, timeout: 10 },
 ];
 
 function capture(): { out: () => string; stdout: (value: string) => void } {
@@ -48,6 +54,62 @@ test("JSON reconciliation owns exact generated forms and preserves every near-ma
   const foreignOnly = { hooks: { SessionStart: [{ matcher: "", hooks: [...FOREIGN] }] } };
   const [uninstalled, removed] = computeHookUninstall(foreignOnly);
   assert.equal(removed, false);
+  assert.equal(uninstalled, foreignOnly);
+});
+
+test("mismatched npm Node/package prefixes remain foreign through pure status, install, and uninstall", () => {
+  const foreign = { type: "command", command: MISMATCHED_NPM_NODE_COMMAND, timeout: 10 };
+  const settings = { hooks: { SessionStart: [{ matcher: "", hooks: [foreign] }] } };
+
+  const status = readHookCompatibilityStatus(settings);
+  assert.equal(status.installed, false);
+  assert.equal(status.compatibility.state, "unmanaged");
+
+  const [installed, installedChanged] = computeSessionStartHookInstall(settings, {
+    command: "aslite session-start",
+  });
+  assert.equal(installedChanged, true);
+  assert.deepEqual(installed.hooks!.SessionStart, [
+    { matcher: "", hooks: [foreign] },
+    { matcher: "", hooks: [{ type: "command", command: "aslite session-start", timeout: 10 }] },
+  ]);
+
+  const [uninstalled, uninstalledChanged] = computeHookUninstall(settings);
+  assert.equal(uninstalledChanged, false);
+  assert.equal(uninstalled, settings);
+});
+
+test("noncanonical managed-path near-matches remain foreign through pure status, install, and uninstall", () => {
+  const foreign = NONCANONICAL_MANAGED_PATH_CASES.map(({ command }) => ({
+    type: "command",
+    command,
+    timeout: 10,
+  }));
+  for (const entry of foreign) {
+    const status = readHookCompatibilityStatus({
+      hooks: { SessionStart: [{ matcher: "", hooks: [entry] }] },
+    });
+    assert.equal(status.installed, false, entry.command);
+    assert.equal(status.compatibility.state, "unmanaged", entry.command);
+  }
+
+  const settings = {
+    hooks: {
+      SessionStart: [
+        { matcher: "", hooks: foreign },
+        { matcher: "", hooks: [{ type: "command", command: "aslite session-start", timeout: 10 }] },
+      ],
+    },
+  };
+  const [installed, installedChanged] = computeSessionStartHookInstall(settings, {
+    command: "aslite session-start",
+  });
+  assert.equal(installedChanged, false);
+  assert.equal(installed, settings);
+
+  const foreignOnly = { hooks: { SessionStart: [{ matcher: "", hooks: foreign }] } };
+  const [uninstalled, uninstalledChanged] = computeHookUninstall(foreignOnly);
+  assert.equal(uninstalledChanged, false);
   assert.equal(uninstalled, foreignOnly);
 });
 
@@ -179,7 +241,12 @@ test("OpenCode marker lookalikes are reported unmanaged and never overwritten or
     assert.equal(status.hook.opencode, false);
     assert.equal(status.hook.hosts.opencode.state, "unmanaged");
 
-    await hook(["uninstall"], { base, stdout: () => {} });
+    const uninstallCapture = capture();
+    await hook(["uninstall", "--json"], { base, stdout: uninstallCapture.stdout });
+    const uninstall = JSON.parse(uninstallCapture.out());
+    assert.deepEqual(uninstall.hook.notes, [
+      `preserved unmanaged OpenCode plugin: ${plugin}`,
+    ]);
     assert.equal(await readFile(plugin, "utf8"), authored);
 
     await assert.rejects(() => hook(["install"], { base, commandBase: "aslite", stdout: () => {} }), CliError);

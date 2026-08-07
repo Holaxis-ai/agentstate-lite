@@ -4,12 +4,21 @@ import assert from "node:assert/strict";
 import {
   classifyHookCommand,
   classifyHookEntry,
+  isSafeUnquotedHookToken,
   isOwnedHookCompatibility,
+  renderGeneratedHookToken,
   tokenizeGeneratedHookCommand,
 } from "../src/hook-compatibility.js";
+import {
+  LEXICAL_ENVELOPE_FOREIGN_COMMANDS,
+  NONCANONICAL_MANAGED_PATH_CASES,
+  NODE_PACKAGE_PAIR_CASES,
+  SHELL_FOREIGN_COMMANDS,
+  localDevExecutable,
+} from "./hook-shell-fixtures.js";
 
 const stable =
-  "'/opt/aslite/bin/node' '/opt/aslite/lib/node_modules/@holaxis/aslite/dist/agentstate-lite.mjs' 'session-start'";
+  "/opt/aslite/bin/node /opt/aslite/lib/node_modules/@holaxis/aslite/dist/agentstate-lite.mjs session-start";
 
 test("generated command tokenizer accepts emitted quoting and rejects shell behavior", () => {
   assert.deepEqual(tokenizeGeneratedHookCommand(stable), [
@@ -27,15 +36,128 @@ test("generated command tokenizer accepts emitted quoting and rejects shell beha
     "aslite\rsession-start",
     "aslite\tsession-start",
     "'aslite\nsession-start'",
-    '"aslite\\nsession-start"',
     "aslite  session-start",
     "$(which aslite) session-start",
     "aslite; session-start",
+    "/tmp/*/packages/cli/dist/agentstate-lite.mjs session-start",
+    "/tmp/?/packages/cli/dist/agentstate-lite.mjs session-start",
+    "/tmp/[ab]/packages/cli/dist/agentstate-lite.mjs session-start",
+    String.raw`"\u0061slite" session-start`,
+    String.raw`"aslite\nsession-start"`,
     "aslite 'unterminated",
   ]) {
     assert.equal(tokenizeGeneratedHookCommand(command), undefined, command);
   }
   assert.deepEqual(tokenizeGeneratedHookCommand("echo agentstate-lite"), ["echo", "agentstate-lite"]);
+});
+
+test("the recognizer's unquoted alphabet is exactly the writer's closed alphabet", () => {
+  const alphabet = new Set("ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789_@%+=:,./-");
+  for (let code = 0x21; code <= 0x7e; code += 1) {
+    const character = String.fromCharCode(code);
+    const safe = alphabet.has(character);
+    assert.equal(isSafeUnquotedHookToken(character), safe, `predicate drift for ${JSON.stringify(character)}`);
+    const command = `${localDevExecutable(character)} session-start`;
+    assert.equal(
+      tokenizeGeneratedHookCommand(command) !== undefined,
+      safe,
+      `tokenizer drift for ${JSON.stringify(character)}`,
+    );
+  }
+  for (const character of [" ", "é", "\u{1f642}", "\n", "\t"]) {
+    assert.equal(isSafeUnquotedHookToken(character), false, JSON.stringify(character));
+  }
+});
+
+test("shell-expansion taxonomy is unmanaged before the semantic classifier", () => {
+  for (const { family, command } of SHELL_FOREIGN_COMMANDS) {
+    assert.equal(tokenizeGeneratedHookCommand(command), undefined, family);
+    assert.equal(classifyHookCommand(command).state, "unmanaged", family);
+  }
+});
+
+test("lexical envelopes are whole-token canonical writer spellings, never shell-equivalent segmentations", () => {
+  const accepted: Array<{ family: string; command: string; tokens: string[] }> = [
+    { family: "safe unquoted", command: "aslite session-start", tokens: ["aslite", "session-start"] },
+    {
+      family: "current whole-token single quote",
+      command: "'/tmp/a b/packages/cli/dist/agentstate-lite.mjs' session-start",
+      tokens: ["/tmp/a b/packages/cli/dist/agentstate-lite.mjs", "session-start"],
+    },
+    {
+      family: "current canonical embedded apostrophe",
+      command: String.raw`'/tmp/a'\''b/packages/cli/dist/agentstate-lite.mjs' session-start`,
+      tokens: ["/tmp/a'b/packages/cli/dist/agentstate-lite.mjs", "session-start"],
+    },
+    {
+      family: "historical whitespace-triggered JSON double quote",
+      command: '"/tmp/a b/packages/cli/dist/agentstate-lite.mjs" session-start',
+      tokens: ["/tmp/a b/packages/cli/dist/agentstate-lite.mjs", "session-start"],
+    },
+  ];
+  for (const { family, command, tokens } of accepted) {
+    assert.deepEqual(tokenizeGeneratedHookCommand(command), tokens, family);
+    assert.notEqual(classifyHookCommand(command).state, "unmanaged", family);
+  }
+
+  assert.equal(renderGeneratedHookToken("aslite"), "aslite");
+  assert.equal(
+    renderGeneratedHookToken("/tmp/a b/packages/cli/dist/agentstate-lite.mjs"),
+    "'/tmp/a b/packages/cli/dist/agentstate-lite.mjs'",
+  );
+  assert.equal(
+    renderGeneratedHookToken("/tmp/a'b/packages/cli/dist/agentstate-lite.mjs"),
+    String.raw`'/tmp/a'\''b/packages/cli/dist/agentstate-lite.mjs'`,
+  );
+
+  const historicalBackslash = String.raw`/tmp/a b\c/packages/cli/dist/agentstate-lite.mjs`;
+  assert.deepEqual(
+    tokenizeGeneratedHookCommand(`${JSON.stringify(historicalBackslash)} session-start`),
+    [historicalBackslash, "session-start"],
+  );
+  for (const unsafeHistoricalValue of [
+    "/tmp/a b/$HOME/packages/cli/dist/agentstate-lite.mjs",
+    "/tmp/a b/`pwd`/packages/cli/dist/agentstate-lite.mjs",
+    "/tmp/a\nb/packages/cli/dist/agentstate-lite.mjs",
+  ]) {
+    const command = `${JSON.stringify(unsafeHistoricalValue)} session-start`;
+    assert.equal(tokenizeGeneratedHookCommand(command), undefined, command);
+  }
+  assert.equal(
+    tokenizeGeneratedHookCommand(String.raw`"/tmp/a b/\$HOME/packages/cli/dist/agentstate-lite.mjs" session-start`),
+    undefined,
+    "POSIX-safe escaping is not the historical JSON spelling",
+  );
+
+  for (const { family, command } of LEXICAL_ENVELOPE_FOREIGN_COMMANDS) {
+    assert.equal(tokenizeGeneratedHookCommand(command), undefined, family);
+    assert.equal(classifyHookCommand(command).state, "unmanaged", family);
+  }
+  for (const command of [
+    "'aslite' session-start",
+    '"aslite" session-start',
+    "aslite 'session-start'",
+    "'/tmp/a b/'packages/cli/dist/agentstate-lite.mjs session-start",
+  ]) {
+    assert.equal(tokenizeGeneratedHookCommand(command), undefined, command);
+  }
+});
+
+test("supported quote grammar retains literal shell characters only inside managed layouts", () => {
+  const table: Array<[string, string]> = [
+    ["'/tmp/{a,b}/packages/cli/dist/agentstate-lite.mjs' session-start", "legacy_path_bound"],
+    ['"/tmp/{a,b}/packages/cli/dist/agentstate-lite.mjs" session-start', "unmanaged"],
+    ["'/tmp/#/packages/cli/dist/agentstate-lite.mjs' session-start", "legacy_path_bound"],
+    ["'/tmp/~/packages/cli/dist/agentstate-lite.mjs' session-start", "legacy_path_bound"],
+    ["'/tmp/!/packages/cli/dist/agentstate-lite.mjs' session-start", "legacy_path_bound"],
+    ["'/tmp/café/packages/cli/dist/agentstate-lite.mjs' session-start", "legacy_path_bound"],
+    [String.raw`"/tmp/\${HOME}/packages/cli/dist/agentstate-lite.mjs" session-start`, "unmanaged"],
+    [String.raw`"/tmp/\$(pwd)/packages/cli/dist/agentstate-lite.mjs" session-start`, "unmanaged"],
+    ["'echo {a,b}' session-start", "unmanaged"],
+  ];
+  for (const [command, state] of table) {
+    assert.equal(classifyHookCommand(command).state, state, command);
+  }
 });
 
 test("command compatibility recognizes exact generated history and rejects near-matches", () => {
@@ -55,10 +177,48 @@ test("command compatibility recognizes exact generated history and rejects near-
     ["echo agentstate-lite", "unmanaged"],
     ["agentstate-lite backup", "unmanaged"],
     ["aslite2 session-start", "unmanaged"],
+    [String.raw`"\u0061slite" session-start`, "unmanaged"],
+    [String.raw`"aslite\/" session-start`, "unmanaged"],
+    ["/tmp/*/packages/cli/dist/agentstate-lite.mjs session-start", "unmanaged"],
+    ["/tmp/?/packages/cli/dist/agentstate-lite.mjs session-start", "unmanaged"],
+    ["/tmp/[ab]/packages/cli/dist/agentstate-lite.mjs session-start", "unmanaged"],
+    [
+      "/opt/*/bin/node /opt/*/lib/node_modules/@holaxis/aslite/dist/agentstate-lite.mjs session-start",
+      "unmanaged",
+    ],
+    [
+      "/opt/?/bin/node /opt/?/lib/node_modules/@holaxis/aslite/dist/agentstate-lite.mjs session-start",
+      "unmanaged",
+    ],
+    [
+      "/opt/[ab]/bin/node /opt/[ab]/lib/node_modules/@holaxis/aslite/dist/agentstate-lite.mjs session-start",
+      "unmanaged",
+    ],
+    ["'/tmp/*/packages/cli/dist/agentstate-lite.mjs' session-start", "legacy_path_bound"],
+    ['"/tmp/?/packages/cli/dist/agentstate-lite.mjs" session-start', "unmanaged"],
+    ["'/tmp/[ab]/packages/cli/dist/agentstate-lite.mjs' session-start", "legacy_path_bound"],
+    [
+      "'/opt/*/bin/node' '/opt/*/lib/node_modules/@holaxis/aslite/dist/agentstate-lite.mjs' session-start",
+      "current",
+    ],
     ["some-tool --aslite", "unmanaged"],
   ];
   for (const [command, state] of table) {
     assert.equal(classifyHookCommand(command).state, state, command);
+  }
+});
+
+test("Node/package semantic provenance requires same-prefix npm but permits enumerated local layouts", () => {
+  for (const { family, command, state } of NODE_PACKAGE_PAIR_CASES) {
+    assert.notEqual(tokenizeGeneratedHookCommand(command), undefined, `${family}: lexical precondition`);
+    assert.equal(classifyHookCommand(command).state, state, family);
+  }
+});
+
+test("managed path ownership requires the writer's canonical absolute spelling", () => {
+  for (const { family, command } of NONCANONICAL_MANAGED_PATH_CASES) {
+    assert.notEqual(tokenizeGeneratedHookCommand(command), undefined, `${family}: lexical precondition`);
+    assert.equal(classifyHookCommand(command).state, "unmanaged", family);
   }
 });
 
