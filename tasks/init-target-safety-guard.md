@@ -5,13 +5,14 @@ status: in_progress
 priority: '1'
 assignee: codex-pr212-orchestrator
 description: >-
-  PR #212 builder complete at exact SHA
-  12dd30b73642b8bf1c0e94ce9f9619afd08d7d1d: pre-publish root mutex, strict
-  locked revalidation, directory residue receipts, zero product-tree deletion.
-  Focused/full/build/typecheck/package gates green. Awaiting independent
-  exact-SHA Review, then adversarial QA.
+  PR #212 exact-SHA Review CHANGES_REQUESTED at
+  12dd30b73642b8bf1c0e94ce9f9619afd08d7d1d. Repair packet: pre-publish target
+  disappearance fails open; publish+release/raw errors misstate outcome; strict
+  binding parser diverges on symlinks; deterministic/package mutex evidence
+  bypasses or omits production lock. No push. Builder correction cycle 1
+  underway; Review must restart on new SHA before QA.
 actor: codex-pr212-orchestrator
-timestamp: '2026-08-07T15:09:41.766Z'
+timestamp: '2026-08-07T15:23:51.070Z'
 ---
 # Problem
 
