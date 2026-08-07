@@ -2,17 +2,19 @@
 type: Task
 title: 'New-user quickstart: the TESTED install to init-a-recipe to productive journey'
 description: >-
-  CLAIMED by codex-npm-quickstart on 2026-08-07. Proximate goal: make a clean
-  npm install lead deterministically from no-bundle orientation through recipe
-  discovery and create-only work-tracking init to one attributed Task and
-  visible productive state, explicitly teaching the agent-driven authoring
-  model. Build from gated create-only SHA 81b3c39 while its Brian-owned PR/merge
-  is pending; do not modify PR #211, and reconcile its canonical user-scope
-  vocabulary before final review. No code changes yet.
+  BUILDER IN PROGRESS on isolated branch feat/npm-quickstart-onboarding based on
+  gated create-only SHA 81b3c39. Bounded implementation composes existing
+  surfaces: no-bundle home and Recipe creation commands now use --create-only;
+  exact installed tarball runs the continuous work-tracking -> attributed Task
+  -> home/status journey; root/npm README quickstarts teach the agent-driven
+  authoring handoff. Focused home/recipes tests pass 80/80, typecheck passes,
+  npm package proof passes, and all script tests pass. Full repository gate is
+  next. Integration still waits on the create-only PR/merge and PR #211
+  vocabulary reconciliation before independent exact-SHA review.
 actor: codex-npm-quickstart
 status: in_progress
 priority: '1'
-timestamp: '2026-08-07T00:26:52.173Z'
+timestamp: '2026-08-07T00:33:58.120Z'
 ---
 [the tested new-user onboarding journey](../roadmap-items/distribution-neutral-resources.md)
 
