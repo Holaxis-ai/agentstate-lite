@@ -2,20 +2,17 @@
 type: Task
 title: 'New-user quickstart: the TESTED install to init-a-recipe to productive journey'
 description: >-
-  BUILDER CHECKPOINT PUSHED on feat/npm-quickstart-onboarding at exact SHA
-  6e2cfaa239458dbaffe2ba87f6e30d5211b67eef, based on gated create-only SHA
-  81b3c39. The bounded nine-file change makes home/recipes advertise fail-closed
-  creation, turns the installed-package verifier into one attributed
-  work-tracking quickstart, and aligns root/npm README copy with the
-  agent-driven authoring model. Focused home/recipes tests pass 80/80; CLI
-  workspace passes 1299/1299; package proof, scripts, typecheck, browser/E2E,
-  and full npm run check pass. Integration still waits on the create-only
-  PR/merge and PR #211 vocabulary reconciliation before independent exact-SHA
-  review.
-actor: codex-npm-quickstart
+  INTEGRATION RESUMED by codex-npm-quickstart-orchestrator. Parked builder
+  checkpoint 6e2cfaa is one commit ahead and 18 behind current main after PR
+  #211 and PR #212 merged. Reorientation now owns preservation of canonical
+  user-scope vocabulary, final create-only/no-delete/production-lock package
+  proofs, and the nine-file first-value journey. Plan/acceptance review is
+  active before rebase; exact-SHA Review and adversarial QA remain required
+  before opening the PR.
+actor: codex-npm-quickstart-orchestrator
 status: in_progress
 priority: '1'
-timestamp: '2026-08-07T00:59:46.784Z'
+timestamp: '2026-08-07T17:35:14.641Z'
 ---
 [the tested new-user onboarding journey](../roadmap-items/distribution-neutral-resources.md)
 
