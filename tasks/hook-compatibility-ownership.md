@@ -1,21 +1,19 @@
 ---
 type: Task
 title: Make hook ownership and mutation compatibility exact
-status: in_progress
+status: done
 priority: '1'
 description: >-
-  WAITING ON GITHUB ACTIONS TRIGGER RECOVERY for PR #210 at exact head
-  bc4a59ae20af3ac1ac0a7c78bb59be8027f6c94e. This is a tree-identical empty
-  recovery-retrigger commit over caa94a0 and reviewed 5a5a622; all have tree
-  7279c8f. GitHub processed the push but created no Actions suite because the
-  official incident says push/PR webhook triggers remain throttled; the 65%
-  success figure applies to already queued jobs, while only about 15% of
-  triggers were processed. Product implementation, review, QA, and local Node
-  gates remain complete. Do not push another outage-era commit. After throttling
-  ends, retrigger once only if no delayed run appears, then monitor hosted CI.
-  No merge performed.
-actor: codex-pr210-ci-retrigger
-timestamp: '2026-08-06T21:46:15.600Z'
+  DONE for PR #210 at exact head f1c992bf78bf17416aac00dd42b441680e39dbd6. This
+  final empty recovery-trigger commit has reviewed tree
+  7279c8f2000508bbac363e109c7c12602ffd42e1, identical to semantic SHA
+  5a5a6229c840992e94cf26e91bd1f82b4bf18488. Independent exact-SHA review and
+  aggregate adversarial QA passed; hosted run 31133295908 passed Node 20
+  built-CLI smoke and full Node 22/26 repository gates. PR is OPEN, MERGEABLE,
+  CLEAN; final evidence is comment 5210202640. Ready for Brian's merge gate. No
+  merge performed.
+actor: codex-pr210-final-ci
+timestamp: '2026-08-07T00:13:14.242Z'
 ---
 # Goal
 

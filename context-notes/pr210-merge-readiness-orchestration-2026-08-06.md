@@ -2,15 +2,15 @@
 type: Context Note
 title: PR 210 merge-readiness orchestration start
 description: >-
-  PR #210 now has tree-identical recovery-retrigger head bc4a59a; GitHub is
-  throttling push/PR triggers during its Actions outage, so no hosted run exists
-  and no merge was performed.
+  PR #210 is ready for the maintainer merge gate at exact head f1c992b:
+  independent review and adversarial QA passed, hosted Node 20/22/26 CI is
+  green, and no merge was performed.
 tags:
   - pr210
   - orchestration
   - hook-ownership
-actor: codex-pr210-ci-retrigger
-timestamp: '2026-08-06T21:46:09.879Z'
+actor: codex-pr210-final-ci
+timestamp: '2026-08-07T00:13:00.015Z'
 ---
 ---
 type: Context Note
@@ -93,3 +93,17 @@ A continuous read-only monitor ran from `2026-08-06T20:19:45Z` through `20:50:04
 During reported partial recovery Brian authorized one further attempt. The workflow has no `workflow_dispatch`, so the GitHub UI cannot run it for the current SHA; rerunning run `31057746922` would test old SHA `4e394db`. Empty commit `bc4a59ae20af3ac1ac0a7c78bb59be8027f6c94e` (`chore: retry PR checks during Actions recovery`) was created on `caa94a0` and pushed at `2026-08-06T21:44:36Z`. Parent and child have identical tree `7279c8f2000508bbac363e109c7c12602ffd42e1`, and `git diff-tree` is empty. GitHub updated PR/app state but again created no Actions suite. The latest official incident update explains that webhook triggers remain throttled and many push/PR events are not triggering workflows; the earlier 65% figure applies only to already queued jobs, while only about 15% of webhook triggers were being processed. Do not push another outage-era commit. Current exact PR head is `bc4a59a`; wait for trigger throttling to end, then emit at most one recovery synchronization if no delayed run exists.
 
 [tracks](../tasks/hook-compatibility-ownership.md)
+
+## Hosted-CI recovery and final merge-readiness
+
+At `2026-08-07T00:01:00Z`, GitHub reported that system-wide queues were drained and webhook-triggered Actions workflows had returned to full throughput. Because neither outage-era synchronization had produced a delayed run, one final tree-identical empty commit, `f1c992bf78bf17416aac00dd42b441680e39dbd6` (`chore: retrigger PR checks after Actions recovery`), was created and pushed. Its parent is `bc4a59a`; both commits and independently reviewed semantic SHA `5a5a6229c840992e94cf26e91bd1f82b4bf18488` have tree `7279c8f2000508bbac363e109c7c12602ffd42e1`. `git diff-tree` for `f1c992b` is empty.
+
+The recovery event was admitted as pull-request workflow run [31133295908](https://github.com/Holaxis-ai/agentstate-lite/actions/runs/31133295908) on exact head `f1c992b`. All hosted jobs passed:
+
+- Node 20 built-CLI engines-floor smoke: PASS.
+- Node 22 full repository gate (`npm run check`): PASS.
+- Node 26 full repository gate (`npm run check`): PASS.
+
+Final integrity checks show local HEAD equals the remote branch at `f1c992b`, the isolated worktree is clean, the exact tree matches the independently reviewed tree, and GitHub reports PR #210 OPEN, MERGEABLE, CLEAN, with all three check runs successful. Final hosted-CI evidence was posted at https://github.com/Holaxis-ai/agentstate-lite/pull/210#issuecomment-5210202640.
+
+Proximate goal completed: carry the repaired ownership boundary through independent review, adversarial QA, local runtime gates, and the normal hosted CI gate. This serves the ultimate goal by making the foreign-configuration safety claim independently reproducible and externally gated. PR #210 is ready for Brian's merge gate. No merge was performed.
