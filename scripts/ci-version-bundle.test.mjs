@@ -19,6 +19,7 @@ import {
 import { buildCliBundle, currentSourceFacts } from "../packages/cli/scripts/build-bundle.mjs";
 import { bundleContentEqual } from "../packages/cli/scripts/bundle-identity-comparison.mjs";
 import { prepareCliBundleInputs } from "../packages/cli/scripts/prepare-bundle-inputs.mjs";
+import { UI_DIST_PREREQUISITE_WORKSPACES } from "../packages/cli/scripts/embed-ui-assets.mjs";
 
 const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 
@@ -50,6 +51,35 @@ test("every CLI bundle producer uses the shared generated-input preparation", as
     assert.doesNotMatch(source, /\bembedUiAssets\(\)/, path);
     assert.doesNotMatch(source, /\bbuildMcpViewHtml\(\)/, path);
   }
+});
+
+// The CI bot regenerates from a FRESH checkout (`npm ci`, no sibling dist/ anywhere), and npm does
+// not build a workspace's deps on a single-workspace build. Every @agentstate-lite workspace whose
+// dist/ the packages/ui production build resolves must therefore be built by the bundle path
+// itself — either by ui's own `prebuild` or by embed-ui-assets' prerequisite list — or the bot
+// fails on every push to main with an unresolvable import (the view-runtime/action-bridge
+// regression of 2026-08).
+test("the ui build path covers every sibling dist a fresh checkout is missing", async () => {
+  const uiManifest = JSON.parse(await readFile(join(repoRoot, "packages/ui/package.json"), "utf8"));
+  const prebuild = uiManifest.scripts?.prebuild ?? "";
+  const workspaceDeps = Object.keys(uiManifest.dependencies ?? {}).filter((name) =>
+    name.startsWith("@agentstate-lite/"),
+  );
+  assert.ok(workspaceDeps.length > 0, "expected packages/ui to declare workspace dependencies");
+  for (const dep of workspaceDeps) {
+    assert.ok(
+      UI_DIST_PREREQUISITE_WORKSPACES.includes(dep) || prebuild.includes(dep),
+      `${dep} is a packages/ui workspace dependency but nothing builds its dist/ before the ui ` +
+        "vite build — add it to UI_DIST_PREREQUISITE_WORKSPACES (or ui's prebuild) or a " +
+        "fresh-checkout plugin-bundle regeneration (the CI version-bundle bot) fails to resolve it",
+    );
+  }
+
+  // The two entries the current tree is known to need, in dependency order: the vite build
+  // resolves core's `./kinds` slice directly, and view-runtime's own tsc consumes core's dist
+  // types, so core must be built before view-runtime.
+  assert.equal(UI_DIST_PREREQUISITE_WORKSPACES[0], "@agentstate-lite/core");
+  assert.ok(UI_DIST_PREREQUISITE_WORKSPACES.includes("@agentstate-lite/view-runtime"));
 });
 
 // ---------------------------------------------------------------------------------------------

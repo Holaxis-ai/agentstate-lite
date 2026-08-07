@@ -85,26 +85,33 @@ export function npmInvocation(args, env = process.env) {
   return { command: process.execPath, args: [npmCli, ...args] };
 }
 
-/** Rebuild `packages/ui`'s dist/ fresh via its own workspace script. Builds its workspace dependency
- * `@agentstate-lite/core` FIRST: the ui imports core's browser-safe `./kinds` slice, and npm does NOT
- * build a workspace's deps on a single-workspace build, so core's `dist/` must already exist or Vite's
- * production build fails to resolve `@agentstate-lite/core/kinds` (its target `dist/kinds.js` absent).
- * Callers that go through root `npm run build` get this ordering for free; the committed-bundle writer
+/** Sibling workspaces whose `dist/` the packages/ui PRODUCTION build resolves through package
+ * exports (`@agentstate-lite/core/kinds`, `@agentstate-lite/view-runtime/action-bridge`), IN build
+ * order — core first, because view-runtime's own tsc consumes core's dist types. npm does NOT
+ * build a workspace's deps on a single-workspace build, so on a fresh checkout (the CI
+ * version-bundle bot's `npm ci` state) these dists don't exist and Vite's build fails to resolve
+ * the imports. markdown-renderer is covered by packages/ui's own `prebuild` and stays out of this
+ * list. Coverage of ui's workspace deps is pinned by scripts/ci-version-bundle.test.mjs. */
+export const UI_DIST_PREREQUISITE_WORKSPACES = [
+  "@agentstate-lite/core",
+  "@agentstate-lite/view-runtime",
+];
+
+/** Rebuild `packages/ui`'s dist/ fresh via its own workspace script, building the sibling dists it
+ * resolves FIRST (see UI_DIST_PREREQUISITE_WORKSPACES). Callers that go through root
+ * `npm run build` get this ordering for free; the committed-bundle writer
  * (build-plugin-bundle.mjs, used by the version-bundle bot) calls embedUiAssets() directly, so making
  * this step self-sufficient is what keeps BOTH paths correct.
  * Throws (uncaught, `execFileSync`'s default) — and so fails this whole build immediately — on any
  * build error, e.g. a TypeScript or Vite failure. */
 function buildUiDist() {
-  const coreBuild = npmInvocation(["run", "build", "--workspace=@agentstate-lite/core"]);
-  execFileSync(coreBuild.command, coreBuild.args, {
-    cwd: repoRoot,
-    stdio: "inherit",
-  });
-  const uiBuild = npmInvocation(["run", "build", "--workspace=@agentstate-lite/ui"]);
-  execFileSync(uiBuild.command, uiBuild.args, {
-    cwd: repoRoot,
-    stdio: "inherit",
-  });
+  for (const workspace of [...UI_DIST_PREREQUISITE_WORKSPACES, "@agentstate-lite/ui"]) {
+    const invocation = npmInvocation(["run", "build", `--workspace=${workspace}`]);
+    execFileSync(invocation.command, invocation.args, {
+      cwd: repoRoot,
+      stdio: "inherit",
+    });
+  }
 }
 
 /** Build the ui SPA fresh, embed its dist/ as deterministic gzip, write the generated module, and enforce the size budget. Returns `{ count, totalGzipBytes }`. */
