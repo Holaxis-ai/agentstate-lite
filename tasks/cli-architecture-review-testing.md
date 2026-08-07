@@ -8,7 +8,7 @@ description: >-
   Assess unit/integration coverage, relevance, meaningful testability,
   fault-injection affordances, and vet/apply the shared template.
 actor: testing-reviewer
-timestamp: '2026-08-07T14:04:08.058Z'
+timestamp: '2026-08-07T14:19:20.056Z'
 ---
 # Goal
 Provide an independent test-architecture analysis of packages/cli and the reusable review rubric.
@@ -26,4 +26,4 @@ A markdown knowledge bundle in the repo plus an agent-oriented CLI that gives hu
 Make the architecture-review template distinguish real behavioral assurance from false confidence so later CLI findings strengthen product reliability and maintainability.
 
 # Progress
-Divergent testing/testability template proposal completed and recorded at `context-notes/cli-architecture-review-testing-template`. It includes inventory/classification, requirements-risk mapping, behavioral relevance, test-level allocation, architectural seams, determinism/isolation, fixtures/doubles, boundary/fault probes, concurrency/time, mutation/branch/property evidence, flaky/slow tests, false-confidence checks, evidence conventions, plan critique, and phase-2 probe ideas. No package findings have been made; awaiting template synthesis and exact-draft vetting.
+Final testing/testability freeze review approved template v1.0 `sha256:02e263f4e78d8fd9e9c6d63a634e82d8ce968b5c54f5e8bb01d224a2279abd09` and domain model v1.0 `sha256:061758d30ed7cb406f4e48157470e742d48ec0a79aaced5fdf05b599e9f1c231` with no regressions. Details: `context-notes/cli-architecture-review-testing-template-review-r3`. No package findings have begun. Awaiting application of the frozen template.
