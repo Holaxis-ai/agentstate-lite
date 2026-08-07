@@ -1,72 +1,17 @@
-// `cursor.ts` — the per-bundle sync/awareness state store's NEUTRAL implementation
-// (board-git A0 seam prep, relocated here by A1; sync-verb plan §U2).
+// Neutral per-checkout store for sync cursors, awareness caches, pending markers, self actors,
+// and the opportunistic-pull throttle. It owns schemas and serialization only: git inspection and
+// document enrichment stay in the porcelain/diff layer, while disk location and atomic writes are
+// injected by the CLI.
 //
-// The package's "State store" entry (README.md): the `createSyncStore` factory, the store
-// interface, the cursor/cache/marker record types, key derivation, and (de)serialization. It
-// owns the three pieces of per-clone local state that the sync verb (U3) writes and
-// SessionStart/home (U4) read, all under ONE per-clone key:
+// State is keyed by remote URL, bundle subpath, and checkout root (or by the absolute bundle root
+// without a remote). Checkout identity is load-bearing: two clones of one remote must not share a
+// cursor or erase each other's unpushed backstop. The full key is stored inside the hashed file so
+// a collision or recycled path reads as foreign. Old key shapes are ignored and naturally
+// re-derived from git rather than destructively migrated.
 //
-//   1. the awareness CURSOR — an OPAQUE `{tier, token}` ("where this machine last read up to").
-//      The git tier stores a commit SHA as the token; a future hosted tier ships
-//      `{tier: "d1", token: <seq>}` behind the SAME `changesSince` interface, so the store (and
-//      the CLI above it) never interprets the token — an UNKNOWN tier round-trips untouched.
-//   2. the awareness CACHE — the enriched delta rows plus the unpushed/uncommitted backstop
-//      counts that `home` renders fs-only ("since your last session: …" + "M local board commits
-//      not yet pushed"), timestamped so a consumer can label/expire it.
-//   3. the board-pending MARKER — a timestamp refreshed by every pull step; its PRESENCE is the
-//      fs-only "a board exists for this repo" signal that keeps first-contact from ever hinting
-//      `init` at a founder whose origin already has a board. Under per-clone keying the marker is
-//      per-checkout too (a brand-new clone has none until its first pull) — deliberately NOT
-//      split out onto a shared per-remote key: it has no shipped consumer yet (U4), its contract
-//      already requires absence to read as "unknown, never an error", and a second keyspace would
-//      reintroduce exactly the cross-clone file coupling this keying exists to prevent.
-//
-// BOUNDARY (binding): this module is the state store + its schema/serialization ONLY. The git
-// diff, the `git cat-file -e` cursor-existence guard, and per-doc frontmatter enrichment live in
-// U1's porcelain/diff modules (`changesSince` et al.) — this module NEVER shells out to git. When the CALLER's
-// existence guard finds the stored token gone (history rewritten), it re-anchors through
-// {@link recordReanchor} on {@link SyncStore}, which records the honest {@link REANCHOR_NOTE} in
-// the cache so the miss is REPORTED, never a silent skip and never fatal.
-//
-// DEPENDENCY-CLEAN (binding, per README.md): node builtins and other package modules ONLY — no
-// CLI knowledge (credentials, args, output, envelopes). WHERE state lives on disk and HOW it is
-// written atomically are injected via {@link SyncStoreOptions}; the CLI wires the
-// `~/.agentstate/sync` location and its `writeFileAtomic0600` discipline in its own `cursor.ts`.
-//
-// KEYING: per CLONE — remote URL + subpath + the CHECKOUT ROOT (this checkout's absolute board
-// path), falling back to the absolute bundle root alone for a remote-less repo. Every piece of
-// state here is a per-CLONE fact: the cursor is "what THIS CHECKOUT's board last saw" (each
-// clone's board worktree has its own HEAD), the unpushed/uncommitted backstop counts are computed
-// against this checkout's worktree, and the cache's delta rows derive from the per-clone cursor.
-// The board path is part of identity, not incidental storage location: two clones of one origin
-// on one machine must not share a state file, because one clone's clean sync could erase the
-// other's unpushed backstop and advance its `since` cursor. The remote-URL component is
-// KEPT alongside the checkout root so a recycled path (project X's clone deleted, project Y
-// cloned at the same location) reads the old state as foreign instead of inheriting it. The key
-// is hashed into the state file's name and ALSO stored inside the file; a read whose stored key
-// mismatches is treated as foreign (null), so a hash collision can never bleed one bundle's
-// state into another.
-//
-// MIGRATION (old remote-only keys → per-clone keys): none — ignore-and-reanchor. State files
-// written under the pre-fix key are simply never read again (their stored key can't match any
-// new-shape key, so even a hand-renamed file reads as foreign); they sit as small orphaned JSON
-// under the state directory and are harmless. Every piece of state is re-derivable from git: the
-// first post-upgrade sync finds no cursor and falls back to its pre-sync HEAD baseline (the same
-// honest first-sync shape a fresh clone gets), and the backstop counts are recomputed from the
-// worktree on every sync. No cleanup sweep — deleting files we cannot positively attribute is
-// riskier than leaving them.
-//
-// DURABILITY: every write goes through the injected `writeAtomic` seam — the CLI wires
-// `credentials.ts`'s `writeFileAtomic0600` (O_EXCL temp 0600 → chmod → rename, dir forced 0700).
-// Writes are read-merge-write over the whole per-bundle file; the rename keeps readers
-// crash-consistent (old complete file or new complete file, never a partial). Like
-// `FilesystemBackend`, cross-process last-writer-wins is accepted — the state here is a cursor
-// and a render cache, both re-derivable from git on the next sync.
-//
-// READS NEVER THROW: absent, malformed, foreign-keyed, unreadable, or (where a max age is given)
-// stale state all read as `null` — `home`'s double-guard depends on this, and marker/cache
-// absence alone must never degrade a session (U2 DoD: marker absence ALONE never produces
-// "run init").
+// Writes use the injected atomic seam. Cross-process last-writer-wins is acceptable because this
+// state is advisory and re-derivable. Reads never throw: absent, malformed, foreign, unreadable,
+// or stale state returns `null`, and missing state must never turn into an `init` recommendation.
 import { chmod, mkdir, readFile } from "node:fs/promises";
 import { createHash } from "node:crypto";
 import { basename, dirname, join, resolve } from "node:path";
@@ -77,7 +22,7 @@ const DIR_MODE = 0o700;
  * The honest re-anchor note recorded when the stored cursor can no longer be diffed from —
  * either its commit is gone (history rewritten under it) or it is no longer an ancestor of the
  * comparison tip (a branch switch repositioned it) — surfaced by the next `home` render instead
- * of the delta. NEVER a silent skip, never fatal (plan §U2).
+ * of the delta. NEVER a silent skip, never fatal.
  */
 export const REANCHOR_NOTE = "delta unavailable (history rewritten or repositioned)";
 
@@ -145,7 +90,7 @@ function keyDigest(key: string): string {
  * The OPAQUE awareness cursor. `tier` names the sync backend that minted the token; `token` is
  * meaningful ONLY to that tier (git: a commit SHA string; a future d1 tier: a sequence number).
  * The store validates shape, never meaning, and preserves any extra fields a future tier adds —
- * so a new tier swaps in without CLI changes (plan §U2).
+ * so a new tier swaps in without CLI changes.
  */
 export interface SyncCursor {
   readonly tier: string;
@@ -154,8 +99,8 @@ export interface SyncCursor {
 }
 
 /**
- * One enriched delta row — THE single feed shape (produced by U1's `changesSince`, rendered by
- * U3's sync envelope and U4's home face, and the future activity feed's row). `actor` is sourced
+ * One enriched delta row — THE single feed shape produced by `changesSince` and rendered by sync,
+ * home, and the activity feed. `actor` is sourced
  * per-doc from frontmatter, never from a commit subject — this store only
  * persists it.
  */
@@ -170,7 +115,7 @@ export interface AwarenessDeltaRow {
 }
 
 /**
- * The awareness cache `home` renders fs-only (§U4): the since-last-session delta plus the
+ * The awareness cache `home` renders fs-only: the since-last-session delta plus the
  * backstop counts (BOTH unpushed board commits AND uncommitted board changes — catching the agent
  * that never ran sync at all, not just the failed-push one). `note` carries an honest condition
  * to surface instead of/alongside the delta (e.g. {@link REANCHOR_NOTE}).
@@ -189,7 +134,7 @@ export interface AwarenessCache {
 
 /**
  * The board-pending marker: presence = "a board exists for this repo" (fs-only first-contact
- * signal, §U4); `updatedAt` is refreshed by every pull step. Absence is ALWAYS a valid state —
+ * signal); `updatedAt` is refreshed by every pull step. Absence is ALWAYS a valid state —
  * consumers must treat a missing marker as "unknown", never as an error.
  */
 export interface BoardPendingMarker {
@@ -198,7 +143,7 @@ export interface BoardPendingMarker {
 }
 
 /**
- * The actors THIS CLONE has committed to the board (U4's "self" identity — how the home render
+ * The actors THIS CLONE has committed to the board — how the home render
  * knows which awareness-delta rows are self-authored and filters them from the human count). There
  * is no machine-level identity to derive "self" from, and git authorship is not document
  * attribution, so self is defined operationally: every actor that appeared in a doc this
@@ -499,7 +444,7 @@ export function createSyncStore(options: SyncStoreOptions): SyncStore {
      * {@link SELF_ACTORS_CAP}'s doc for the whole "self" identity story). Merge-union with the
      * stored list, newest-last, deduped, capped to the NEWEST {@link SELF_ACTORS_CAP} entries.
      * `"unknown"` and empty strings are dropped at this one chokepoint (recording the placeholder
-     * would make the U4 render hide a teammate's unattributed changes too). A call that changes
+     * would make the home render hide a teammate's unattributed changes too). A call that changes
      * nothing skips the write.
      */
     async recordSelfActors(key: string, actors: string[]): Promise<string[]> {
@@ -518,7 +463,7 @@ export function createSyncStore(options: SyncStoreOptions): SyncStore {
     },
 
     /**
-     * Re-anchor after the CALLER's existence guard (U1's `git cat-file -e` before diffing) finds
+     * Re-anchor after the CALLER's `git cat-file -e` existence guard finds
      * the stored token gone — history was rewritten under the cursor. Atomically records the NEW
      * cursor (HEAD, minted by the caller) AND an awareness cache whose `note` is the honest
      * {@link REANCHOR_NOTE} with an EMPTY delta (the real delta is unknowable across a rewrite)

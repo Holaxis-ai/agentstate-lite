@@ -1,6 +1,5 @@
 #!/usr/bin/env node
-// Phase 2a of the legacy-deprecation path (board doc decisions/legacy-deprecation-path):
-// rename the legacy View names INSIDE bundle documents — `type: Page` -> `type: View` and the
+// Rename legacy View names INSIDE bundle documents — `type: Page` -> `type: View` and the
 // legacy `bridge` field -> `access` — plus the shipped-convention refresh. NO file moves and NO
 // link rewriting: document ids and blob keys stay exactly where they are (legacy folder
 // LOCATIONS remain recognized; relocation is a separate open decision), and fail-closed
@@ -47,9 +46,9 @@ const CANONICAL_VIEW_CONVENTION = path.resolve(SCRIPT_DIR, "../examples/views/co
 /** Frozen snapshots of every form this repo ever SHIPPED for `conventions/view` (historical artifacts — see the folder). */
 const PRIOR_SHIPPED_DIR = path.resolve(SCRIPT_DIR, "prior-shipped-view-conventions");
 
-// Review F2 (tasks/remove-legacy-page-bridge-support): a COMPLETE historical install also carried
-// TEACHING artifacts that present the legacy names as the live contract. Leaving them behind
-// after the rename pass would migrate the data while the bundle keeps teaching the dead names.
+// A complete historical install also carried teaching artifacts that present the legacy names as
+// the live contract. Leaving them behind would migrate the data while the bundle keeps teaching
+// dead names.
 //   - The superseded `references/page-authoring-v0` is RETIRED (deleted) — same
 //     governance-continuity discipline as the Page-convention deletion: only when its
 //     replacement (`references/view-authoring-v0`) is present at end state (created from the
@@ -60,10 +59,9 @@ const PRIOR_SHIPPED_DIR = path.resolve(SCRIPT_DIR, "prior-shipped-view-conventio
 const LEGACY_REFERENCE_ID = "references/page-authoring-v0";
 const VIEW_REFERENCE_ID = "references/view-authoring-v0";
 const CANONICAL_VIEW_REFERENCE = path.resolve(SCRIPT_DIR, "../examples/views/references/view-authoring-v0.md");
-/** Frozen snapshots of every form this repo ever SHIPPED for `references/view-authoring-v0` —
- * a MID-VINTAGE bundle (round-2 review P1) carries one of these at the already-renamed id,
- * still teaching the transitional acceptance story; a known-shipped match refreshes to the
- * canonical, exactly like the shipped-convention swaps. */
+/** Frozen snapshots of every form this repo shipped for `references/view-authoring-v0`.
+ * A known-shipped transitional form at the current id refreshes to the canonical reference,
+ * exactly like the shipped-convention swaps. */
 const PRIOR_SHIPPED_VIEW_REFERENCE_DIR = path.resolve(SCRIPT_DIR, "prior-shipped-view-authoring-references");
 const REVIEW_REQUEST_CONVENTION_ID = "conventions/review-request";
 const CANONICAL_REVIEW_REQUEST = path.resolve(
@@ -106,8 +104,8 @@ export function describeReceipt(receipt) {
   if (conventionClause) clauses.push(conventionClause);
   const deleted = receipt.page_conventions_deleted.length;
   if (deleted > 0) clauses.push(`${receipt.dry_run ? "delete" : "deleted"} ${count(deleted, "Page convention")}`);
-  // Phase-3 teaching actions (rebase reconciliation): the refresh/retirement/creation actions
-  // are actions like any other — a run that ONLY refreshed must never read as a clean scan.
+  // Teaching refresh, retirement, and creation are actions like any other — a run that only
+  // refreshed must never read as a clean scan.
   const reviewRequestClause = {
     would_swap: "refresh the Review Request convention",
     swapped: "refreshed the Review Request convention",
@@ -127,7 +125,7 @@ export function describeReceipt(receipt) {
 
   if (clauses.length === 0) {
     // "No legacy names found" is a clean-scan claim — it may ONLY appear when the scan really
-    // was clean (review P1). Any warning means legacy or unreadable state remains: skipped
+    // was clean. Any warning means legacy or unreadable state remains: skipped
     // docs, a skipped/refused View-convention swap, or a deliberately retained Page convention.
     if (receipt.warnings.length === 0) {
       return `nothing to migrate — no legacy names found in ${count(receipt.docs_scanned, "doc")} (all readable)`;
@@ -145,7 +143,7 @@ export function describeReceipt(receipt) {
     } else if (receipt.convention_swapped === "skipped_occupied" || receipt.convention_swapped === "refused_occupied") {
       reasons.push("conventions/view occupied by a non-View-governing doc — left untouched");
     }
-    // Phase-3 teaching states, same warning-record derivation as the retained-Page count.
+    // Teaching states use the same warning-record derivation as the retained-Page count.
     if (receipt.review_request_swapped === "skipped_customized") {
       reasons.push("customized Review Request convention skipped");
     }
@@ -302,7 +300,7 @@ async function readViewConventionState(bundle) {
   }
 }
 
-/** F2: refuse anything that is not a bundle root — the same `index.md` requirement the CLI's resolver enforces. */
+/** Refuse anything that is not a bundle root — the same `index.md` requirement the CLI resolver enforces. */
 export function assertBundleRoot(root) {
   const indexPath = path.join(root, "index.md");
   if (!existsSync(indexPath) || !statSync(indexPath).isFile()) {
@@ -325,7 +323,7 @@ function unusedExportPath(base) {
  * `hooks.beforeDocWrite(id, attempt)` — invoked inside the CAS window so a test can inject a
  * deterministic competing write.
  *
- * Convention-swap policy (review F3): an existing `conventions/view` matching the CURRENT
+ * Convention-swap policy: an existing `conventions/view` matching the CURRENT
  * shipped content is a no-op; matching a KNOWN PRIOR shipped form swaps silently; anything else
  * is CUSTOMIZED and is skipped with a warning by default — `overwriteCustomConventions: true`
  * first exports the old doc (canonical serialization) to a sibling file next to the bundle,
@@ -354,7 +352,7 @@ export async function migrateBundle(bundle, options = {}) {
     skipped_docs: [],
   };
   const warn = (id, warning) => receipt.warnings.push({ id, warning });
-  // ONE deduped skip set shared by EVERY scan (review F1): the post-write re-queries must
+  // ONE deduped skip set shared by EVERY scan: the post-write re-queries must
   // tolerate exactly the malformed docs the first scan did — a run always ends in a receipt.
   const skippedIds = new Set();
   const onSkip = ({ id, reason }) => {
@@ -544,7 +542,7 @@ export async function migrateBundle(bundle, options = {}) {
     if (outcome.result === true) receipt.page_conventions_deleted.push(id);
   }
 
-  // ── 3. Shipped-teaching refresh + superseded legacy reference retirement (review F2). ─────────
+  // ── 3. Shipped-teaching refresh + superseded legacy reference retirement ───────────────────
   const readDocState = async (id) => {
     try {
       const { doc } = await readDocVersioned(bundle, id);
@@ -556,7 +554,7 @@ export async function migrateBundle(bundle, options = {}) {
     }
   };
 
-  // Readability-guard split (round-3 review ruling): the unreadable-stock guard applies ONLY to
+  // The unreadable-stock guard applies ONLY to
   // DESTRUCTIVE operations — the Page-convention deletion and the page-authoring-reference
   // retirement below — because hidden stock is material to whether a REMOVAL is safe. The two
   // classify-and-CAS REFRESHES (review-request convention, view-authoring reference) are NOT
@@ -609,8 +607,8 @@ export async function migrateBundle(bundle, options = {}) {
     }
   }
 
-  // 3b. `references/view-authoring-v0` at its already-renamed id (round-2 review P1): a
-  // MID-VINTAGE bundle carries a KNOWN shipped transitional form still teaching bridge/Page
+  // 3b. `references/view-authoring-v0` at its current id may carry a KNOWN shipped transitional
+  // form still teaching bridge/Page
   // acceptance. A known-shipped match refreshes to the canonical; customized content is never
   // touched (unguarded refresh — see the guard-split comment above). Runs
   // BEFORE the retirement below, so the retirement's replacement check sees the refreshed doc.
@@ -766,7 +764,7 @@ async function main() {
     );
     process.exit(2);
   }
-  // Preflight EVERY dir before migrating ANY (review F2): a bad target refuses the whole run
+  // Preflight EVERY dir before migrating ANY: a bad target refuses the whole run
   // up front instead of leaving earlier bundles migrated and later ones untouched.
   for (const dir of dirs) {
     try {

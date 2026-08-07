@@ -2,11 +2,9 @@
  * `RemoteBackend` — a {@link StorageBackend} implemented over the wire-protocol v0
  * reference contract (`docs/WIRE-PROTOCOL.md`, `@agentstate-lite/server`).
  *
- * This is the CLIENT half of the seam-over-HTTP: every method maps 1:1 to a wire
- * endpoint (protocol principle 2 — "the seam is the schema"), and the version token
- * carried by a response is the SAME content-addressed {@link Version} a local backend
- * produces — the invariant the tri-backend contract tests assert crosses the wire
- * unchanged (protocol principle 3).
+ * This is the client half of the seam over HTTP: every method maps directly to a wire endpoint,
+ * and response versions remain the same content-addressed {@link Version} tokens local backends
+ * produce. Tri-backend contract tests pin that invariant.
  *
  * Zero new dependencies: it calls an injectable {@link FetchLike} transport
  * (defaulting to the global `fetch`, available on Node >= 20) with a constructed
@@ -15,22 +13,10 @@
  * sockets: `createRouter` returns exactly the `(req: Request) => Promise<Response>`
  * shape {@link FetchLike} expects, so the router can be injected AS the transport.
  *
- * Version transport (production repair, Stage-1 Unit 2b): a read response's version is
- * extracted via {@link extractVersion} — `X-Version` (primary, edge-proof) or a
- * quote/weak-prefix-stripped `ETag` (fallback), NEVER defaulting to `""`. Production
- * finding: the router's ORIGINAL unquoted `ETag: sha256:<hex>` was RFC-7232-INVALID
- * (strong ETags MUST be quoted), and Cloudflare's edge silently STRIPS an invalid ETag
- * when applying Brotli compression (this client's default `fetch` sends
- * `Accept-Encoding: br`) — so a response that genuinely carried a version arrived at
- * this client with NEITHER header, and the old code's `res.headers.get("etag") ?? ""`
- * silently substituted an empty string. That empty string, fed back as the NEXT write's
- * `expectedVersion`, produced an EMPTY `If-Match` — which the seam (and this class's own
- * `write`/`writeReserved`/`writeBlob`) treats as UNCONDITIONAL, silently downgrading a
- * compare-and-swap write to last-writer-wins and losing concurrent updates. `extractVersion`
- * now throws a loud `RemoteError` (`VERSION_MISSING`) instead — this bug class is
- * unrepresentable going forward. See `docs/WIRE-PROTOCOL.md` for the full production-finding
- * writeup and `packages/server/src/router.ts`'s `versionHeaders` for the response side of
- * the fix.
+ * {@link extractVersion} reads `X-Version` first and a normalized `ETag` second. A missing
+ * version is always `VERSION_MISSING`, never `""`: feeding an empty version into a later write
+ * would weaken compare-and-swap into an unconditional write. The server emits both headers;
+ * `X-Version` is primary because intermediaries may rewrite or strip ETags.
  *
  * Error mapping (so engine callers behave identically regardless of backend):
  *   - HTTP `404`                               -> an ENOENT-shaped rejection
@@ -40,15 +26,13 @@
  *     rejection" posture for blobs — see the blob section below.)
  *   - HTTP `412` (`If-Match`/`If-None-Match` failed) -> a reconstructed
  *     {@link VersionConflict} from the error envelope's `details: { expected, actual }`.
- *   - any other non-2xx                        -> a {@link RemoteError} (Stage-1 Unit 2b
- *     Part C) carrying the envelope's `message` AND its `code` (falling back to a
+ *   - any other non-2xx                        -> a {@link RemoteError} carrying the envelope's
+ *     `message` AND its `code` (falling back to a
  *     status-derived guess — `AUTH_REQUIRED` for 401, `RUNTIME` for 5xx, else `USAGE` — when
- *     the response carries no parseable envelope) plus the raw HTTP `status`. This closes
- *     `docs/WIRE-PROTOCOL.md`'s previously-open "client-side error envelope carries no code"
- *     gap: a caller (the CLI's command catch-alls) can now branch on `.code` instead of
- *     guessing RUNTIME-vs-USAGE from exception shape alone.
+ *     the response carries no parseable envelope) plus the raw HTTP `status`, so callers can
+ *     branch on `.code` instead of guessing from exception shape.
  *
- * Auth (Stage-1 Unit 2b Part C): an optional {@link RemoteBackendOptions.authToken} rides as
+ * An optional {@link RemoteBackendOptions.authToken} rides as
  * `Authorization: Bearer <token>` on EVERY request. The reference `serve()` ignores it (no
  * auth enforced there), so omitting it is harmless against a local/reference server; a separate
  * gated deployment may require it.
@@ -124,9 +108,8 @@ export interface RemoteBackendOptions {
 
 /**
  * A non-2xx wire response that is neither a `404` (ENOENT-shaped) nor a `412`
- * ({@link VersionConflict}) — the generic case, now carrying the error envelope's `code`
- * (Stage-1 Unit 2b Part C, closing `docs/WIRE-PROTOCOL.md`'s "client-side error envelope
- * carries no code" gap) alongside the raw HTTP `status`, so a caller can distinguish e.g.
+ * ({@link VersionConflict}) — the generic case, carrying the error envelope's `code` alongside
+ * the raw HTTP `status`, so a caller can distinguish e.g.
  * `AUTH_REQUIRED` (401, an unauthenticated/misconfigured `--remote`) from `RUNTIME` (5xx, a
  * genuine server-side bug) instead of both collapsing into a generically-classified `Error`.
  */

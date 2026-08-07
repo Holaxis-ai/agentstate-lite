@@ -1,38 +1,22 @@
-// The ONE legacy-naming primitive for the Page→View kind rename (Option C+,
-// plans/rename-page-kind-to-view; the removal phase is tasks/remove-legacy-page-bridge-support).
-// 'Page' is the LEGACY name of the 'View' kind and 'bridge' the legacy spelling of its `access`
-// field — and as of the removal phase the runtime no longer ACCEPTS either: a Page-typed doc does
-// not register, and a bridge-only doc resolves to `access: none`. Legacy folder LOCATIONS
-// (`pages-registry/`/`pages/`) remain recognized — only the names are retired. The repo's
-// `migrate-legacy-view-names` script renames legacy content in place.
+// One home for the retired `Page` kind name and `bridge` access-field spelling. The runtime no
+// longer recognizes either name: Page-typed docs do not register, and bridge-only docs resolve to
+// `access: none`. Legacy folder locations remain valid, and the migration script rewrites the
+// retired names in place.
 //
-// The literals below are DELIBERATE, and this module is their one home: post-removal these docs
-// fall OUT of core's `isPageTypeName`/`declaredAccessValue` recognition, so a diagnostic for them
-// cannot ride the live grammar — it must detect exactly what the runtime no longer accepts. That
-// is what a removal diagnostic is FOR; do not "fix" these to import core's accepted names.
-// Consumed by two read-only surfaces:
-//
-//   1. The WRITE-TIME HINT: the doc-authoring verbs (`new`/`doc write`/`doc update`, and
-//      `promote`'s `.md` route) attach {@link LEGACY_PAGE_TYPE_HINT} to a SUCCESS receipt when
-//      the produced doc's type is the legacy name — authoring moments only, never reads, never a
-//      block (a Page-typed doc is still a perfectly legal OKF doc; it just isn't a View).
-//   2. The `status` legacy_naming FINDING: counts + ids of Page-typed docs and of docs carrying
-//      an own legacy `bridge` field (the stock the runtime now ignores), plus an informational,
-//      STORE-AWARE count of items under the legacy id prefixes (locations — still recognized).
-//
-// Do not fork these predicates into a consumer — a second compare would be exactly the
-// parallel-implementation class gate 3 forbids.
+// These literals cannot come from the live core grammar because diagnostics must recognize stock
+// that the runtime deliberately rejects. Authoring commands use them for a non-blocking success
+// hint; `status` uses them for the `legacy_naming` report. Keep the predicates centralized here so
+// those surfaces cannot drift.
 
 /** The retired legacy kind name, frozen as a historical fact (see the module comment). */
 export const LEGACY_PAGE_TYPE_NAME = "Page";
 
 /**
  * True when this frontmatter declares the LEGACY kind name: `type` exactly `"Page"` — the same
- * EXACT-match strictness core's grammar applies (`isPageTypeName`, `core/src/page.ts`), so what
- * this module flags as legacy is precisely the spelling the pre-removal dual-read accepted. No
+ * EXACT-match strictness core's grammar applies (`isPageTypeName`, `core/src/page.ts`). No
  * trimming: YAML plain scalars are whitespace-trimmed by the YAML parser itself, so a value that
  * reaches consumers with surrounding whitespace was deliberately QUOTED (`type: " Page "`) —
- * that was never a registration under any phase, and this predicate agrees it is not legacy.
+ * that was never a registration, and this predicate agrees it is not legacy.
  */
 export function isLegacyPageDoc(frontmatter: Record<string, unknown>): boolean {
   return frontmatter["type"] === LEGACY_PAGE_TYPE_NAME;

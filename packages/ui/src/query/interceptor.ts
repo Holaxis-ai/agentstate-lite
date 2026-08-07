@@ -1,33 +1,15 @@
 /**
- * The ONE global interceptor state (plans/ui-v1.md rev 3.2 "Interceptor re-scope"): a 401
- * (`AUTH_REQUIRED`), a 429 (`RATE_LIMITED`), or a 403 from the shell's OWN session gate is
- * TERMINAL for polling — all three stop every `refetchInterval` in the app and render a
- * full-screen recovery view instead of letting a dead session or a rate-limited caller keep
- * hammering the endpoint (the review's catch: "a revoked key that keeps polling escalates into
- * the per-IP rate limiter — never poll-loop into 429s"; the 403 case is the same failure mode
- * for a stable-port restart, which mints a fresh per-run session secret and 403s every request
- * an already-open tab makes with its now-dead cookie). `--dir` mode never produces a 401 (no
- * remote auth surface), but the local session-cookie 403 applies in BOTH modes.
+ * One terminal interceptor state for failures that must stop all polling: remote authentication
+ * rejection (401), rate limiting (429), or the shell's expired local session (403). A 401 requires
+ * restarting the remote UI with valid credentials; a shell 403 requires reopening the URL printed
+ * by the current `ui` process.
  *
- * `session_expired` (403) is intentionally a DIFFERENT status than `unauthorized` (401): a 401
- * only ever reaches the browser via a `--remote` proxy relaying the wire-protocol server's own
- * rejection of the API key (recovery: restart `ui --remote` with `AGENTSTATE_LITE_API_KEY` and
- * open its fresh URL), while a 403 here is the `ui` command's OWN loopback session gate rejecting
- * the cookie/token (recovery: reopen the URL the `ui` command just printed). This can never be
- * confused with the
- * page-bytes route's own 403 (`/__page/<nonce>`, served when a page's registry doc is deleted or
- * retargeted): that route is loaded as the sandboxed iframe's `src`, a browser-native navigation
- * this shell's JS never observes as a fetch failure, so it can't reach this store — see
- * `PageFrame.tsx`'s revoke path for that (structurally separate) handling.
+ * The sandboxed View-bytes route's 403 is separate: iframe navigation does not pass through this
+ * fetch interceptor. `PageFrame` writes here only when its ordinary `/v0/*` read proves the shell
+ * session is dead, never when nonce minting rejects a malformed View entry.
  *
- * A plain module-level store (not a state library — rev 3.2 "no state library"): React
- * components read it via {@link useInterceptorStatus} (a `useSyncExternalStore` subscription,
- * the same idiom `routing.ts` uses for the URL). `queryClient.ts`'s `QueryCache.onError` writes
- * it for every TanStack-managed query; `PageFrame.tsx` also writes it directly, but ONLY from its
- * imperative `getDoc` call (a bare `/v0/*` read, so a 403 there has no cause OTHER than a dead
- * session) — deliberately NOT from its `mintPageNonce` call, whose 403 can ALSO mean this doc's
- * `entry` fails the mint confinement check (outside `pages/`, or not a registered Page's entry) —
- * a malformed-doc problem, not a session-death one, and not worth bricking the whole tab over.
+ * The module-level store is exposed through `useSyncExternalStore`. Once tripped it remains
+ * terminal until a fresh page load, preventing dead credentials from poll-looping into 429s.
  */
 import { useSyncExternalStore } from "react";
 
