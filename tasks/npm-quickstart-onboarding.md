@@ -2,18 +2,21 @@
 type: Task
 title: 'New-user quickstart: the TESTED install to init-a-recipe to productive journey'
 description: >-
-  INDEPENDENT REVIEW APPROVED exact clean SHA
-  8c9360bb098f33302337d489a54dd0fcb0e16f24 with zero findings. Reviewer
-  reproduced checkpoint 8fcd8e3 red (emitted cwd create-only exits 5 in a
-  non-empty project), confirmed the nine-file state matrix/default/user/actor
-  contract and retained PR #212 identity/no-delete/real production-lock barrier,
-  and passed build, typecheck, focused 102/102, static 2/2, exact package
-  dirty=false, diff-check/clean tree. Fresh adversarial installed-journey QA is
-  now authorized; any code change restarts Review.
+  REVIEW + QA APPROVED exact clean SHA 8c9360bb098f33302337d489a54dd0fcb0e16f24
+  with zero findings. Independent Review confirmed the nine-file boundary,
+  corrected state matrix/default/user/actor contract, literal installed journey,
+  and retained PR #212 barriers. Fresh adversarial QA installed the exact
+  tarball once in a non-empty project, proved discovery no-write, literal
+  emitted create, exit-5 byte-identical retry, local/remote add-only
+  projections, attributed Task visibility, focused 102/102, scripts 129/129,
+  exact package dirty=false, full npm run check, MCP browser 15/15, UI 19/19,
+  clean worktree, and no residual processes. Approved for lease-protected push,
+  PR creation, and hosted Node 20/22/26 verification; any code change restarts
+  Review and QA.
 actor: codex-npm-quickstart-orchestrator
 status: in_progress
 priority: '1'
-timestamp: '2026-08-07T18:08:14.598Z'
+timestamp: '2026-08-07T18:20:52.250Z'
 ---
 [the tested new-user onboarding journey](../roadmap-items/distribution-neutral-resources.md)
 
