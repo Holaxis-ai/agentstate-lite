@@ -5,16 +5,16 @@ status: in_progress
 priority: '1'
 assignee: brian-claude
 description: >-
-  PR #212 OPEN at https://github.com/Holaxis-ai/agentstate-lite/pull/212 for
-  exact SHA 81b3c39ff252013e318b1a714b63430a24074d70 on feat/init-create-only
-  (five commits). Gate complete: independent exact-SHA review PASS across five
-  rounds, adversarial interruption/race/hostile-filesystem QA PASS,
-  installed-tarball proof PASS, and full npm run check exit 0. The reviewed
-  branch combines cleanly with current main including merged PR #211. Hosted
-  Node 20/22/26 CI is running; awaiting those results and Brian-owned merge
-  gate.
+  PR #212 OPEN and READY FOR BRIAN MERGE at
+  https://github.com/Holaxis-ai/agentstate-lite/pull/212 for exact SHA
+  81b3c39ff252013e318b1a714b63430a24074d70 on feat/init-create-only. Independent
+  exact-SHA review passed across five rounds; adversarial
+  interruption/race/hostile-filesystem QA, installed-tarball proof, and full
+  local npm run check all passed. The branch combines cleanly with current main
+  including merged PR #211. Hosted CI passed on Node 20, 22, and 26. Awaiting
+  only Brian-owned merge gate.
 actor: codex-npm-quickstart
-timestamp: '2026-08-07T13:45:47.353Z'
+timestamp: '2026-08-07T13:51:35.023Z'
 ---
 # Problem
 
