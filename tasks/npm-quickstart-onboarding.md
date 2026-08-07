@@ -2,19 +2,20 @@
 type: Task
 title: 'New-user quickstart: the TESTED install to init-a-recipe to productive journey'
 description: >-
-  BUILDER IN PROGRESS on isolated branch feat/npm-quickstart-onboarding based on
-  gated create-only SHA 81b3c39. Bounded implementation composes existing
-  surfaces: no-bundle home and Recipe creation commands now use --create-only;
-  exact installed tarball runs the continuous work-tracking -> attributed Task
-  -> home/status journey; root/npm README quickstarts teach the agent-driven
-  authoring handoff. Focused home/recipes tests pass 80/80, typecheck passes,
-  npm package proof passes, and all script tests pass. Full repository gate is
-  next. Integration still waits on the create-only PR/merge and PR #211
-  vocabulary reconciliation before independent exact-SHA review.
+  BUILDER CHECKPOINT PUSHED on feat/npm-quickstart-onboarding at exact SHA
+  6e2cfaa239458dbaffe2ba87f6e30d5211b67eef, based on gated create-only SHA
+  81b3c39. The bounded nine-file change makes home/recipes advertise fail-closed
+  creation, turns the installed-package verifier into one attributed
+  work-tracking quickstart, and aligns root/npm README copy with the
+  agent-driven authoring model. Focused home/recipes tests pass 80/80; CLI
+  workspace passes 1299/1299; package proof, scripts, typecheck, browser/E2E,
+  and full npm run check pass. Integration still waits on the create-only
+  PR/merge and PR #211 vocabulary reconciliation before independent exact-SHA
+  review.
 actor: codex-npm-quickstart
 status: in_progress
 priority: '1'
-timestamp: '2026-08-07T00:33:58.120Z'
+timestamp: '2026-08-07T00:59:46.784Z'
 ---
 [the tested new-user onboarding journey](../roadmap-items/distribution-neutral-resources.md)
 
