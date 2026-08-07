@@ -13,14 +13,18 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { mkdtemp, mkdir, readdir, readFile, rm, symlink, writeFile } from "node:fs/promises";
 import { spawnSync } from "node:child_process";
-import { existsSync, readFileSync } from "node:fs";
+import { existsSync, promises as fsPromises, readFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
-import { initBundle, VersionConflict } from "@agentstate-lite/core";
+import { FilesystemMutationLockError, initBundle, VersionConflict } from "@agentstate-lite/core";
 import { init } from "../src/commands/init.js";
-import { assertCreateOnlyTarget } from "../src/bundle.js";
+import {
+  assertCreateOnlyTarget,
+  createOnlyArbitrationLockKey,
+  withCreateOnlyTarget,
+} from "../src/bundle.js";
 import { CliError } from "../src/errors.js";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
@@ -112,6 +116,23 @@ test("an existing bundle target is refused byte-for-byte before any write", asyn
     assertSameTree(before, await treeSnapshot(target));
     // The control the guard exists to contrast with: plain init re-opens the same target fine.
     assert.equal((await runInit(["--dir", target])).init, "ok");
+  } finally {
+    await rm(base, { recursive: true, force: true });
+  }
+});
+
+test("plain init keeps open-or-create Recipe transition and idempotence", async () => {
+  const base = await tempDir();
+  try {
+    const target = path.join(base, "plain");
+    await runInit(["--dir", target, "--recipe", "none"]);
+    const indexBefore = await readFile(path.join(target, "index.md"), "utf8");
+    const applied = await runInit(["--dir", target, "--recipe", "work-tracking"]);
+    assert.equal(applied.recipe, "work-tracking");
+    assert.equal(await readFile(path.join(target, "index.md"), "utf8"), indexBefore);
+    const beforeRepeat = await treeSnapshot(target);
+    await runInit(["--dir", target, "--recipe", "work-tracking"]);
+    assertSameTree(beforeRepeat, await treeSnapshot(target));
   } finally {
     await rm(base, { recursive: true, force: true });
   }
@@ -360,43 +381,36 @@ test("the CLI maps a core VersionConflict to a structured ALREADY_EXISTS conflic
   }
 });
 
-test("claim closes the preflight-to-write window deterministically for both target shapes", async () => {
-  const { claimCreateOnlyTarget } = await import("../src/bundle.js");
+test("locked revalidation refuses content or a symlink introduced after preflight", async () => {
   const base = await tempDir();
   try {
-    // Absent at preflight, concurrently created WITH CONTENT before the claim -> refusal, files
-    // preserved. (A concurrently created EMPTY directory converges — same acceptance as preflight.)
     const raced = path.join(base, "raced-dir");
-    const target = await assertCreateOnlyTarget(raced);
-    await mkdir(target); // the concurrent creator...
-    await writeFile(path.join(target, "theirs.txt"), "keep\n"); // ...with content
     await assert.rejects(
-      () => claimCreateOnlyTarget(target),
-      (err: unknown) => err instanceof CliError && /gained content after preflight/.test(err.message),
+      () =>
+        withCreateOnlyTarget(raced, () => initBundle(raced, { expectNew: true }), process.cwd(), {
+          withFilesystemMutationLockImpl: async (_key, fn) => {
+            await mkdir(raced);
+            await writeFile(path.join(raced, "theirs.txt"), "keep\n");
+            return fn();
+          },
+        }),
+      (err: unknown) => err instanceof CliError && /is not empty/.test(err.message),
     );
-    assert.equal(readFileSync(path.join(target, "theirs.txt"), "utf8"), "keep\n");
+    assert.equal(readFileSync(path.join(raced, "theirs.txt"), "utf8"), "keep\n");
 
-    // A symlink swapped in at the claimed path refuses as a shape change.
     const swapped = path.join(base, "swapped");
-    const swappedTarget = await assertCreateOnlyTarget(swapped);
     const real = path.join(base, "swap-dest");
     await mkdir(real);
-    await symlink(real, swappedTarget);
     await assert.rejects(
-      () => claimCreateOnlyTarget(swappedTarget),
-      (err: unknown) => err instanceof CliError && /changed shape after preflight/.test(err.message),
+      () =>
+        withCreateOnlyTarget(swapped, () => initBundle(swapped, { expectNew: true }), process.cwd(), {
+          withFilesystemMutationLockImpl: async (_key, fn) => {
+            await symlink(real, swapped);
+            return fn();
+          },
+        }),
+      (err: unknown) => err instanceof CliError && /is a symlink/.test(err.message),
     );
-
-    // Empty at preflight, file dropped in before the claim -> adoption refusal, file preserved.
-    const drifted = path.join(base, "drifted");
-    await mkdir(drifted);
-    const verified = await assertCreateOnlyTarget(drifted);
-    await writeFile(path.join(verified, "foreign.txt"), "keep\n");
-    await assert.rejects(
-      () => claimCreateOnlyTarget(verified),
-      (err: unknown) => err instanceof CliError && /gained content after preflight/.test(err.message),
-    );
-    assert.equal(readFileSync(path.join(verified, "foreign.txt"), "utf8"), "keep\n");
   } finally {
     await rm(base, { recursive: true, force: true });
   }
@@ -434,95 +448,309 @@ test("a target path running THROUGH an existing file refuses structurally, never
   }
 });
 
-test("a claim-time index.md racer gets the accurate already-a-bundle refusal", async () => {
-  const { claimCreateOnlyTarget } = await import("../src/bundle.js");
+test("a locked-revalidation index.md racer gets the accurate already-a-bundle refusal", async () => {
   const base = await tempDir();
   try {
     const raced = path.join(base, "raced");
-    const target = await assertCreateOnlyTarget(raced);
-    await mkdir(target);
-    await writeFile(path.join(target, "index.md"), "---\nokf_version: '0.1'\n---\n# raced\n");
     await assert.rejects(
-      () => claimCreateOnlyTarget(target),
-      (err: unknown) => err instanceof CliError && /is already an OKF bundle — another process created it first/.test(err.message),
+      () =>
+        withCreateOnlyTarget(raced, () => initBundle(raced, { expectNew: true }), process.cwd(), {
+          withFilesystemMutationLockImpl: async (_key, fn) => {
+            await mkdir(raced);
+            await writeFile(path.join(raced, "index.md"), "---\nokf_version: '0.1'\n---\n# raced\n");
+            return fn();
+          },
+        }),
+      (err: unknown) => err instanceof CliError && /is already an OKF bundle/.test(err.message),
     );
+    assert.equal(existsSync(path.join(raced, "index.md")), true);
   } finally {
     await rm(base, { recursive: true, force: true });
   }
 });
 
-// ── QA round: findings from the adversarial QA of b42a4ae ──
-
-test("QA F1: parent/child concurrent creates never leave a silent nested pair", async () => {
-  const { verifyCreateOnlyIsolation } = await import("../src/bundle.js");
+test("root-scoped mutex deterministically orders parent/child publication in both directions and shapes", async () => {
   const base = await tempDir();
   try {
-    // Deterministic re-creation of the race's END STATE, both directions.
-    // Child committed first, parent's verify must yield and roll back the parent's index.md only.
-    const parent = path.join(base, "p");
-    await mkdir(path.join(parent, "deep", "c"), { recursive: true });
-    await writeFile(path.join(parent, "deep", "c", "index.md"), "---\nokf_version: '0.1'\n---\n# c\n");
-    await writeFile(path.join(parent, "index.md"), "---\nokf_version: '0.1'\n---\n# p\n"); // "our" CAS
-    await assert.rejects(
-      () => verifyCreateOnlyIsolation(parent),
-      (err: unknown) =>
-        err instanceof CliError &&
-        err.code === "ALREADY_EXISTS" &&
-        /nested bundle at .*deep\/c/.test(err.message) &&
-        /rolled back/.test(err.message),
-    );
-    assert.equal(existsSync(path.join(parent, "index.md")), false, "our index.md rolled back");
-    assert.equal(
-      readFileSync(path.join(parent, "deep", "c", "index.md"), "utf8").includes("# c"),
-      true,
-      "the racer's bundle survives untouched",
-    );
+    for (const conventional of [false, true]) {
+      for (const firstRole of ["parent", "child"] as const) {
+        const root = path.join(base, `${conventional ? "conventional" : "ordinary"}-${firstRole}`);
+        const parent = path.join(root, "parent");
+        const child = conventional
+          ? path.join(parent, "deep", "project", ".agentstate-lite")
+          : path.join(parent, "deep", "child");
+        const attempts: string[] = [];
+        const entered: string[] = [];
+        const pending = new Map<string, { fn: () => Promise<unknown>; resolve: (v: unknown) => void; reject: (e: unknown) => void }>();
+        let releaseFirst!: () => void;
+        const firstHeld = new Promise<void>((resolve) => (releaseFirst = resolve));
+        let firstAtPublish!: () => void;
+        const firstPublishing = new Promise<void>((resolve) => (firstAtPublish = resolve));
 
-    // Parent committed first, child's verify must yield.
-    const parent2 = path.join(base, "p2");
-    const child2 = path.join(parent2, "deep", "c");
-    await mkdir(child2, { recursive: true });
-    await writeFile(path.join(parent2, "index.md"), "---\nokf_version: '0.1'\n---\n# p2\n");
-    await writeFile(path.join(child2, "index.md"), "---\nokf_version: '0.1'\n---\n# c2\n"); // "our" CAS
-    await assert.rejects(
-      () => verifyCreateOnlyIsolation(child2),
-      (err: unknown) =>
-        err instanceof CliError && /enclosing bundle at/.test(err.message),
-    );
-    assert.equal(existsSync(path.join(child2, "index.md")), false, "child's index.md rolled back");
-    assert.equal(existsSync(path.join(parent2, "index.md")), true, "parent's bundle survives");
+        const schedule = (role: "parent" | "child") =>
+          async (_key: string, fn: () => Promise<unknown>): Promise<unknown> =>
+            new Promise((resolve, reject) => {
+              attempts.push(role);
+              pending.set(role, { fn, resolve, reject });
+              if (pending.size === 2) {
+                void (async () => {
+                  for (const orderedRole of [firstRole, firstRole === "parent" ? "child" : "parent"] as const) {
+                    const job = pending.get(orderedRole)!;
+                    entered.push(orderedRole);
+                    try {
+                      job.resolve(await job.fn());
+                    } catch (err) {
+                      job.reject(err);
+                    }
+                  }
+                })();
+              }
+            });
+        const run = (role: "parent" | "child", target: string) =>
+          withCreateOnlyTarget(
+            target,
+            async (physical) => {
+              if (role === firstRole) {
+                firstAtPublish();
+                await firstHeld;
+              }
+              return initBundle(physical, { expectNew: true });
+            },
+            process.cwd(),
+            { withFilesystemMutationLockImpl: schedule(role) as never },
+          );
 
-    // The DEFAULT target shape: a conventional-folder child must still detect an ancestor racer
-    // ABOVE its parent — the self-exclusion resumes the walk, it must not blind the up direction
-    // (review round 4, issue 1: grandparent racer was missed when the walk stopped at self).
-    const anc = path.join(base, "anc");
-    const convChild = path.join(anc, "g", "proj", ".agentstate-lite");
-    await mkdir(convChild, { recursive: true });
-    await writeFile(path.join(anc, "index.md"), "---\nokf_version: '0.1'\n---\n# anc\n"); // grandparent racer
-    await writeFile(path.join(convChild, "index.md"), "---\nokf_version: '0.1'\n---\n# conv\n"); // "our" CAS
-    await assert.rejects(
-      () => verifyCreateOnlyIsolation(convChild),
-      (err: unknown) => err instanceof CliError && /enclosing bundle at \S*\/anc;/.test(err.message),
-    );
-    assert.equal(existsSync(path.join(convChild, "index.md")), false, "conventional child rolled back");
-    assert.equal(existsSync(path.join(anc, "index.md")), true, "ancestor racer survives");
-
-    // And a LONE conventional-folder create still passes (self is not a conflict).
-    const lone = path.join(base, "lone-proj", ".agentstate-lite");
-    await mkdir(lone, { recursive: true });
-    await writeFile(path.join(lone, "index.md"), "---\nokf_version: '0.1'\n---\n# lone\n");
-    await verifyCreateOnlyIsolation(lone);
-    assert.equal(existsSync(path.join(lone, "index.md")), true);
-
-    // A clean isolated create passes the verify untouched.
-    const clean = path.join(base, "clean");
-    await mkdir(clean, { recursive: true });
-    await writeFile(path.join(clean, "index.md"), "---\nokf_version: '0.1'\n---\n# clean\n");
-    await verifyCreateOnlyIsolation(clean);
-    assert.equal(existsSync(path.join(clean, "index.md")), true);
+        const parentRun = run("parent", parent);
+        const childRun = run("child", child);
+        await firstPublishing;
+        assert.deepEqual(entered, [firstRole], "the second critical section remains blocked");
+        assert.equal(attempts.length, 2, "both preflights reached the shared mutex");
+        releaseFirst();
+        const outcomes = await Promise.allSettled([parentRun, childRun]);
+        assert.equal(outcomes.filter((result) => result.status === "fulfilled").length, 1);
+        assert.equal(existsSync(path.join(parent, "index.md")) && existsSync(path.join(child, "index.md")), false);
+      }
+    }
   } finally {
     await rm(base, { recursive: true, force: true });
   }
+});
+
+test("safety regression: a pre-existing empty target is never removed after a create-only failure", async () => {
+  const base = await tempDir();
+  try {
+    const target = path.join(base, "pre-existing");
+    await mkdir(target);
+    const before = await fsPromises.lstat(target);
+    await assert.rejects(
+      () => withCreateOnlyTarget(target, async () => { throw Object.assign(new Error("injected publish fault"), { code: "EIO" }); }),
+      (err: unknown) => err instanceof CliError && err.code === "RUNTIME",
+    );
+
+    const after = await fsPromises.lstat(target);
+    assert.equal(after.dev, before.dev);
+    assert.equal(after.ino, before.ino);
+    assert.equal(after.isDirectory(), true);
+  } finally {
+    await rm(base, { recursive: true, force: true });
+  }
+});
+
+test("safety regression: file, symlink, and directory replacements survive release uncertainty", async () => {
+  const base = await tempDir();
+  try {
+    for (const replacement of ["different-file", "same-bytes-file", "symlink", "directory"] as const) {
+      const target = path.join(base, replacement);
+      let publishedBytes = "";
+      const foreignFile = path.join(base, `${replacement}-foreign`);
+      await writeFile(foreignFile, "foreign replacement bytes\n");
+      await assert.rejects(
+        () =>
+          withCreateOnlyTarget(target, (physical) => initBundle(physical, { expectNew: true }), process.cwd(), {
+            withFilesystemMutationLockImpl: async (_key, fn) => {
+              const value = await fn();
+              const index = path.join(target, "index.md");
+              publishedBytes = await readFile(index, "utf8");
+              await rm(index);
+              if (replacement === "different-file") await writeFile(index, "foreign replacement bytes\n");
+              if (replacement === "same-bytes-file") await writeFile(index, publishedBytes);
+              if (replacement === "symlink") await symlink(foreignFile, index);
+              if (replacement === "directory") {
+                await mkdir(index);
+                await writeFile(path.join(index, "sentinel"), "keep\n");
+              }
+              throw new FilesystemMutationLockError("injected release uncertainty", {
+                lockPath: path.join(base, "injected.lock"),
+                owner: null,
+                stale: false,
+                malformed: true,
+              });
+            },
+          }),
+        (err: unknown) =>
+          err instanceof CliError &&
+          err.code === "RUNTIME" &&
+          err.details?.operation === "release-filesystem-mutation-lock" &&
+          err.details.publication_outcome === "published",
+      );
+      const info = await fsPromises.lstat(path.join(target, "index.md"));
+      if (replacement === "different-file") assert.equal(await readFile(path.join(target, "index.md"), "utf8"), "foreign replacement bytes\n");
+      if (replacement === "same-bytes-file") assert.equal(await readFile(path.join(target, "index.md"), "utf8"), publishedBytes);
+      if (replacement === "symlink") assert.equal(info.isSymbolicLink(), true);
+      if (replacement === "directory") assert.equal(await readFile(path.join(target, "index.md", "sentinel"), "utf8"), "keep\n");
+    }
+  } finally {
+    await rm(base, { recursive: true, force: true });
+  }
+});
+
+test("any top-level descendant refuses without descending into an unreadable hidden subtree", async () => {
+  const base = await tempDir();
+  try {
+    const target = path.join(base, "target");
+    const opaque = path.join(target, ".opaque", "deep");
+    await mkdir(opaque, { recursive: true });
+    await writeFile(path.join(opaque, "index.md"), "hidden bytes\n");
+    const physicalTarget = path.join(await fsPromises.realpath(base), "target");
+    let descended = false;
+    await assert.rejects(
+      () =>
+        assertCreateOnlyTarget(target, process.cwd(), {
+          fs: {
+            readdir: async (p) => {
+              if (p.startsWith(`${physicalTarget}${path.sep}`)) descended = true;
+              return fsPromises.readdir(p);
+            },
+          },
+        }),
+      (err: unknown) => err instanceof CliError && err.code === "ALREADY_EXISTS" && /is not empty/.test(err.message),
+    );
+    assert.equal(descended, false);
+    assert.equal(await readFile(path.join(opaque, "index.md"), "utf8"), "hidden bytes\n");
+  } finally {
+    await rm(base, { recursive: true, force: true });
+  }
+});
+
+test("strict create-only observations surface operation, path, and fs code", async (t) => {
+  const codes = ["EACCES", "EPERM", "EIO", "EMFILE", "ENFILE", "ENOENT", "ENOTDIR", "ELOOP"];
+  for (const code of codes) {
+    await t.test(`target readdir ${code}`, async () => {
+      const base = await tempDir();
+      try {
+        const logicalTarget = path.join(base, "target");
+        await mkdir(logicalTarget);
+        const target = path.join(await fsPromises.realpath(base), "target");
+        await assert.rejects(
+          () =>
+            assertCreateOnlyTarget(target, process.cwd(), {
+              fs: { readdir: async () => { throw Object.assign(new Error("injected"), { code }); } },
+            }),
+          (err: unknown) =>
+            err instanceof CliError &&
+            err.code === "RUNTIME" &&
+            err.details?.operation === "readdir" &&
+            err.details.path === target &&
+            err.details.fs_code === code,
+        );
+      } finally {
+        await rm(base, { recursive: true, force: true });
+      }
+    });
+  }
+
+  const base = await tempDir();
+  try {
+    const logicalTarget = path.join(base, "target");
+    await mkdir(logicalTarget);
+    const physicalBase = await fsPromises.realpath(base);
+    const target = path.join(physicalBase, "target");
+    const conventional = path.join(target, ".agentstate-lite");
+    await mkdir(conventional);
+    const upwardConventional = path.join(physicalBase, ".agentstate-lite");
+    await mkdir(upwardConventional);
+    const binding = path.join(physicalBase, ".agentstate.json");
+    await writeFile(binding, `${JSON.stringify({ bundle: path.join(physicalBase, "elsewhere") })}\n`);
+    const rows = [
+      { operation: "realpath", path: target, deps: { realpath: async () => { throw Object.assign(new Error("injected"), { code: "EIO" }); } } },
+      { operation: "lstat", path: target, deps: { lstat: async (p: string) => { if (p === target) throw Object.assign(new Error("injected"), { code: "EIO" }); return fsPromises.lstat(p); } } },
+      { operation: "lstat-own-index", path: path.join(target, "index.md"), deps: { lstat: async (p: string) => { if (p === path.join(target, "index.md")) throw Object.assign(new Error("injected"), { code: "EIO" }); return fsPromises.lstat(p); } } },
+      { operation: "lstat-conventional-index", path: path.join(conventional, "index.md"), deps: { lstat: async (p: string) => { if (p === path.join(conventional, "index.md")) throw Object.assign(new Error("injected"), { code: "EIO" }); return fsPromises.lstat(p); } } },
+      { operation: "lstat-upward-own-index", path: path.join(physicalBase, "index.md"), deps: { readdir: async () => [], lstat: async (p: string) => { if (p === path.join(physicalBase, "index.md")) throw Object.assign(new Error("injected"), { code: "EIO" }); return fsPromises.lstat(p); } } },
+      { operation: "lstat-upward-conventional-index", path: path.join(upwardConventional, "index.md"), deps: { readdir: async () => [], lstat: async (p: string) => { if (p === path.join(upwardConventional, "index.md")) throw Object.assign(new Error("injected"), { code: "EIO" }); return fsPromises.lstat(p); } } },
+      { operation: "lstat-binding", path: binding, deps: { readdir: async () => [], lstat: async (p: string) => { if (p === binding) throw Object.assign(new Error("injected"), { code: "EIO" }); return fsPromises.lstat(p); } } },
+      { operation: "read-binding", path: binding, deps: { readdir: async () => [], readFile: async (p: string) => { if (p === binding) throw Object.assign(new Error("injected"), { code: "EIO" }); return fsPromises.readFile(p, "utf8"); } } },
+    ];
+    for (const row of rows) {
+      await assert.rejects(
+        () => assertCreateOnlyTarget(target, process.cwd(), { fs: row.deps }),
+        (err: unknown) =>
+          err instanceof CliError &&
+          err.code === "RUNTIME" &&
+          err.details?.operation === row.operation &&
+          err.details.path === row.path &&
+          err.details.fs_code === "EIO",
+      );
+    }
+  } finally {
+    await rm(base, { recursive: true, force: true });
+  }
+});
+
+test("component-wise creation returns the exact ordered directory receipt and never prunes residue", async () => {
+  const base = await tempDir();
+  try {
+    const target = path.join(base, "a", "b", "target");
+    const physicalBase = await fsPromises.realpath(base);
+    const result = await withCreateOnlyTarget(target, (physical) => initBundle(physical, { expectNew: true }));
+    assert.deepEqual(result.createdDirectories, [
+      path.join(physicalBase, "a"),
+      path.join(physicalBase, "a", "b"),
+      path.join(physicalBase, "a", "b", "target"),
+    ]);
+    assert.equal(result.root, path.join(physicalBase, "a", "b", "target"));
+  } finally {
+    await rm(base, { recursive: true, force: true });
+  }
+});
+
+test("arbitration key is shared by parent and child and lock uncertainty is typed", async () => {
+  const base = await tempDir();
+  try {
+    const parent = path.join(base, "parent");
+    const child = path.join(parent, "child");
+    assert.equal(createOnlyArbitrationLockKey(parent), createOnlyArbitrationLockKey(child));
+    for (const details of [
+      { owner: null, stale: false, malformed: true },
+      { owner: { pid: 999999, hostname: "test", created_at_ms: 1, token: "t", target: "/" }, stale: true, malformed: false },
+    ]) {
+      await assert.rejects(
+        () =>
+          withCreateOnlyTarget(parent, (physical) => initBundle(physical, { expectNew: true }), process.cwd(), {
+            withFilesystemMutationLockImpl: async () => {
+              throw new FilesystemMutationLockError("injected lock refusal", {
+                lockPath: path.join(base, "lock"),
+                ...details,
+              });
+            },
+          }),
+        (err: unknown) =>
+          err instanceof CliError &&
+          err.code === "RUNTIME" &&
+          err.details?.operation === "acquire-filesystem-mutation-lock" &&
+          err.details.publication_outcome === "not-published",
+      );
+    }
+  } finally {
+    await rm(base, { recursive: true, force: true });
+  }
+});
+
+test("create-only coordinator contains no product-tree deletion or quarantine operation", async () => {
+  const source = await readFile(path.resolve(here, "..", "src", "bundle.ts"), "utf8");
+  const coordinator = source.slice(source.indexOf("interface CreateOnlyFilesystem"), source.indexOf("export async function resolveLocalBundleTarget"));
+  assert.doesNotMatch(coordinator, /\b(?:unlink|rmdir|rm|rename)\s*\(/);
+  assert.equal(coordinator.includes("verifyCreateOnlyIsolation"), false);
 });
 
 test("QA F1 (live): simultaneous parent/child create-only processes never both succeed", async () => {
@@ -583,27 +811,35 @@ test("QA F2: a recipe typo fails at exit 2 with NOTHING created; the corrected r
   }
 });
 
-test("QA F3: a denied target mkdir is a structured refusal carrying the recovery help", async (t) => {
-  if (process.getuid?.() === 0) {
-    t.skip("running as root");
-    return;
-  }
-  const { claimCreateOnlyTarget } = await import("../src/bundle.js");
-  const { chmod } = await import("node:fs/promises");
+test("a denied target mkdir is structured uncertainty with exact directory residue", async () => {
   const base = await tempDir();
   try {
-    const sealed = path.join(base, "sealed");
-    await mkdir(sealed);
-    await chmod(sealed, 0o555);
-    try {
-      await assert.rejects(
-        () => claimCreateOnlyTarget(path.join(sealed, "nb")),
-        (err: unknown) =>
-          err instanceof CliError && err.code === "RUNTIME" && /recipe add/.test(String(err.help)),
-      );
-    } finally {
-      await chmod(sealed, 0o755);
-    }
+    const target = path.join(base, "a", "b", "target");
+    const physicalBase = await fsPromises.realpath(base);
+    let calls = 0;
+    await assert.rejects(
+      () =>
+        withCreateOnlyTarget(target, (physical) => initBundle(physical, { expectNew: true }), process.cwd(), {
+          fs: {
+            mkdir: async (p) => {
+              calls += 1;
+              if (calls === 3) throw Object.assign(new Error("injected denial"), { code: "EACCES" });
+              await fsPromises.mkdir(p);
+            },
+          },
+        }),
+      (err: unknown) =>
+        err instanceof CliError &&
+        err.code === "RUNTIME" &&
+        err.details?.operation === "mkdir" &&
+        err.details.fs_code === "EACCES" &&
+        JSON.stringify(err.details.residual_created_directories) ===
+          JSON.stringify([path.join(physicalBase, "a"), path.join(physicalBase, "a", "b")]) &&
+        !String(err.help).includes("recipe add"),
+    );
+    assert.equal(existsSync(path.join(base, "a")), true);
+    assert.equal(existsSync(path.join(base, "a", "b")), true);
+    assert.equal(existsSync(target), false);
   } finally {
     await rm(base, { recursive: true, force: true });
   }

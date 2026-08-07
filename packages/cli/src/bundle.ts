@@ -44,9 +44,18 @@
 // `Authorization` header entirely (no auth enforced there), so an ungated local bundle works
 // exactly as before with no key configured.
 import { BUNDLE_DIR } from "@agentstate-lite/board-git";
-import { promises as fs } from "node:fs";
+import { promises as fs, type Stats } from "node:fs";
 import path from "node:path";
-import { RemoteBackend, RemoteError, type Bundle, type FetchLike } from "@agentstate-lite/core";
+import {
+  FilesystemMutationLockError,
+  RemoteBackend,
+  RemoteError,
+  VersionConflict,
+  withFilesystemMutationLock,
+  type Bundle,
+  type FetchLike,
+  type FilesystemMutationLockOptions,
+} from "@agentstate-lite/core";
 import { CliError } from "./errors.js";
 import { cliInvocation } from "./invocation.js";
 import { normalizeServer } from "./config.js";
@@ -340,281 +349,540 @@ async function canonicalBundleRoot(
   }
 }
 
-/**
- * `init --create-only` target safety (the shared onboarding boundary). Resolves the PHYSICAL
- * create target and fails closed — before any write — when the target is not genuinely new:
- *
- *   - the target is already an OKF bundle (its own `index.md`);
- *   - the target directory exists but is a symlink, a non-directory, or non-empty (alias or
- *     adopted-content ambiguity — a "new workspace" must not absorb existing files);
- *   - the target sits inside an enclosing bundle, or a project workspace already exists at an
- *     ancestor's conventional folder (join it via `sync`/`recipe add`, never mint a second store);
- *   - a `.agentstate.json` binding at or above the target resolves to an EXISTING bundle
- *     elsewhere (bare commands there would keep resolving the bound bundle, shadowing the new
- *     one); malformed and URL-valued bindings keep their existing fail-closed USAGE errors.
- *
- * Symlinked ANCESTORS are resolved through the nearest existing ancestor's realpath, so an alias
- * cannot dodge the enclosing-bundle walk. This primitive performs NO writes; the create itself
- * runs through core `initBundle`'s `expectNew` expect-absent CAS, which turns a concurrent
- * creator into a typed `VersionConflict` instead of silently opening the racer's bundle.
- *
- * Returns the physical target directory to create.
- */
+interface CreateOnlyFilesystem {
+  lstat(p: string): Promise<Stats>;
+  realpath(p: string): Promise<string>;
+  readdir(p: string): Promise<string[]>;
+  mkdir(p: string): Promise<void>;
+  readFile(p: string): Promise<string>;
+}
+
+const createOnlyFs: CreateOnlyFilesystem = {
+  lstat: (p) => fs.lstat(p),
+  realpath: (p) => fs.realpath(p),
+  readdir: (p) => fs.readdir(p),
+  mkdir: (p) => fs.mkdir(p).then(() => undefined),
+  readFile: (p) => fs.readFile(p, "utf8"),
+};
+
+export interface CreateOnlyTargetDeps {
+  fs?: Partial<CreateOnlyFilesystem>;
+  withFilesystemMutationLockImpl?: typeof withFilesystemMutationLock;
+  lockOptions?: FilesystemMutationLockOptions;
+}
+
+export interface CreateOnlyTargetReceipt<T> {
+  root: string;
+  createdDirectories: string[];
+  value: T;
+}
+
+interface CreateOnlyResolution {
+  logical: string;
+  target: string;
+  physicalPrefix: string;
+  missingTail: string[];
+  targetStat?: Stats;
+}
+
+type CreateOnlyPhase = "preflight" | "locked-revalidation" | "directory-creation" | "pre-publish" | "lock";
+
+function createOnlyRecoveryHelp(): string {
+  return (
+    `${cliInvocation()} recipe add <name> --dir <existing-bundle>  (modify a verified existing bundle), or ` +
+    `${cliInvocation()} init --create-only --dir <new-path>  (a different, genuinely new location)`
+  );
+}
+
+function createOnlyConflict(message: string, details: Record<string, unknown> = {}): never {
+  throw new CliError("ALREADY_EXISTS", message, { details, help: createOnlyRecoveryHelp() });
+}
+
+function fsCode(err: unknown): string | undefined {
+  return (err as NodeJS.ErrnoException)?.code;
+}
+
+function createOnlyUncertainty(
+  phase: CreateOnlyPhase,
+  operation: string,
+  p: string,
+  err: unknown,
+  createdDirectories: string[] = [],
+): never {
+  const code = fsCode(err);
+  throw new CliError(
+    "RUNTIME",
+    `cannot safely ${operation} create-only path ${p}${code ? ` (${code})` : ""}: ${err instanceof Error ? err.message : String(err)}`,
+    {
+      details: {
+        phase,
+        operation,
+        path: p,
+        ...(code ? { fs_code: code } : {}),
+        residual_created_directories: [...createdDirectories],
+      },
+      help: `inspect access and path identity at ${p}, then retry or choose a different explicit --dir`,
+    },
+  );
+}
+
+function samePhysicalPath(a: string, b: string): boolean {
+  const left = path.resolve(a);
+  const right = path.resolve(b);
+  return process.platform === "win32" ? left.toLowerCase() === right.toLowerCase() : left === right;
+}
+
+/** Parent and child targets intentionally share this conservative physical-root arbitration key. */
+export function createOnlyArbitrationLockKey(physicalTarget: string): string {
+  return path.parse(path.resolve(physicalTarget)).root;
+}
+
+async function optionalLstat(
+  io: CreateOnlyFilesystem,
+  p: string,
+  phase: CreateOnlyPhase,
+  operation: string,
+  createdDirectories: string[] = [],
+): Promise<Stats | null> {
+  try {
+    return await io.lstat(p);
+  } catch (err) {
+    if (fsCode(err) === "ENOENT") return null;
+    createOnlyUncertainty(phase, operation, p, err, createdDirectories);
+  }
+}
+
+async function resolveCreateOnlyPhysicalTarget(
+  logical: string,
+  io: CreateOnlyFilesystem,
+  phase: CreateOnlyPhase,
+  createdDirectories: string[] = [],
+): Promise<CreateOnlyResolution> {
+  let existingPrefix = logical;
+  const missingTail: string[] = [];
+  let targetStat: Stats | undefined;
+  for (;;) {
+    try {
+      const info = await io.lstat(existingPrefix);
+      if (existingPrefix === logical) targetStat = info;
+      break;
+    } catch (err) {
+      const code = fsCode(err);
+      if (code === "ENOTDIR") {
+        createOnlyConflict(`create-only target ${logical} runs through an existing file — pass a directory path`, {
+          phase,
+          operation: "lstat",
+          path: existingPrefix,
+          fs_code: code,
+          residual_created_directories: [...createdDirectories],
+        });
+      }
+      if (code !== "ENOENT") createOnlyUncertainty(phase, "lstat", existingPrefix, err, createdDirectories);
+      const parent = path.dirname(existingPrefix);
+      if (parent === existingPrefix) createOnlyUncertainty(phase, "lstat", existingPrefix, err, createdDirectories);
+      missingTail.unshift(path.basename(existingPrefix));
+      existingPrefix = parent;
+    }
+  }
+
+  if (missingTail.length === 0 && targetStat) {
+    if (targetStat.isSymbolicLink()) {
+      createOnlyConflict(`create-only target ${logical} is a symlink — pass the physical directory instead`, {
+        phase,
+        operation: "lstat",
+        path: logical,
+        residual_created_directories: [...createdDirectories],
+      });
+    }
+    if (!targetStat.isDirectory()) {
+      createOnlyConflict(`create-only target ${logical} exists and is not a directory`, {
+        phase,
+        operation: "lstat",
+        path: logical,
+        residual_created_directories: [...createdDirectories],
+      });
+    }
+  }
+
+  let physicalPrefix: string;
+  try {
+    physicalPrefix = await io.realpath(existingPrefix);
+  } catch (err) {
+    createOnlyUncertainty(phase, "realpath", existingPrefix, err, createdDirectories);
+  }
+  return {
+    logical,
+    target: path.join(physicalPrefix, ...missingTail),
+    physicalPrefix,
+    missingTail,
+    ...(targetStat ? { targetStat } : {}),
+  };
+}
+
+async function assertObservedDirectory(
+  io: CreateOnlyFilesystem,
+  dir: string,
+  phase: CreateOnlyPhase,
+  createdDirectories: string[],
+): Promise<void> {
+  let info: Stats;
+  try {
+    info = await io.lstat(dir);
+  } catch (err) {
+    createOnlyUncertainty(phase, "lstat", dir, err, createdDirectories);
+  }
+  if (info.isSymbolicLink() || !info.isDirectory()) {
+    createOnlyUncertainty(
+      phase,
+      "validate-directory-shape",
+      dir,
+      Object.assign(new Error("observed path is no longer a physical directory"), { code: "ESHAPE" }),
+      createdDirectories,
+    );
+  }
+}
+
+async function existingBundleAt(
+  io: CreateOnlyFilesystem,
+  candidate: string,
+  phase: CreateOnlyPhase,
+  createdDirectories: string[],
+): Promise<string | null> {
+  const resolved = await resolveCreateOnlyPhysicalTarget(candidate, io, phase, createdDirectories);
+  if (resolved.missingTail.length > 0) return null;
+  const own = await optionalLstat(io, path.join(resolved.target, "index.md"), phase, "lstat-own-index", createdDirectories);
+  if (own) return resolved.target;
+  const conventional = path.join(resolved.target, CONVENTIONAL_BUNDLE_DIR_NAME);
+  const conventionalInfo = await optionalLstat(io, conventional, phase, "lstat-conventional-directory", createdDirectories);
+  if (!conventionalInfo) return null;
+  if (conventionalInfo.isSymbolicLink() || !conventionalInfo.isDirectory()) {
+    createOnlyUncertainty(
+      phase,
+      "validate-conventional-directory-shape",
+      conventional,
+      Object.assign(new Error("conventional bundle path is not a physical directory"), { code: "ESHAPE" }),
+      createdDirectories,
+    );
+  }
+  const index = await optionalLstat(io, path.join(conventional, "index.md"), phase, "lstat-conventional-index", createdDirectories);
+  return index ? conventional : null;
+}
+
+async function strictProjectBinding(
+  io: CreateOnlyFilesystem,
+  start: string,
+  phase: CreateOnlyPhase,
+  createdDirectories: string[],
+): Promise<ProjectBinding | null> {
+  let dir = start;
+  for (;;) {
+    await assertObservedDirectory(io, dir, phase, createdDirectories);
+    const file = path.join(dir, PROJECT_BINDING_FILE_NAME);
+    const info = await optionalLstat(io, file, phase, "lstat-binding", createdDirectories);
+    if (info) {
+      if (info.isSymbolicLink() || !info.isFile()) {
+        throw new CliError("USAGE", `malformed project binding ${file}: expected a regular file`, {
+          help: `fix or remove ${file}`,
+        });
+      }
+      let raw: string;
+      try {
+        raw = await io.readFile(file);
+      } catch (err) {
+        createOnlyUncertainty(phase, "read-binding", file, err, createdDirectories);
+      }
+      let parsed: unknown;
+      try {
+        parsed = JSON.parse(raw);
+      } catch (err) {
+        throw new CliError("USAGE", `malformed project binding ${file}: invalid JSON (${err instanceof Error ? err.message : String(err)})`, {
+          help: `fix or remove ${file}`,
+        });
+      }
+      const rawBundle = (parsed as Record<string, unknown> | null)?.bundle;
+      if (typeof rawBundle !== "string" || rawBundle.trim() === "") {
+        throw new CliError("USAGE", `malformed project binding ${file}: "bundle" must be a non-empty filesystem path`, {
+          help: `fix or remove ${file}`,
+        });
+      }
+      const value = rawBundle.trim();
+      const uriIntent = bindingUriIntent(value);
+      if (uriIntent) {
+        const remote = uriIntent.suggestedRemote ?? "<url>";
+        throw new CliError(
+          "USAGE",
+          `project binding ${file} cannot use ${uriIntent.detail}; URL bindings no longer activate remotes — pass --remote ${remote} explicitly or replace "bundle" with a filesystem path`,
+          { help: `${cliInvocation()} <command> --remote ${remote}` },
+        );
+      }
+      return { file, target: path.resolve(dir, value) };
+    }
+    const parent = path.dirname(dir);
+    if (parent === dir) return null;
+    dir = parent;
+  }
+}
+
+async function inspectCreateOnlyTarget(
+  logical: string,
+  io: CreateOnlyFilesystem,
+  phase: CreateOnlyPhase,
+  createdDirectories: string[] = [],
+): Promise<CreateOnlyResolution> {
+  const resolved = await resolveCreateOnlyPhysicalTarget(logical, io, phase, createdDirectories);
+  const target = resolved.target;
+  if (resolved.missingTail.length === 0) {
+    if (await optionalLstat(io, path.join(target, "index.md"), phase, "lstat-own-index", createdDirectories)) {
+      createOnlyConflict(`create-only target ${target} is already an OKF bundle`, {
+        phase,
+        residual_created_directories: [...createdDirectories],
+      });
+    }
+    const conventional = path.join(target, CONVENTIONAL_BUNDLE_DIR_NAME);
+    const conventionalInfo = await optionalLstat(io, conventional, phase, "lstat-conventional-directory", createdDirectories);
+    if (conventionalInfo) {
+      if (conventionalInfo.isSymbolicLink() || !conventionalInfo.isDirectory()) {
+        createOnlyUncertainty(
+          phase,
+          "validate-conventional-directory-shape",
+          conventional,
+          Object.assign(new Error("conventional bundle path is not a physical directory"), { code: "ESHAPE" }),
+          createdDirectories,
+        );
+      }
+      if (await optionalLstat(io, path.join(conventional, "index.md"), phase, "lstat-conventional-index", createdDirectories)) {
+        createOnlyConflict(`an existing project workspace ${conventional} already serves this location — join it rather than creating a second bundle`, {
+          phase,
+          residual_created_directories: [...createdDirectories],
+        });
+      }
+    }
+    let entries: string[];
+    try {
+      entries = await io.readdir(target);
+    } catch (err) {
+      createOnlyUncertainty(phase, "readdir", target, err, createdDirectories);
+    }
+    if (entries.length > 0) {
+      createOnlyConflict(
+        `create-only target ${target} exists and is not empty (${entries.length} entr${entries.length === 1 ? "y" : "ies"}) — a new workspace must not adopt existing files`,
+        { phase, residual_created_directories: [...createdDirectories] },
+      );
+    }
+  }
+
+  const existingParent = resolved.missingTail.length > 0 ? resolved.physicalPrefix : path.dirname(target);
+  let ancestor = existingParent;
+  for (;;) {
+    await assertObservedDirectory(io, ancestor, phase, createdDirectories);
+    if (await optionalLstat(io, path.join(ancestor, "index.md"), phase, "lstat-upward-own-index", createdDirectories)) {
+      createOnlyConflict(`create-only target ${target} would nest inside the existing bundle at ${ancestor}`, {
+        phase,
+        residual_created_directories: [...createdDirectories],
+      });
+    }
+    const conventional = path.join(ancestor, CONVENTIONAL_BUNDLE_DIR_NAME);
+    const conventionalInfo = await optionalLstat(io, conventional, phase, "lstat-upward-conventional-directory", createdDirectories);
+    if (conventionalInfo) {
+      if (conventionalInfo.isSymbolicLink() || !conventionalInfo.isDirectory()) {
+        createOnlyUncertainty(
+          phase,
+          "validate-upward-conventional-directory-shape",
+          conventional,
+          Object.assign(new Error("conventional bundle path is not a physical directory"), { code: "ESHAPE" }),
+          createdDirectories,
+        );
+      }
+      if (await optionalLstat(io, path.join(conventional, "index.md"), phase, "lstat-upward-conventional-index", createdDirectories)) {
+        createOnlyConflict(`an existing project workspace ${conventional} already serves this location — join it rather than creating a second bundle`, {
+          phase,
+          residual_created_directories: [...createdDirectories],
+        });
+      }
+    }
+    const parent = path.dirname(ancestor);
+    if (parent === ancestor) break;
+    ancestor = parent;
+  }
+
+  const binding = await strictProjectBinding(io, existingParent, phase, createdDirectories);
+  if (binding) {
+    const boundBundle = await existingBundleAt(io, binding.target, phase, createdDirectories);
+    if (boundBundle && !samePhysicalPath(boundBundle, target)) {
+      createOnlyConflict(
+        `project binding ${binding.file} already resolves this location to the existing bundle at ${boundBundle} — bare commands here would keep using it, shadowing a new bundle`,
+        { phase, residual_created_directories: [...createdDirectories] },
+      );
+    }
+  }
+  return resolved;
+}
+
+function createOnlyIo(deps: CreateOnlyTargetDeps): CreateOnlyFilesystem {
+  return { ...createOnlyFs, ...deps.fs };
+}
+
+/** Read-only strict create-only inspection. Ordinary discovery intentionally remains permissive. */
 export async function assertCreateOnlyTarget(
   dirFlag: string | undefined,
   startDir: string = process.cwd(),
+  deps: CreateOnlyTargetDeps = {},
 ): Promise<string> {
-  const recoveryHelp =
-    `${cliInvocation()} recipe add <name> --dir <existing-bundle>  (modify an existing bundle), or ` +
-    `${cliInvocation()} init --create-only --dir <new-path>  (a different, genuinely new location)`;
-  const refuse = (message: string): never => {
-    throw new CliError("ALREADY_EXISTS", message, { help: recoveryHelp });
-  };
-
   const logical = path.resolve(startDir, dirFlag ?? startDir);
+  return (await inspectCreateOnlyTarget(logical, createOnlyIo(deps), "preflight")).target;
+}
 
-  // Physical resolution: realpath the nearest EXISTING ancestor and re-append the missing tail,
-  // so every later check sees the alias-free target even when the target itself is absent.
-  // Presence uses LSTAT, never stat: a dangling or looping symlink IS present and must route into
-  // the inspection block's exit-5 symlink refusal, not fall through as "missing" to a raw mkdir
-  // failure (review finding: exists() follows links, misclassifying that whole family as exit 1).
-  const lexists = async (p: string): Promise<boolean> => {
+async function createMissingDirectories(
+  resolution: CreateOnlyResolution,
+  io: CreateOnlyFilesystem,
+  createdDirectories: string[],
+): Promise<void> {
+  let current = resolution.physicalPrefix;
+  for (const segment of resolution.missingTail) {
+    const next = path.join(current, segment);
     try {
-      await fs.lstat(p);
-      return true;
+      await io.mkdir(next);
+      createdDirectories.push(next);
     } catch (err) {
-      const code = (err as NodeJS.ErrnoException).code;
-      if (code === "ENOENT" || code === "ENOTDIR") return false;
-      throw new CliError(
-        "RUNTIME",
-        `cannot inspect the create-only target path ${p}: ${err instanceof Error ? err.message : String(err)}`,
-        { help: recoveryHelp },
-      );
-    }
-  };
-  let existingPrefix = logical;
-  const missingTail: string[] = [];
-  while (!(await lexists(existingPrefix))) {
-    const parent = path.dirname(existingPrefix);
-    if (parent === existingPrefix) break;
-    missingTail.unshift(path.basename(existingPrefix));
-    existingPrefix = parent;
-  }
-  // Inspect the LOGICAL target BEFORE canonicalization: a `--dir` naming a symlink — healthy,
-  // dangling, or looping — is refused as the alias it is (exit 5, the documented contract), and
-  // only a real directory proceeds to realpath (which would throw a raw ENOENT/ELOOP on links).
-  if (missingTail.length === 0) {
-    const info = await fs.lstat(logical).catch(() => null);
-    if (info === null) {
-      refuse(`create-only target ${logical} disappeared while being inspected`);
-    } else if (info.isSymbolicLink()) {
-      refuse(`create-only target ${logical} is a symlink — pass the physical directory instead`);
-    } else if (!info.isDirectory()) {
-      refuse(`create-only target ${logical} exists and is not a directory`);
-    }
-  }
-  let physicalPrefix: string;
-  try {
-    physicalPrefix = await fs.realpath(existingPrefix);
-  } catch (err) {
-    throw new CliError(
-      "RUNTIME",
-      `cannot resolve the create-only target ${logical}: ${err instanceof Error ? err.message : String(err)}`,
-      { help: recoveryHelp },
-    );
-  }
-  const target = path.join(physicalPrefix, ...missingTail);
-
-  if (missingTail.length === 0) {
-    // The target is a real directory: it must be genuinely new content-wise. Name an existing
-    // conventional workspace precisely rather than counting it among "entries".
-    if (await exists(path.join(target, "index.md"))) {
-      refuse(`create-only target ${target} is already an OKF bundle`);
-    }
-    if (await exists(path.join(target, CONVENTIONAL_BUNDLE_DIR_NAME, "index.md"))) {
-      refuse(
-        `an existing project workspace ${path.join(target, CONVENTIONAL_BUNDLE_DIR_NAME)} already serves this location — join it rather than creating a second bundle`,
-      );
-    }
-    const entries = await fs.readdir(target);
-    if (entries.length > 0) {
-      refuse(
-        `create-only target ${target} exists and is not empty (${entries.length} entr${entries.length === 1 ? "y" : "ies"}) — a new workspace must not adopt existing files`,
-      );
-    }
-  }
-
-  // Enclosing-bundle walk from the physical PARENT: an ancestor's own index.md (the target would
-  // nest inside that bundle) or an ancestor's conventional workspace folder (the project already
-  // has a bundle) both refuse. The target's own paths were handled above.
-  const enclosing = await findBundleRoot(path.dirname(target));
-  if (enclosing !== null) {
-    // Wording tracks the actual relationship: the target UNDER the found root is nesting; a root
-    // found at an ancestor's conventional folder (never containing the target) is the project's
-    // existing workspace.
-    refuse(
-      target.startsWith(`${enclosing}${path.sep}`)
-        ? `create-only target ${target} would nest inside the existing bundle at ${enclosing}`
-        : `an existing project workspace ${enclosing} already serves this location — join it rather than creating a second bundle`,
-    );
-  }
-
-  // Binding rung: malformed/URL bindings throw their existing USAGE errors here (fail-closed).
-  const binding = await resolveProjectBinding(path.dirname(target));
-  if (binding && binding.target !== target) {
-    const boundBundle =
-      (await exists(path.join(binding.target, "index.md")))
-        ? binding.target
-        : (await exists(path.join(binding.target, CONVENTIONAL_BUNDLE_DIR_NAME, "index.md")))
-          ? path.join(binding.target, CONVENTIONAL_BUNDLE_DIR_NAME)
-          : null;
-    if (boundBundle !== null) {
-      refuse(
-        `project binding ${binding.file} already resolves this location to the existing bundle at ${boundBundle} — bare commands here would keep using it, shadowing a new bundle`,
-      );
-    }
-  }
-
-  return target;
-}
-
-/**
- * Claim the preflighted create-only target — the ONE write between {@link assertCreateOnlyTarget}
- * (read-only) and core `initBundle`'s `expectNew` CAS. Closes the preflight-to-write window
- * deterministically for both target shapes:
- *
- *   - absent target: parents are created, then the target itself via a NON-recursive mkdir — a
- *     concurrent creator surfaces as EEXIST and refuses (exit 5), never adoption;
- *   - existing empty directory: re-verified (still a real, empty, non-symlink directory)
- *     immediately before proceeding, so files dropped in after the preflight refuse.
- *
- * Residual window (documented, not closable without directory locks): content written into the
- * claimed directory between this check and the index.md CAS is adopted; the CAS itself still
- * guarantees the BUNDLE identity (index.md) is ours or the run fails with a typed conflict.
- */
-export async function claimCreateOnlyTarget(target: string): Promise<void> {
-  const recoveryHelp =
-    `${cliInvocation()} recipe add <name> --dir <existing-bundle>  (modify an existing bundle), or ` +
-    `${cliInvocation()} init --create-only --dir <new-path>  (a different, genuinely new location)`;
-  const refuse = (message: string): never => {
-    throw new CliError("ALREADY_EXISTS", message, { help: recoveryHelp });
-  };
-  // mkdir-first so both branches are deterministic: success claims a fresh directory atomically;
-  // EEXIST (pre-existing OR concurrently created) falls through to re-verification, where an
-  // empty real directory converges — same acceptance as the preflight — and anything else refuses.
-  // The parent mkdir is guarded too: a path that runs THROUGH an existing file (lexists maps
-  // ENOTDIR to "missing", so the preflight walk cannot see it) is a structured conflict here,
-  // never a raw fs error.
-  try {
-    await fs.mkdir(path.dirname(target), { recursive: true });
-  } catch (err) {
-    const code = (err as NodeJS.ErrnoException).code;
-    if (code === "EEXIST" || code === "ENOTDIR") {
-      refuse(`create-only target ${target} runs through an existing file — pass a directory path`);
-    }
-    throw new CliError(
-      "RUNTIME",
-      `cannot prepare the create-only target ${target}: ${err instanceof Error ? err.message : String(err)}`,
-      { help: recoveryHelp },
-    );
-  }
-  try {
-    await fs.mkdir(target);
-    return;
-  } catch (err) {
-    if ((err as NodeJS.ErrnoException).code !== "EEXIST") {
-      throw new CliError(
-        "RUNTIME",
-        `cannot prepare the create-only target ${target}: ${err instanceof Error ? err.message : String(err)}`,
-        { help: recoveryHelp },
-      );
-    }
-  }
-  const info = await fs.lstat(target).catch(() => null);
-  if (info === null || info.isSymbolicLink() || !info.isDirectory()) {
-    refuse(`create-only target ${target} changed shape after preflight — refusing to write`);
-  }
-  const gained = await fs.readdir(target);
-  if (gained.length > 0) {
-    // A racer that already wrote index.md deserves the accurate refusal, not the generic one.
-    refuse(
-      gained.includes("index.md")
-        ? `create-only target ${target} is already an OKF bundle — another process created it first`
-        : `create-only target ${target} gained content after preflight — a new workspace must not adopt concurrent files`,
-    );
-  }
-}
-
-/**
- * Post-CAS isolation check for `init --create-only` (QA finding F1). The preflight's
- * enclosing-bundle walk cannot see a bundle that COMMITS during the preflight-to-write window,
- * and index.md's expect-absent CAS cannot arbitrate a parent/child pair — the two runs write
- * DIFFERENT files. So after our own index.md commit, look BOTH ways:
- *
- *   - UP: an enclosing bundle at any ancestor means a parent racer committed — we are nested;
- *   - DOWN: any index.md below the target (which was empty/fresh at claim) means a child racer
- *     committed under us.
- *
- * Ordering argument (why two silent winners are impossible): each run verifies strictly AFTER its
- * own CAS. For run A to miss run B, A's verify must precede B's CAS — so B's verify, which
- * follows B's CAS, follows A's CAS and SEES A. At least one run always yields. The yielder rolls
- * back exactly its own writes: unlinking `<target>/index.md` is provably safe because a won
- * expect-absent CAS means that exact file is ours, and this runs BEFORE any recipe is applied so
- * index.md is the whole write set; the claim-created directory is removed only via plain rmdir
- * (never recursive), so a racer's content is never deleted. Both runs may yield in a tight race —
- * an honest double-refusal with a clean disk beats one silent nested pair.
- */
-export async function verifyCreateOnlyIsolation(target: string): Promise<void> {
-  const recoveryHelp =
-    `${cliInvocation()} recipe add <name> --dir <existing-bundle>  (modify an existing bundle), or ` +
-    `${cliInvocation()} init --create-only --dir <new-path>  (a different, genuinely new location)`;
-
-  // The up-walk can find OUR OWN just-committed index.md when the target IS a conventional
-  // `.agentstate-lite` folder (the parent's conventional-child rung resolves to us). Self is
-  // never a conflict — but the walk must RESUME above it, not stop: stopping would blind the up
-  // direction for exactly the default target shape and collapse the mutual-visibility argument
-  // onto the down scan alone (review round 4, issue 1). Resuming from the grandparent is
-  // complete: the parent's own index.md was already checked BEFORE the conventional rung that
-  // matched us, and nothing else can re-match self above that level.
-  let enclosing = await findBundleRoot(path.dirname(target));
-  if (enclosing === target) {
-    enclosing = await findBundleRoot(path.dirname(path.dirname(target)));
-  }
-  let conflict: string | null = null;
-  if (enclosing !== null) {
-    conflict = `a concurrent create committed the enclosing bundle at ${enclosing}`;
-  } else {
-    const nestedIndex = await (async function scan(dir: string): Promise<string | null> {
-      for (const entry of await fs.readdir(dir, { withFileTypes: true }).catch(() => [])) {
-        const child = path.join(dir, entry.name);
-        if (entry.isDirectory()) {
-          if (await exists(path.join(child, "index.md"))) return child;
-          const deeper = await scan(child);
-          if (deeper !== null) return deeper;
-        }
+      if (fsCode(err) === "EEXIST") {
+        createOnlyConflict(`create-only target ${resolution.target} changed while its directories were being created`, {
+          phase: "directory-creation",
+          operation: "mkdir",
+          path: next,
+          fs_code: "EEXIST",
+          residual_created_directories: [...createdDirectories],
+        });
       }
-      return null;
-    })(target);
-    if (nestedIndex !== null) conflict = `a concurrent create committed a nested bundle at ${nestedIndex}`;
-  }
-  if (conflict === null) return;
-
-  // Yield: remove OUR index.md (ours by the won CAS), then best-effort empty-only rmdirs upward.
-  await fs.unlink(path.join(target, "index.md")).catch(() => {});
-  let dir = target;
-  for (;;) {
-    try {
-      await fs.rmdir(dir); // never recursive — refuses non-empty, so racer content survives
-    } catch {
-      break;
+      if (fsCode(err) === "ENOTDIR") {
+        createOnlyConflict(`create-only target ${resolution.target} runs through an existing file — pass a directory path`, {
+          phase: "directory-creation",
+          operation: "mkdir",
+          path: next,
+          fs_code: "ENOTDIR",
+          residual_created_directories: [...createdDirectories],
+        });
+      }
+      createOnlyUncertainty("directory-creation", "mkdir", next, err, createdDirectories);
     }
-    dir = path.dirname(dir);
+    current = next;
   }
-  throw new CliError(
-    "ALREADY_EXISTS",
-    `create-only target ${target} lost a concurrent-create race — ${conflict}; this run's write was rolled back and nothing of this run remains`,
-    { help: recoveryHelp },
+}
+
+function decorateCreateOnlyFailure(
+  err: unknown,
+  target: string,
+  createdDirectories: string[],
+  publishStarted: boolean,
+): never {
+  if (err instanceof VersionConflict) {
+    createOnlyConflict(`create-only target ${target} gained a bundle concurrently — another process created it first`, {
+      phase: "pre-publish",
+      operation: "write-index-expect-absent",
+      path: path.join(target, "index.md"),
+      residual_created_directories: [...createdDirectories],
+    });
+  }
+  if (err instanceof CliError) {
+    throw new CliError(err.code, err.message, {
+      help: err.help,
+      details: {
+        ...err.details,
+        residual_created_directories: [...createdDirectories],
+        ...(publishStarted ? { publication_outcome: "uncertain" } : {}),
+      },
+    });
+  }
+  createOnlyUncertainty(
+    publishStarted ? "pre-publish" : "directory-creation",
+    publishStarted ? "publish-index" : "create-only-critical-section",
+    target,
+    err,
+    createdDirectories,
   );
+}
+
+/**
+ * Own the complete create-only critical section: strict locked revalidation, component-wise
+ * directory creation, final strict inspection, and expect-absent publication. The receipt is
+ * diagnostic only; no failure path removes anything from the product tree.
+ */
+export async function withCreateOnlyTarget<T>(
+  dirFlag: string | undefined,
+  publish: (physicalTarget: string) => Promise<T>,
+  startDir: string = process.cwd(),
+  deps: CreateOnlyTargetDeps = {},
+): Promise<CreateOnlyTargetReceipt<T>> {
+  const io = createOnlyIo(deps);
+  const logical = path.resolve(startDir, dirFlag ?? startDir);
+  const initial = await inspectCreateOnlyTarget(logical, io, "preflight");
+  const target = initial.target;
+  const createdDirectories: string[] = [];
+  let publishStarted = false;
+  let published = false;
+  let value!: T;
+  const lock = deps.withFilesystemMutationLockImpl ?? withFilesystemMutationLock;
+
+  try {
+    await lock(
+      createOnlyArbitrationLockKey(target),
+      async () => {
+        try {
+          const locked = await inspectCreateOnlyTarget(logical, io, "locked-revalidation", createdDirectories);
+          if (!samePhysicalPath(locked.target, target)) {
+            createOnlyUncertainty(
+              "locked-revalidation",
+              "compare-physical-target",
+              logical,
+              Object.assign(new Error(`physical target changed from ${target} to ${locked.target}`), { code: "EPATHCHANGED" }),
+              createdDirectories,
+            );
+          }
+          await createMissingDirectories(locked, io, createdDirectories);
+          const beforePublish = await inspectCreateOnlyTarget(logical, io, "pre-publish", createdDirectories);
+          if (!samePhysicalPath(beforePublish.target, target)) {
+            createOnlyUncertainty(
+              "pre-publish",
+              "compare-physical-target",
+              logical,
+              Object.assign(new Error(`physical target changed from ${target} to ${beforePublish.target}`), { code: "EPATHCHANGED" }),
+              createdDirectories,
+            );
+          }
+          publishStarted = true;
+          value = await publish(target);
+          published = true;
+        } catch (err) {
+          decorateCreateOnlyFailure(err, target, createdDirectories, publishStarted);
+        }
+      },
+      deps.lockOptions,
+    );
+  } catch (err) {
+    if (err instanceof FilesystemMutationLockError) {
+      throw new CliError(
+        "RUNTIME",
+        published
+          ? `create-only bundle was published at ${target}, but its arbitration lock could not be released safely: ${err.message}`
+          : `cannot acquire the create-only arbitration lock for ${target}: ${err.message}`,
+        {
+          details: {
+            phase: "lock",
+            operation: published ? "release-filesystem-mutation-lock" : "acquire-filesystem-mutation-lock",
+            path: err.lockPath,
+            lock_path: err.lockPath,
+            owner: err.owner,
+            stale: err.stale,
+            malformed: err.malformed,
+            publication_outcome: published ? "published" : "not-published",
+            residual_created_directories: [...createdDirectories],
+          },
+          help: `inspect ${err.lockPath} and ${target} before retrying`,
+        },
+      );
+    }
+    throw err;
+  }
+  return { root: target, createdDirectories, value };
 }
 
 /**

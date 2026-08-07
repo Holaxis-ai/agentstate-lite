@@ -8,13 +8,8 @@
 import { parseArgs } from "node:util";
 import { existsSync } from "node:fs";
 import path from "node:path";
-import { initBundle, loadKinds, VersionConflict } from "@agentstate-lite/core";
-import {
-  assertCreateOnlyTarget,
-  claimCreateOnlyTarget,
-  resolveTargetDir,
-  verifyCreateOnlyIsolation,
-} from "../bundle.js";
+import { initBundle, loadKinds } from "@agentstate-lite/core";
+import { resolveTargetDir, withCreateOnlyTarget } from "../bundle.js";
 import { CliError } from "../errors.js";
 import { parseOrUsage } from "../args.js";
 import { render, resolveMode } from "../output.js";
@@ -33,13 +28,14 @@ Options:
   --recipe <name-or-path> Apply a recipe on create (default: context-notes; 'none' for a bare
                            bundle) — a built-in name or a path to a recipe folder; see
                            'agentstate-lite recipes' to list built-ins
-  --create-only           Require a genuinely NEW workspace: fail closed (exit 5, no write) when
+  --create-only           Require a genuinely NEW workspace: refuse before publication when
                            the target is already a bundle, is non-empty or a symlink, sits inside
                            an enclosing bundle or bound project workspace, or is created
                            concurrently. Without the flag, init keeps its open-or-create behavior.
                            Recoveries: 'recipe add' modifies an existing bundle; a different
-                           explicit --dir creates a new one. The receipt's root is the PHYSICAL
-                           (symlink-resolved) path, which may differ from the spelling passed.
+                           explicit --dir creates a new one. A runtime failure can retain empty
+                           directories named in residual_created_directories; they are never
+                           deleted automatically. The receipt's root is the PHYSICAL path.
   --json                  Emit compact JSON instead of TOON
   -h, --help              Show this help
 `;
@@ -120,10 +116,6 @@ export async function init(argv: string[], deps: Partial<InitCliDeps> = {}): Pro
   }
 
   const createOnly = Boolean(values["create-only"]);
-  // Create-only preflight (the shared onboarding target-safety boundary): resolve the PHYSICAL
-  // target and refuse existing/bound/enclosing/ambiguous targets BEFORE any write. The concurrent
-  // case is closed below by `expectNew`'s expect-absent CAS, not by this read-only preflight.
-  const root = createOnly ? await assertCreateOnlyTarget(values.dir) : resolveTargetDir(values.dir);
   const okfVersion = values["okf-version"]?.trim();
   // The engine (`initBundle`) no longer seeds anything (CLAUDE.md gate 3: core special-cases
   // nothing about conventions) — it just creates the bundle. `init` applies the default recipe
@@ -131,36 +123,26 @@ export async function init(argv: string[], deps: Partial<InitCliDeps> = {}): Pro
   // one, now expressed as a product-surface commitment in the CLI, not an engine default).
   // Idempotent (expect-absent CAS per doc) — re-running `init` against an already-recipe'd bundle
   // is a no-op for each convention doc. `--recipe none` opts out to a bare bundle.
-  // The claim closes the preflight-to-write window deterministically (absent target: atomic
-  // mkdir; pre-existing empty dir: re-verified). Plain init performs neither step.
-  if (createOnly) await claimCreateOnlyTarget(root);
+  // Create-only owns one root-scoped critical section from strict revalidation through the
+  // expect-absent index publication. Recipe application remains outside the lock and after a valid
+  // bundle exists. Plain init keeps its historical open-or-create path unchanged.
+  let root: string;
   let bundle;
-  try {
+  if (createOnly) {
+    const result = await withCreateOnlyTarget(values.dir, (physicalTarget) =>
+      (deps.initBundleImpl ?? initBundle)(physicalTarget, {
+        ...(okfVersion ? { okfVersion } : {}),
+        expectNew: true,
+      }),
+    );
+    root = result.root;
+    bundle = result.value;
+  } else {
+    root = resolveTargetDir(values.dir);
     bundle = await (deps.initBundleImpl ?? initBundle)(root, {
       ...(okfVersion ? { okfVersion } : {}),
-      ...(createOnly ? { expectNew: true } : {}),
     });
-  } catch (err) {
-    if (createOnly && err instanceof VersionConflict) {
-      throw new CliError(
-        "ALREADY_EXISTS",
-        `create-only target ${root} gained a bundle concurrently — another process created it first; nothing was written by this run`,
-        {
-          help:
-            `${cliInvocation()} recipe add <name> --dir ${shellArg(root)}  (modify the bundle that won), or ` +
-            `${cliInvocation()} init --create-only --dir <new-path>`,
-        },
-      );
-    }
-    throw err;
   }
-  // QA F1: the enclosing-bundle check is preflight-only, so two SIMULTANEOUS create-onlys at a
-  // parent and its child can both pass preflight and CAS DIFFERENT index.md files — minting the
-  // exact nested pair the guard forbids. Post-CAS, re-check both directions; the later committer
-  // provably sees the earlier one (its verify runs after its own CAS, hence after the other's),
-  // yields, and rolls back exactly its own writes. Runs BEFORE the recipe so the rollback set is
-  // index.md alone.
-  if (createOnly) await verifyCreateOnlyIsolation(root);
   let recipeApplied = "none";
   let selectedRecipeKinds: string[] = [];
   let warnings: unknown[] = [];

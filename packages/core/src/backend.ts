@@ -295,8 +295,9 @@ export class FilesystemBackend implements StorageBackend {
   private async currentVersionAt(absPath: string): Promise<Version | null> {
     try {
       return versionOfBytes(await fs.readFile(absPath, "utf8"));
-    } catch {
-      return null;
+    } catch (err) {
+      if (isAbsentFileError(err)) return null;
+      throw err;
     }
   }
 
