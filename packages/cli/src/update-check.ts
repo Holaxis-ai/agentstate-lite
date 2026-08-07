@@ -168,8 +168,8 @@ function malformed(runningVersion: string, track: ReleaseTrack, checkedAt: strin
 function verificationCommands(track: ReleaseTrack): string[] {
   return [
     track === "latest" ? "aslite version --check" : "aslite version --check --tag next",
-    "aslite skill status --scope global",
-    "aslite hook status --scope global",
+    "aslite skill status --scope user",
+    "aslite hook status --scope user",
   ];
 }
 

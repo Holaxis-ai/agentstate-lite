@@ -1,7 +1,7 @@
 /**
  * `skill install|status|uninstall` — destructive-write boundary tests (same discipline as the
  * hook suite): manifest-tracked installs, refusal of anything unmanaged, convergent reinstall,
- * exact-manifest uninstall, and env-var host relocation for --scope global.
+ * exact-manifest uninstall, and env-var host relocation for --scope user.
  */
 import test from "node:test";
 import assert from "node:assert/strict";
@@ -478,7 +478,7 @@ test("a manifest naming paths outside the folder is malformed — uninstall refu
   assert.ok(existsSync(path.join(dir, SKILL_MANIFEST_FILENAME)));
 });
 
-test("--scope global honors CLAUDE_CONFIG_DIR / CODEX_HOME relocation, with ${VAR:-fallback} semantics", async () => {
+test("--scope user honors host relocation and --scope global remains an alias", async () => {
   const { base, executable } = scratch();
   const home = path.join(base, "home");
   const claudeHome = path.join(base, "relocated-claude");
@@ -486,19 +486,22 @@ test("--scope global honors CLAUDE_CONFIG_DIR / CODEX_HOME relocation, with ${VA
   mkdirSync(home, { recursive: true });
 
   const env = { CLAUDE_CONFIG_DIR: claudeHome, CODEX_HOME: codexHome };
-  const receipt = await runSkill(["install", "--scope", "global"], { home, env, executable });
-  assert.equal(receipt.skill.scope, "global");
+  const receipt = await runSkill(["install", "--scope", "user"], { home, env, executable });
+  assert.equal(receipt.skill.scope, "user");
   assert.ok(existsSync(path.join(claudeHome, "skills", "aslite", "SKILL.md")));
   assert.ok(existsSync(path.join(codexHome, "skills", "aslite", "SKILL.md")));
   assert.equal(existsSync(path.join(home, ".claude")), false);
   assert.equal(existsSync(path.join(home, ".codex")), false);
+
+  const aliasStatus = await runSkill(["status", "--scope", "global"], { home, env, executable });
+  assert.equal(aliasStatus.skill.scope, "user");
 
   await runSkill(["uninstall", "--scope", "global"], { home, env, executable });
   assert.equal(existsSync(path.join(claudeHome, "skills", "aslite")), false);
   assert.equal(existsSync(path.join(codexHome, "skills", "aslite")), false);
 
   // An EMPTY env value falls back to <home>/.<host> — the shell ${VAR:-default} rule.
-  const targets = skillTargets("global", { home, env: { CLAUDE_CONFIG_DIR: "", CODEX_HOME: "" } });
+  const targets = skillTargets("user", { home, env: { CLAUDE_CONFIG_DIR: "", CODEX_HOME: "" } });
   assert.equal(targets.claude, path.join(home, ".claude", "skills", "aslite"));
   assert.equal(targets.codex, path.join(home, ".codex", "skills", "aslite"));
 });

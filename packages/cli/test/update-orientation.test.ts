@@ -133,8 +133,8 @@ function successfulCheck(
     verify: actionable
       ? [
           "aslite version --check",
-          "aslite skill status --scope global",
-          "aslite hook status --scope global",
+          "aslite skill status --scope user",
+          "aslite hook status --scope user",
         ]
       : [],
     unavailable: null,

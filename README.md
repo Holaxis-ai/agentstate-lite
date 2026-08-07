@@ -20,8 +20,8 @@ carrying another copy of the executable:
 ```sh
 npm install -g @holaxis/aslite@next
 aslite --version
-aslite skill install --scope global
-aslite hook install --scope global
+aslite skill install --scope user
+aslite hook install --scope user
 ```
 
 Restart Claude Code or Codex after installing the skill. `hook install` is optional: it gives

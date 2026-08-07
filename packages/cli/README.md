@@ -33,7 +33,7 @@ Install it globally if you prefer (installs both the `aslite` command and the lo
 ```sh
 npm install -g @holaxis/aslite@next
 aslite --version
-aslite skill install --scope global # optional guidance for Claude Code + Codex
+aslite skill install --scope user # optional guidance for Claude Code + Codex
 ```
 
 ## What it is

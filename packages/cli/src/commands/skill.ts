@@ -9,7 +9,7 @@
 // installed via the marketplace; `skill install` ships with the npm package.
 //
 // TARGETS: Claude Code + Codex only, via the ONE HOST_CONFIG_ROOTS authority (the same env-var
-// semantics `hook install --scope global` uses). OpenCode is deliberately excluded — it has no
+// semantics `hook install --scope user` uses). OpenCode is deliberately excluded — it has no
 // skill surface; its SessionStart integration is the plugin written by `hook install`.
 //
 // DESTRUCTIVE-WRITE DISCIPLINE (same boundary as hook.ts): install writes a manifest
@@ -73,15 +73,16 @@ import {
   resolvePersistentInstallAuthority,
   type PersistentInstallAuthority,
 } from "../install-authority.js";
+import { normalizeInstallScope, type InstallScope } from "../install-scope.js";
 
 export { isSafeManifestEntry };
 
 export const SKILL_USAGE = `agentstate-lite skill — install this package's Agent Skill into host skill folders
 
 Usage:
-  agentstate-lite skill install   [--scope project|global]
-  agentstate-lite skill status    [--scope project|global]
-  agentstate-lite skill uninstall [--scope project|global]
+  agentstate-lite skill install   [--scope project|user]
+  agentstate-lite skill status    [--scope project|user]
+  agentstate-lite skill uninstall [--scope project|user]
 
 Installs (or removes) the generated Agent Skill shipped with this npm package — SKILL.md plus its
 references/ folder — for Claude Code and Codex. OpenCode is deliberately not a target: it has no
@@ -92,7 +93,7 @@ pre-existing folder it does not manage; uninstall removes exactly the manifested
 a folder holding anything else. Reinstall is idempotent (exit 0, changed:false when current).
 \`status\` reports per host: absent | unmanaged | installed | stale (byte-compare against this
 executable's own shipped assets). Status reports install state at these paths; Codex host
-discovery is verified at GLOBAL scope (codex 0.144.x) — project-scope placement follows each
+discovery is verified at USER scope (codex 0.144.x) — project-scope placement follows each
 host's documented convention.
 
 Persistent install from npm-package bytes requires a durable global install
@@ -101,9 +102,11 @@ host folder is changed. npx remains supported for read-only, trial, and bootstra
 
 Options:
   --scope project   Write to the CURRENT project (default): .claude/skills/aslite/, .codex/skills/aslite/
-  --scope global    Write to each host's configured USER home (environment override or default)
+  --scope user      Write to each host's configured user home (environment override or default)
   --json            Emit compact JSON instead of TOON
   -h, --help        Show this help
+
+The former spelling --scope global remains accepted as an alias for --scope user.
 `;
 
 /** The installed skill folder name under each host's `skills/` directory. */
@@ -144,7 +147,7 @@ export function resolveSkillAssets(executable?: string): SkillAssets {
   const exe = executable ?? currentExecutableRealPath();
   if (exe === undefined) {
     throw new CliError("RUNTIME", "cannot resolve the running executable's own path", {
-      help: `${cliInvocation()} skill install --scope project|global`,
+      help: `${cliInvocation()} skill install --scope project|user`,
     });
   }
   if (isSkillBundlePath(exe)) {
@@ -197,7 +200,7 @@ export interface SkillTargets {
 }
 
 export function skillTargets(
-  scope: "project" | "global",
+  scope: InstallScope,
   deps: { cwd?: string; home?: string; env?: NodeJS.ProcessEnv } = {},
 ): SkillTargets {
   if (scope === "project") {
@@ -653,14 +656,15 @@ export async function skill(argv: string[], deps: SkillDeps = {}): Promise<void>
       sub === undefined
         ? "skill requires a subcommand (install|status|uninstall)"
         : `unknown skill subcommand: ${sub} (expected install|status|uninstall)`,
-      { help: `${cliInvocation()} skill install|status|uninstall [--scope project|global]` },
+      { help: `${cliInvocation()} skill install|status|uninstall [--scope project|user]` },
     );
   }
 
-  const scope = (values.scope as string | undefined) ?? "project";
-  if (scope !== "project" && scope !== "global") {
-    throw new CliError("USAGE", `unsupported skill scope: ${scope} (expected project|global)`, {
-      help: `${cliInvocation()} skill ${sub} --scope project|global`,
+  const requestedScope = values.scope as string | undefined;
+  const scope = normalizeInstallScope(requestedScope);
+  if (scope === undefined) {
+    throw new CliError("USAGE", `unsupported skill scope: ${requestedScope} (expected project|user)`, {
+      help: `${cliInvocation()} skill ${sub} --scope project|user`,
     });
   }
 
