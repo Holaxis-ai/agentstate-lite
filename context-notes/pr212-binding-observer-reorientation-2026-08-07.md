@@ -5,7 +5,7 @@ description: >-
   Three-cycle diagnostic reorientation: explicit binding-target absence,
   stable-shape, and transition taxonomy before any further fix.
 actor: codex-pr212-orchestrator
-timestamp: '2026-08-07T16:06:10.763Z'
+timestamp: '2026-08-07T16:18:37.960Z'
 ---
 # PR #212 binding-observer architecture reorientation
 
@@ -63,7 +63,28 @@ At `61ff794a6e1515f662c2005d800c814058da0139`, the core architecture, root mutex
 
 ## Reorientation gate
 
-No builder is authorized until architecture and compatibility reviewers approve one explicit truth table and minimal observation state machine. The subsequent patch must add table-driven red/green tests at `61ff794`, change only the binding-target observer/tests, and restart exact-SHA Review before QA. The prior cap is not reset by simply renaming another patch cycle; this reorientation artifact and independent model review are the required new evidence.
+The architecture, compatibility, and falsification passes are complete. The gate is satisfied and one narrowly bounded Builder correction is authorized. The subsequent patch must add table-driven red/green tests at `61ff794`, change only the private binding-target observer/tests, and restart exact-SHA Review before QA. The prior cap is not reset by simply renaming another patch cycle; this reorientation artifact and independent model review are the required new evidence.
+
+## Frozen resolution
+
+The observer is a local three-outcome classifier: `NO_BUNDLE`, `EXISTING_BUNDLE`, or typed `UNCERTAIN`. It retains no binding-target receipt across preflight, locked revalidation, or pre-publish.
+
+1. `lstat(candidate)` establishes lexical presence. Initial `ENOENT` alone is absence; every other failure is `RUNTIME`.
+2. For a direct object, its successful `lstat` is the effective-target snapshot. For a symlink, one private followed `stat(candidate)` establishes the referent snapshot; failure, including dangling `ENOENT`, is `RUNTIME`.
+3. `realpath(candidate)` and required `lstat(physical)` establish the second effective-target snapshot. Any failure is `RUNTIME`.
+4. A resolved symlink, directory/non-directory shape mismatch, or `dev`/`ino` mismatch between those two effective snapshots is an observed transition and therefore `RUNTIME`.
+5. A stable non-directory returns `NO_BUNDLE` for both direct and symlink spellings. A stable directory is strictly inspected for own and conventional indexes; a found marker returns `EXISTING_BUNDLE`, verified absence returns `NO_BUNDLE`, and all non-absence probe faults return `RUNTIME`.
+
+This followed snapshot is deliberately local and bounded. It detects only a transition the observer actually witnessed; it does not claim to exclude raw writers after the final observation. Cross-phase receipts, retries, watchers, file-descriptor pinning, hashing, parser changes, discovery changes, and new cleanup behavior are explicitly out of scope.
+
+### Minimum proof delta
+
+- Red at `61ff794`: a stable direct regular file and symlink to the same file must both be classified as no existing bound bundle.
+- Transition guards: direct/symlink effective-target directory-to-file or identity replacement observed within one call must be `RUNTIME`, with no publication.
+- Fault guards: followed `stat`, `realpath`, and resolved `lstat` failures retain exact phase/operation/path/fs-code provenance; dangling remains `RUNTIME`.
+- Existing disappearance, directory/bundle, parser, no-delete, mutex, publication, and installed-package proofs remain authoritative and must stay green.
+
+This chooses the architecture/compatibility model over the falsifier's one-branch alternative because the extra private `stat` has one concrete, bounded purpose: it makes the pre- and post-canonicalization observations refer to the same effective object, so stable symlink shape can be distinguished from a transition the observer actually saw. The falsifier's scope warning is retained by rejecting any cross-phase or open-ended identity protocol.
 
 ## Review evidence
 
@@ -72,3 +93,6 @@ No builder is authorized until architecture and compatibility reviewers approve 
 - `context-notes/pr212-exact-review-12dd30b-codex`
 - `context-notes/pr212-exact-rereview-ab2d97f-codex`
 - `context-notes/pr212-final-review-61ff794-codex`
+- `context-notes/pr212-binding-reorientation-architecture-codex`
+- `context-notes/pr212-binding-reorientation-compat-codex`
+- `context-notes/pr212-binding-reorientation-falsifier-codex`

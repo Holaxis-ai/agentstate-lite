@@ -2,10 +2,11 @@
 type: Plan
 title: 'Plan: repair PR #212 rollback ownership and fail-closed isolation'
 description: >-
-  Frozen team plan: pre-publish root-scoped arbitration, strict revalidation,
-  zero product-tree deletion, deterministic Review/QA gates.
+  Frozen team plan plus completed three-cycle reorientation: one local
+  followed-target observer correction is authorized, then fresh exact-SHA Review
+  before QA.
 actor: codex-pr212-orchestrator
-timestamp: '2026-08-07T14:41:08.800Z'
+timestamp: '2026-08-07T16:18:48.042Z'
 ---
 # PR #212 safety-blocker repair — frozen team plan
 

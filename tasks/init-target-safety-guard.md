@@ -5,14 +5,13 @@ status: in_progress
 priority: '1'
 assignee: codex-pr212-orchestrator
 description: >-
-  PR #212 final planned Review CHANGES_REQUESTED at
-  61ff794a6e1515f662c2005d800c814058da0139 on one P2 stable-shape binding parity
-  regression (direct file allowed, symlink to same file RUNTIME). Three-cycle
-  cap reached: architecture reorientation active; no builder or QA until a
-  phase-aware binding-target truth table/state model is independently approved.
-  All other safety and distribution claims survived.
+  PR #212 final Review at 61ff794 found one P2 stable direct-file/symlink-file
+  parity defect. Three-cycle architecture reorientation is complete: a bounded
+  local effective-target snapshot model is frozen and one observer/test-only
+  Builder correction is authorized. All other safety and distribution claims
+  survived; fresh exact-SHA Review is required before QA.
 actor: codex-pr212-orchestrator
-timestamp: '2026-08-07T16:05:55.624Z'
+timestamp: '2026-08-07T16:18:48.052Z'
 ---
 # Problem
 
