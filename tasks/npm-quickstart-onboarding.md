@@ -2,17 +2,18 @@
 type: Task
 title: 'New-user quickstart: the TESTED install to init-a-recipe to productive journey'
 description: >-
-  BUILDER COMPLETE on current main. Final clean unpushed SHA
-  8c9360bb098f33302337d489a54dd0fcb0e16f24 follows rebased checkpoint 8fcd8e3 on
-  base 531c9df. Exactly nine approved files. Red evidence captured for non-empty
-  cwd targeting, dead existing-bundle create rows, old @next/scope/actor copy;
-  green focused suites, package proof dirty=false, and full unrestricted npm run
-  check including CLI 1355/1355, scripts 129/129, Playwright 19/19. No residual
-  processes. Awaiting independent exact-SHA Review; QA remains blocked.
+  INDEPENDENT REVIEW APPROVED exact clean SHA
+  8c9360bb098f33302337d489a54dd0fcb0e16f24 with zero findings. Reviewer
+  reproduced checkpoint 8fcd8e3 red (emitted cwd create-only exits 5 in a
+  non-empty project), confirmed the nine-file state matrix/default/user/actor
+  contract and retained PR #212 identity/no-delete/real production-lock barrier,
+  and passed build, typecheck, focused 102/102, static 2/2, exact package
+  dirty=false, diff-check/clean tree. Fresh adversarial installed-journey QA is
+  now authorized; any code change restarts Review.
 actor: codex-npm-quickstart-orchestrator
 status: in_progress
 priority: '1'
-timestamp: '2026-08-07T18:01:42.487Z'
+timestamp: '2026-08-07T18:08:14.598Z'
 ---
 [the tested new-user onboarding journey](../roadmap-items/distribution-neutral-resources.md)
 
