@@ -51,7 +51,12 @@
 import { cliInvocation, binPath, collapseHomeDirectory, shellArg } from "../invocation.js";
 import { DESCRIPTION, commandReference, compactCommandReference } from "../reference.js";
 import { render } from "../output.js";
-import { findBundleRoot, openBundle, resolveProjectBinding } from "../bundle.js";
+import {
+  CONVENTIONAL_BUNDLE_DIR_NAME,
+  findBundleRoot,
+  openBundle,
+  resolveProjectBinding,
+} from "../bundle.js";
 import {
   deriveBundleDisplayName,
   BUNDLE_NAME_DOC_ID,
@@ -731,13 +736,12 @@ export function buildHomeView(
         `run \`${deps.invocation()} init --recipe none${target}\` to recreate that bound bundle, ` +
         `or fix/remove the binding before browsing recipes`;
     } else {
-      const target = deps.targetDir === undefined ? "" : ` --dir ${shellArg(deps.targetDir)}`;
+      const createTarget = path.join(deps.targetDir ?? ".", CONVENTIONAL_BUNDLE_DIR_NAME);
+      const target = ` --dir ${shellArg(createTarget)}`;
       view.getting_started =
-        `no OKF bundle found in this directory — run \`${deps.invocation()} init --recipe none${target}\` ` +
+        `no OKF bundle found in this directory — run \`${deps.invocation()} init --create-only --recipe none${target}\` ` +
         `to create a blank bundle, or \`${deps.invocation()} recipes\` to compare available workspace setups` +
-        (target
-          ? `; create your chosen setup here with \`${deps.invocation()} init --recipe <name>${target}\``
-          : "");
+        `; create your chosen setup here with \`${deps.invocation()} init --create-only --recipe <name>${target}\``;
     }
   }
   // The board block (sync-verb §U4). FIRST-CONTACT footgun guard: when a board exists for this

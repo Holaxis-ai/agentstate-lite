@@ -43,6 +43,50 @@ const manifest = {
   devDependencies: { local: "*" },
 };
 
+test("root and npm READMEs teach one literal create-only, agent-driven quickstart", async () => {
+  for (const [label, file] of [
+    ["root", path.join(repoRoot, "README.md")],
+    ["npm", path.join(repoRoot, "packages", "cli", "README.md")],
+  ]) {
+    const readme = await readFile(file, "utf8");
+    assert.match(
+      readme,
+      /init --create-only --recipe work-tracking/,
+      `${label} README must use the safe literal work-tracking creation command`,
+    );
+    assert.match(
+      readme,
+      /bring source material or intent\s+to your agent/i,
+      `${label} README must explain what the user contributes`,
+    );
+    assert.match(
+      readme,
+      /agent organizes,\s+types, links, and updates the\s+bundle/i,
+      `${label} README must explain the agent's authoring role`,
+    );
+    assert.match(
+      readme,
+      /^npm install -g @holaxis\/aslite$/m,
+      `${label} README must install the supported default package without a preview tag`,
+    );
+    assert.doesNotMatch(
+      readme,
+      /^(?:npm install -g|npx -y) @holaxis\/aslite@next\b/m,
+      `${label} README must not teach the preview tag as the default journey`,
+    );
+    assert.doesNotMatch(
+      readme,
+      /^aslite (?:skill|hook) install --scope global\b/m,
+      `${label} README must teach the canonical user scope`,
+    );
+    assert.match(
+      readme,
+      /`quickstart-agent` is an advisory example actor label; replace it with the actual agent identity\./,
+      `${label} README must explain the tutorial actor label`,
+    );
+  }
+});
+
 test("the expected tarball set is the fixed base plus the references tree", () => {
   assert.deepEqual(expectedTarballFiles(["a.md", "b/c.md"]), [
     "LICENSE",
@@ -200,6 +244,16 @@ test("installed create-only proof holds the real production lock boundary before
   assert.match(source, /holder\.acquired\.json/);
   assert.match(source, /contender\.contended\.json/);
   assert.match(source, /must remain unpublished while the production lock claim is held/);
+  for (const action of ["install", "status", "uninstall"]) {
+    assert.ok(
+      source.includes(`["skill", "${action}", "--scope", "user", "--json"]`),
+      `the installed verifier must exercise canonical user-scope skill ${action}`,
+    );
+    assert.ok(
+      !source.includes(`["skill", "${action}", "--scope", "global", "--json"]`),
+      `the installed verifier must not project compatibility-only global scope for ${action}`,
+    );
+  }
 });
 
 test("the complete local proof survives an untracked file and poisoned npm lifecycle configuration", async () => {

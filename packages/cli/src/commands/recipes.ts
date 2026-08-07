@@ -13,6 +13,7 @@
 import { parseArgs } from "node:util";
 import type { Bundle } from "@agentstate-lite/core";
 import {
+  CONVENTIONAL_BUNDLE_DIR_NAME,
   findBundleRoot,
   openBundle,
   resolveProjectBinding,
@@ -37,8 +38,9 @@ BUILT-IN recipes shipped with the CLI; an external recipe (a path) is not enumer
 path-addressed via 'recipe add <path>'.
 'init' applies the default recipe ('context-notes') automatically unless '--recipe none' is
 passed. Without a discoverable bundle, this command still lists the offline inventory and exact
-commands for creating a bundle or adding each recipe later. See 'agentstate-lite kinds' for the
-LIVE per-bundle registry a recipe's docs feed into.
+commands for safely creating a new bundle ('init --create-only') or adding each recipe to an
+existing bundle. See 'agentstate-lite kinds' for the LIVE per-bundle registry a recipe's docs feed
+into.
 
 Options:
   --dir <path>          Bundle directory (default: discovered from the cwd)
@@ -78,9 +80,10 @@ export function recipeInventoryRow(
   const targetSuffix = commandTargetSuffix(target);
   const commands: Record<string, string> = {};
   // The wire protocol has no create-bundle endpoint, so a remote-scoped inventory must not emit a
-  // local init command disguised as an action on the selected remote.
-  if (target.remote === undefined) {
-    commands.create_bundle = `${inv} init --recipe ${recipe.id}${targetSuffix}`;
+  // local init command disguised as an action on the selected remote. An existing local bundle is
+  // likewise add-only: create-only against that same target is guaranteed to refuse.
+  if (target.remote === undefined && applied === null) {
+    commands.create_bundle = `${inv} init --create-only --recipe ${recipe.id}${commandTargetSuffix({ dir: CONVENTIONAL_BUNDLE_DIR_NAME })}`;
   }
   commands.add_to_bundle = `${inv} recipe add ${recipe.id}${targetSuffix}`;
 
@@ -175,20 +178,24 @@ export async function recipes(argv: string[], deps: Partial<RecipesCliDeps> = {}
     );
   }
 
+  const addHelp = `${inv} recipe add <name-or-path>${commandTargetSuffix({
+    dir: values.dir,
+    remote: values.remote,
+  })}`;
+  const help =
+    values.remote !== undefined || appliedIds !== undefined
+      ? [addHelp]
+      : [
+          `${inv} init --create-only --recipe <name>${commandTargetSuffix({ dir: CONVENTIONAL_BUNDLE_DIR_NAME })}`,
+          addHelp,
+        ];
+
   stdout(
     render(
       {
         count: rows.length,
         recipes: rows,
-        help:
-          values.remote === undefined
-            ? [
-                `${inv} init --recipe <name>${commandTargetSuffix({ dir: values.dir })}`,
-                `${inv} recipe add <name-or-path>${commandTargetSuffix({ dir: values.dir })}`,
-              ]
-            : [
-                `${inv} recipe add <name-or-path>${commandTargetSuffix({ remote: values.remote })}`,
-              ],
+        help,
       },
       resolveMode(values),
     ),

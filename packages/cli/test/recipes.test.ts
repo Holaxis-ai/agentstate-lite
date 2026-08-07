@@ -194,7 +194,6 @@ test("recipes: lists context-notes with applied:false on a bare bundle, applied:
     assert.equal(rowsBefore[0]!.version, "1");
     assert.equal(rowsBefore[0]!.applied, false);
     assert.deepEqual(rowsBefore[0]!.commands, {
-      create_bundle: `${cliInvocation()} init --recipe context-notes --dir '${dir}'`,
       add_to_bundle: `${cliInvocation()} recipe add context-notes --dir '${dir}'`,
     });
 
@@ -203,6 +202,12 @@ test("recipes: lists context-notes with applied:false on a bare bundle, applied:
     const after = await runJson(recipes, ["--dir", dir]);
     const rowsAfter = after.recipes as Array<Record<string, unknown>>;
     assert.equal(rowsAfter[0]!.applied, true);
+    assert.deepEqual(rowsAfter[0]!.commands, {
+      add_to_bundle: `${cliInvocation()} recipe add context-notes --dir '${dir}'`,
+    });
+    assert.deepEqual(after.help, [
+      `${cliInvocation()} recipe add <name-or-path> --dir '${dir}'`,
+    ]);
   } finally {
     await rm(dir, { recursive: true, force: true });
   }
@@ -238,9 +243,13 @@ test("recipes: no-bundle inventory succeeds without opening or creating a bundle
     views: [],
   });
   assert.deepEqual(contextNotes.commands, {
-    create_bundle: `${cliInvocation()} init --recipe context-notes`,
+    create_bundle: `${cliInvocation()} init --create-only --recipe context-notes --dir '.agentstate-lite'`,
     add_to_bundle: `${cliInvocation()} recipe add context-notes`,
   });
+  assert.deepEqual(result.help, [
+    `${cliInvocation()} init --create-only --recipe <name> --dir '.agentstate-lite'`,
+    `${cliInvocation()} recipe add <name-or-path>`,
+  ]);
 });
 
 test("recipes: explicit targets remain fail-loud instead of falling back to bundle-free inventory", async () => {

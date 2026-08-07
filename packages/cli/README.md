@@ -17,22 +17,31 @@ prefix, resolves both command names from `PATH`, and exercises an offline bundle
 developer proof deliberately stamps `local-dev`, so it works on an in-progress/dirty checkout;
 `prepublishOnly` runs the same journey in strict `npm-package` mode and refuses unless Git proves
 an exact clean source commit.
-The zero-install trial flow is:
+Install the supported default once (both `aslite` and `agentstate-lite` resolve to that same
+artifact), then run the first-value flow from an ordinary project directory:
 
 ```sh
-npx -y @holaxis/aslite@next init
-npx -y @holaxis/aslite@next new "Context Note" cycle-1 --title "cycle-1"
-npx -y @holaxis/aslite@next doc update context-notes/cycle-1 --body "Chose token auth over sessions."
-npx -y @holaxis/aslite@next list
-npx -y @holaxis/aslite@next ui --open # opens a browser window: read the bundle's docs + launch its Views
+npm install -g @holaxis/aslite
+aslite
+aslite recipes
+aslite init --create-only --recipe work-tracking --dir .agentstate-lite
+aslite new "Task" first-task --title "Plan the first change" \
+  --status todo --actor quickstart-agent --dir .agentstate-lite
+aslite --dir .agentstate-lite
 ```
 
-Install it globally if you prefer (installs both the `aslite` command and the long-form alias
-`agentstate-lite`):
+`--create-only` fails before writing when the selected target is occupied or ambiguous. Use
+`recipe add` instead when you intend to modify an existing bundle. Bring source material or intent
+to your agent in the tool you already use. The agent organizes, types, links, and updates the
+bundle through `aslite`; these commands are the plumbing, not a manual data-entry workflow.
+
+`quickstart-agent` is an advisory example actor label; replace it with the actual agent identity.
+
+To try one orientation command without installing anything, run `npx -y @holaxis/aslite`.
+Install the optional Agent Skill after the global install if you want guidance for Claude Code and
+Codex:
 
 ```sh
-npm install -g @holaxis/aslite@next
-aslite --version
 aslite skill install --scope user # optional guidance for Claude Code + Codex
 ```
 

@@ -18,7 +18,7 @@ Install the test-user prerelease from npm. The package puts the stable short com
 carrying another copy of the executable:
 
 ```sh
-npm install -g @holaxis/aslite@next
+npm install -g @holaxis/aslite
 aslite --version
 aslite skill install --scope user
 aslite hook install --scope user
@@ -26,7 +26,7 @@ aslite hook install --scope user
 
 Restart Claude Code or Codex after installing the skill. `hook install` is optional: it gives
 Claude Code, Codex, and OpenCode a compact AgentState orientation at session start. To try one
-command without installing anything, substitute `npx -y @holaxis/aslite@next` for `aslite`.
+orientation command without installing anything, run `npx -y @holaxis/aslite`.
 
 The older marketplace plugin remains temporarily available as a rollback channel while the npm
 upgrade journey is proven. New test installations should use npm so agents rely on `PATH`, not a
@@ -35,18 +35,30 @@ host-owned versioned plugin cache.
 ## Quickstart
 
 ```sh
-aslite init --dir .agentstate-lite   # create the project's bundle (seeds context-notes)
-aslite recipe add work-tracking      # install the Task kind — a task board, as data
-aslite recipe add roadmap            # its companion: Roadmap + Roadmap Item kinds
-                                     # (typed 'contains' links: roadmap → item → task)
-aslite sync --establish              # optional: share the board — creates the 'board'
-                                     # branch on origin; teammates just run 'aslite sync'
+aslite                                     # confirm that no bundle is selected yet
+aslite recipes                             # compare the workspace setups shipped offline
+aslite init --create-only --recipe work-tracking --dir .agentstate-lite
+aslite new "Task" first-task --title "Plan the first change" --status todo \
+  --actor quickstart-agent --dir .agentstate-lite
+aslite --dir .agentstate-lite              # see the Task in the live bundle summary
 ```
+
+`--create-only` refuses an occupied, nested, bound, or concurrently claimed target before it
+writes; use `recipe add` when you deliberately want to add capability to an existing bundle.
+Bring source material or intent to your agent in the tool you already use. The agent organizes,
+types, links, and updates the bundle through `aslite`; these commands are the plumbing, not a
+manual data-entry workflow.
+
+`quickstart-agent` is an advisory example actor label; replace it with the actual agent identity.
 
 The conventional `.agentstate-lite/` folder at the project root is discovered with zero
 config (the way git finds `.git`) — every command after setup runs bare from anywhere in
 the project tree. A bundle stays local until `sync --establish` explicitly shares it on the
 repository's dedicated `board` branch.
+
+When the first task needs a roadmap, run `aslite recipe add roadmap`. To share the local bundle,
+run `aslite sync --establish`; that explicit step creates the remote `board` branch, and teammates
+then use ordinary `aslite sync`.
 
 **When the conventional project folder does not fit:**
 

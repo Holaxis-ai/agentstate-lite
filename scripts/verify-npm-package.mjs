@@ -317,7 +317,9 @@ async function runInstalledProof(spec) {
   const packDir = path.join(scratch, "pack");
   const prefix = path.join(scratch, "prefix");
   const home = path.join(scratch, "home");
-  const bundle = path.join(scratch, "bundle");
+  const quickstartProject = path.join(scratch, "quickstart-project");
+  const quickstartMarker = path.join(quickstartProject, "existing-project-file.txt");
+  const bundle = path.join(quickstartProject, ".agentstate-lite");
   const npmUserConfig = path.join(scratch, "empty-npmrc");
   const npmCache = path.join(scratch, "npm-cache");
   const pluginsDir = path.join(repoRoot, "plugins");
@@ -326,8 +328,9 @@ async function runInstalledProof(spec) {
   const marketplaceBefore = await snapshotTree(marketplaceDir);
 
   try {
-    await Promise.all([mkdir(packDir), mkdir(prefix), mkdir(home)]);
+    await Promise.all([mkdir(packDir), mkdir(prefix), mkdir(home), mkdir(quickstartProject)]);
     await writeFile(npmUserConfig, "");
+    await writeFile(quickstartMarker, "unrelated project content must survive\n");
     const { tarball, meta } = await spec.produce({ scratch, packDir, npmUserConfig, npmCache });
 
     await runNpm(
@@ -449,12 +452,25 @@ async function runInstalledProof(spec) {
       adjacent_package_version: manifest.version,
       version_mismatch: false,
     });
-    const homeIdentity = parseJson((await runCli("aslite", ["--json"])).stdout, "aslite home --json")[
-      "agentstate-lite"
-    ];
+    const discoverySnapshot = await snapshotTree(quickstartProject);
+    const noBundleHome = parseJson(
+      (await runCli("aslite", ["--json"], { cwd: quickstartProject })).stdout,
+      "aslite home --json outside a bundle",
+    );
+    const homeIdentity = noBundleHome["agentstate-lite"];
     assert.equal(homeIdentity.version, manifest.version);
     assert.equal(homeIdentity.channel, spec.expectedChannel);
     assert.equal(homeIdentity.bin, installedEntrypointRealPath);
+    assert.match(
+      noBundleHome.getting_started,
+      /init --create-only --recipe none --dir '\.agentstate-lite'/,
+      "bundle-free home must advertise fail-closed conventional creation",
+    );
+    assert.match(
+      noBundleHome.getting_started,
+      /aslite recipes/,
+      "bundle-free home must point at Recipe discovery",
+    );
 
     await runCli("agentstate-lite", ["--help"]);
     await runCli("aslite", ["--help"]);
@@ -464,10 +480,8 @@ async function runInstalledProof(spec) {
       /(?:agentstate-lite|aslite) recipes/,
       "init help must point at recipe discovery through an installed bin alias",
     );
-    const discoveryDir = path.join(scratch, "recipe-discovery");
-    await mkdir(discoveryDir);
     const discoveredRecipes = parseJson(
-      (await runCli("aslite", ["recipes", "--json"], { cwd: discoveryDir })).stdout,
+      (await runCli("aslite", ["recipes", "--json"], { cwd: quickstartProject })).stdout,
       "bundle-free recipes",
     );
     assert.ok(discoveredRecipes.count >= 3, "the installed CLI must discover the built-in recipe inventory");
@@ -475,28 +489,42 @@ async function runInstalledProof(spec) {
     assert.ok(contextNotes, "the installed recipe inventory must include context-notes");
     assert.equal(contextNotes.applied, null, "bundle-free discovery must not imply an applied state");
     assert.deepEqual(contextNotes.commands, {
-      create_bundle: "aslite init --recipe context-notes",
+      create_bundle: "aslite init --create-only --recipe context-notes --dir '.agentstate-lite'",
       add_to_bundle: "aslite recipe add context-notes",
     });
-    assert.deepEqual(await readdir(discoveryDir), [], "recipe discovery must not create bundle files");
-    parseJson((await runCli("aslite", ["init", "--dir", bundle, "--recipe", "none", "--json"])).stdout, "init");
-    parseJson(
-      (await runCli("aslite", ["recipe", "add", "work-tracking", "--dir", bundle, "--json"])).stdout,
-      "recipe add",
+    const workTracking = discoveredRecipes.recipes.find((recipe) => recipe.name === "work-tracking");
+    assert.ok(workTracking, "the installed recipe inventory must include work-tracking");
+    assert.deepEqual(workTracking.commands, {
+      create_bundle: "aslite init --create-only --recipe work-tracking --dir '.agentstate-lite'",
+      add_to_bundle: "aslite recipe add work-tracking",
+    });
+    assertSnapshotUnchanged(
+      discoverySnapshot,
+      await snapshotTree(quickstartProject),
+      "bundle-free home/recipe discovery must not change the project: ",
     );
+    assert.deepEqual(
+      await readdir(quickstartProject),
+      [path.basename(quickstartMarker)],
+      "bundle-free discovery must leave only the pre-existing project file",
+    );
+    await run(workTracking.commands.create_bundle, [], {
+      cwd: quickstartProject,
+      env: commandEnv,
+      shell: true,
+    });
+    await stat(path.join(bundle, "index.md"));
+    await stat(quickstartMarker);
 
-    // ── init --create-only: the installed guard proves the exact public spelling offline ──
-    const freshCreateOnly = path.join(scratch, "create-only-fresh");
-    parseJson(
-      (await runCli("aslite", ["init", "--create-only", "--dir", freshCreateOnly, "--recipe", "none", "--json"])).stdout,
-      "init --create-only (fresh)",
-    );
-    const bundleSnapshotBefore = await snapshotTree(bundle);
-    const refused = await runCli(
-      "aslite",
-      ["init", "--create-only", "--dir", bundle, "--json"],
-      {},
-    ).then(
+    // The same installed guard must refuse to turn the new quickstart workspace into an
+    // open-or-modify path. Execute the emitted command again, byte for byte, and pin the whole
+    // non-empty project tree so neither bundle nor unrelated project bytes can move.
+    const projectSnapshotBeforeRetry = await snapshotTree(quickstartProject);
+    const refused = await run(workTracking.commands.create_bundle, [], {
+      cwd: quickstartProject,
+      env: commandEnv,
+      shell: true,
+    }).then(
       () => {
         throw new Error("init --create-only over an existing bundle must exit non-zero");
       },
@@ -505,9 +533,9 @@ async function runInstalledProof(spec) {
     assert.match(String(refused.stdout ?? refused.message), /already an OKF bundle/);
     assert.equal(refused.code, 5, "create-only refusal must use the conflict exit class");
     assertSnapshotUnchanged(
-      bundleSnapshotBefore,
-      await snapshotTree(bundle),
-      "create-only refusal must not change the existing bundle: ",
+      projectSnapshotBeforeRetry,
+      await snapshotTree(quickstartProject),
+      "create-only refusal must not change the quickstart project: ",
     );
 
     // Node's ESM --import preload is common to the supported Node 20/22/26 lines. Instrument the
@@ -605,16 +633,23 @@ async function runInstalledProof(spec) {
       true,
       "the installed recipe inventory must retain bundle-aware applied state",
     );
+    assert.deepEqual(
+      appliedRecipes.recipes.find((recipe) => recipe.name === "work-tracking")?.commands,
+      { add_to_bundle: `aslite recipe add work-tracking --dir '${bundle}'` },
+      "an existing local bundle must expose only the actionable add command",
+    );
     parseJson(
       (
         await runCli("aslite", [
           "new",
           "Task",
-          "package-proof",
+          "first-task",
           "--title",
-          "Package proof",
+          "Plan the first change",
           "--status",
           "todo",
+          "--actor",
+          "quickstart-agent",
           "--dir",
           bundle,
           "--json",
@@ -622,16 +657,45 @@ async function runInstalledProof(spec) {
       ).stdout,
       "new",
     );
+    const createdTask = parseJson(
+      (await runCli("aslite", ["doc", "read", "tasks/first-task", "--dir", bundle, "--json"])).stdout,
+      "read attributed quickstart Task",
+    );
+    assert.equal(createdTask.actor, "quickstart-agent", "the literal quickstart Task must retain attribution");
+    assert.equal(createdTask.title, "Plan the first change", "the verifier must execute the documented Task command");
     const listed = parseJson(
       (await runCli("aslite", ["list", "--type", "Task", "--dir", bundle, "--json"])).stdout,
       "list",
     );
     assert.ok(
-      JSON.stringify(listed).includes("tasks/package-proof"),
+      JSON.stringify(listed).includes("tasks/first-task"),
       "the installed CLI must list the Task it created",
     );
+    const productiveHome = parseJson(
+      (await runCli("aslite", ["--dir", bundle, "--json"])).stdout,
+      "productive quickstart home",
+    );
+    assert.ok(
+      productiveHome.bundle.recent.rows.some((row) => row.id === "tasks/first-task"),
+      "home must surface the new Task as useful live state",
+    );
+    const productiveStatus = parseJson(
+      (await runCli("aslite", ["status", "--dir", bundle, "--json"])).stdout,
+      "productive quickstart status",
+    );
+    assert.equal(productiveStatus.kind_warnings, 0, "the attributed Task must keep the quickstart bundle kind-clean");
 
-    // ── skill-channel proof: install → status → reinstall no-op → uninstall, project + global ──
+    const installedReadme = await readFile(path.join(installedRoot, "README.md"), "utf8");
+    assert.match(installedReadme, /init --create-only --recipe work-tracking/);
+    assert.match(installedReadme, /bring source material or intent\s+to your agent/i);
+    assert.match(installedReadme, /agent organizes,\s+types, links, and updates the\s+bundle/i);
+    assert.match(installedReadme, /^npm install -g @holaxis\/aslite$/m);
+    assert.match(
+      installedReadme,
+      /`quickstart-agent` is an advisory example actor label; replace it with the actual agent identity\./,
+    );
+
+    // ── skill-channel proof: install → status → reinstall no-op → uninstall, project + user ──
     const project = path.join(scratch, "skill-project");
     const foreignSkill = path.join(project, ".claude", "skills", "foreign");
     await mkdir(foreignSkill, { recursive: true });
@@ -706,41 +770,41 @@ async function runInstalledProof(spec) {
       "a foreign sibling skill must survive uninstall",
     );
 
-    // Global scope under relocated host homes (CLAUDE_CONFIG_DIR / CODEX_HOME).
+    // User scope under relocated host homes (CLAUDE_CONFIG_DIR / CODEX_HOME).
     const relocatedClaude = path.join(scratch, "relocated-claude");
     const relocatedCodex = path.join(scratch, "relocated-codex");
     const relocatedEnv = { CLAUDE_CONFIG_DIR: relocatedClaude, CODEX_HOME: relocatedCodex };
     parseJson(
       (
-        await runCli("aslite", ["skill", "install", "--scope", "global", "--json"], {
+        await runCli("aslite", ["skill", "install", "--scope", "user", "--json"], {
           cwd: project,
           env: relocatedEnv,
         })
       ).stdout,
-      "skill install global",
+      "skill install user",
     );
     for (const dir of [relocatedClaude, relocatedCodex]) {
       await stat(path.join(dir, "skills", "aslite", "SKILL.md"));
     }
-    const globalStatus = parseJson(
+    const userStatus = parseJson(
       (
-        await runCli("aslite", ["skill", "status", "--scope", "global", "--json"], {
+        await runCli("aslite", ["skill", "status", "--scope", "user", "--json"], {
           cwd: project,
           env: relocatedEnv,
         })
       ).stdout,
-      "skill status global",
+      "skill status user",
     );
-    assert.equal(globalStatus.skill.hosts.claude_code.state, "installed");
-    assert.equal(globalStatus.skill.hosts.codex.state, "installed");
+    assert.equal(userStatus.skill.hosts.claude_code.state, "installed");
+    assert.equal(userStatus.skill.hosts.codex.state, "installed");
     parseJson(
       (
-        await runCli("aslite", ["skill", "uninstall", "--scope", "global", "--json"], {
+        await runCli("aslite", ["skill", "uninstall", "--scope", "user", "--json"], {
           cwd: project,
           env: relocatedEnv,
         })
       ).stdout,
-      "skill uninstall global",
+      "skill uninstall user",
     );
     for (const dir of [relocatedClaude, relocatedCodex]) {
       await assert.rejects(stat(path.join(dir, "skills", "aslite")), /ENOENT/, `${dir} must be cleaned up`);
@@ -792,10 +856,11 @@ async function runInstalledProof(spec) {
       files: contractReceipt.files.length,
       bins: Object.keys(manifest.bin),
       workflow: [
+        "quickstart: home -> recipes -> init --create-only work-tracking -> attributed Task -> home/status",
         "recipes",
-        "init",
-        "recipe add",
+        "init --create-only",
         "new",
+        "doc read",
         "list",
         "skill install/status/uninstall",
         "hook install/uninstall",
