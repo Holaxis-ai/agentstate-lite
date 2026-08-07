@@ -5,12 +5,13 @@ status: in_progress
 priority: '1'
 assignee: codex-pr212-orchestrator
 description: >-
-  PR #212 repair in progress: team approved strict pre-publish root-scoped
-  arbitration, locked revalidation, component-wise directory receipts, and zero
-  product-tree cleanup; Builder -> exact-SHA Review -> adversarial QA -> hosted
-  gates remain.
+  PR #212 builder complete at exact SHA
+  12dd30b73642b8bf1c0e94ce9f9619afd08d7d1d: pre-publish root mutex, strict
+  locked revalidation, directory residue receipts, zero product-tree deletion.
+  Focused/full/build/typecheck/package gates green. Awaiting independent
+  exact-SHA Review, then adversarial QA.
 actor: codex-pr212-orchestrator
-timestamp: '2026-08-07T14:41:09.007Z'
+timestamp: '2026-08-07T15:09:41.766Z'
 ---
 # Problem
 
