@@ -10,8 +10,12 @@ tags:
   - ci
   - release
 actor: codex-main-audit
-timestamp: '2026-08-07T14:05:18.153Z'
+timestamp: '2026-08-07T14:05:32.370Z'
 ---
+# Summary
+
+The one-day comparison contains two real first-parent merges and harmless preserved PR ancestry, but it also reveals a P1 post-merge automation regression: the committed plugin bundle has not regenerated since PR #195 because the standalone UI build omits view-runtime.
+
 # Purpose and goals
 
 Ultimate goal: make agentstate-lite shared, versioned, conflict-safe Markdown memory installable and usable by a human and agent fleet without founder intervention.
