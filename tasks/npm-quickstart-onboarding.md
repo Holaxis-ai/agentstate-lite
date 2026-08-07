@@ -2,13 +2,17 @@
 type: Task
 title: 'New-user quickstart: the TESTED install to init-a-recipe to productive journey'
 description: >-
-  Owns the installed npm → no-bundle orientation/Recipe discovery → create-only
-  work-tracking bundle → attributed Task → visible productive-state proof; guide
-  curriculum and release staging remain separate.
-actor: openai/codex
-status: todo
+  CLAIMED by codex-npm-quickstart on 2026-08-07. Proximate goal: make a clean
+  npm install lead deterministically from no-bundle orientation through recipe
+  discovery and create-only work-tracking init to one attributed Task and
+  visible productive state, explicitly teaching the agent-driven authoring
+  model. Build from gated create-only SHA 81b3c39 while its Brian-owned PR/merge
+  is pending; do not modify PR #211, and reconcile its canonical user-scope
+  vocabulary before final review. No code changes yet.
+actor: codex-npm-quickstart
+status: in_progress
 priority: '1'
-timestamp: '2026-08-06T14:31:49.286Z'
+timestamp: '2026-08-07T00:22:56.105Z'
 ---
 [the tested new-user onboarding journey](../roadmap-items/distribution-neutral-resources.md)
 
