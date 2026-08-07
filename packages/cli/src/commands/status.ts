@@ -415,7 +415,7 @@ export async function status(argv: string[], deps: Partial<StatusCliDeps> = {}):
   const bridgeFieldRows: Record<string, unknown>[] = docs
     .filter((doc) => hasLegacyBridgeField(doc.frontmatter))
     .map((doc) => ({ id: doc.id }));
-  // A stale convention governing the legacy 'Page' name is silent scaffolding (review F3a):
+  // A stale convention governing the legacy 'Page' name is silent scaffolding:
   // `kinds` advertises the dead name and kind-aware authoring would produce runtime-ignored
   // docs, yet no doc-level scan above sees it (it scans instances, not governs declarations).
   const pageConventionRows: Record<string, unknown>[] = docs

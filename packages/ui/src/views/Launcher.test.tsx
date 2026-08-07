@@ -334,13 +334,13 @@ describe("home surface", () => {
     // Never advertise the UNSCOPED npm coordinate: `aslite` is not ours (404 on the registry),
     // so a copy-pasted `npx -y aslite …` runs whatever lands on that name. Ours is @holaxis/aslite.
     expect(all).not.toMatch(/npx\s+-y\s+aslite\b/);
-    // No paste-ready bare CLI invocations anywhere in the walkthrough (PR review P1): the only
+    // No paste-ready bare CLI invocations anywhere in the walkthrough: the only
     // supported channel today (marketplace plugin) does not put `aslite` on PATH, and `skill
     // install` is npm-only — actions stay agent-mediated, mechanics described without commands.
     expect(all).not.toMatch(/aslite (skill|hook|recipes|recipe|sync)\b/);
 
     // The second click of a double-click on the nav slot (detail 2 — React reuses Next's DOM
-    // node as Got it) must never dismiss (PR review P2).
+    // node as Got it) must never dismiss.
     await act(async () => {
       container
         .querySelector(".orientation-dismiss")!
@@ -408,8 +408,7 @@ describe("home surface", () => {
     expect(storage.getItem(orientationStorageKey(BUNDLE_ROOT))).toBe("dismissed");
 
     // A SECOND reopen starts over at panel 1 — pins dismissOrientation's step reset, which is the
-    // only guard after an in-session reopen→dismiss cycle (review round 2, finding 1: this line
-    // survived deletion before this pin existed).
+    // only guard after an in-session reopen→dismiss cycle.
     await act(async () => {
       (container.querySelector(".about-btn") as HTMLButtonElement).click();
       await flush();

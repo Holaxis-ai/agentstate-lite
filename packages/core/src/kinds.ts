@@ -140,8 +140,8 @@ function describeShape(value: unknown): string {
  * String-coerce every scalar element of an array-ish value (tolerating YAML 1.1 boolean/Date
  * coercion on unquoted enum members), WARNING and DROPPING any non-scalar member (an object or
  * nested array) instead of silently stringifying it to `"[object Object]"` — the exact silent
- * corruption a usability study caught agents feeding a list of objects into `required`/`optional`
- * or an enum's `values` list (F2). A present-but-non-array `value` warns (wrong shape); an
+ * corruption caused by agents feeding a list of objects into `required`/`optional` or an enum's
+ * `values` list. A present-but-non-array `value` warns (wrong shape); an
  * ABSENT (`undefined`) `value` does not, since "not declared" is normal, not a shape error.
  */
 function toStringArrayLenient(
@@ -202,7 +202,7 @@ const VALID_FIELDS_KEYS = new Set([
 
 /**
  * Top-level convention-doc keys that are near-misses for the ONE correct enum-constraint shape
- * (`fields.values.<field>: [...]`) — the exact wrong shapes a usability study (F2) caught agents
+ * (`fields.values.<field>: [...]`) — the exact wrong shapes agents commonly reach for
  * reaching for (`enum:`, `enums:`, top-level `values:`, `constraints:`). This is a SMALL, DENY-
  * ADJACENT set, not a generic top-level-key linter: OKF §9 permits unknown frontmatter, and a
  * bundle producer may legitimately add other top-level keys to a convention doc (title, tags,

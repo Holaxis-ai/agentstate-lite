@@ -143,7 +143,7 @@ export async function artifact(argv: string[], deps: Partial<ArtifactCliDeps> = 
   // Validate --supersedes UPFRONT, before any write: it must be an existing artifacts/ Artifact. This
   // keeps the same-directory 'supersedes' link correct AND guarantees a real Artifact is the doc that
   // gets flipped — a cross-dir or non-Artifact target is a caller error, rejected before we touch the
-  // store rather than silently writing a dangling edge (review #150 F3/F5).
+  // store rather than silently writing a dangling edge.
   const rawSupersedes = (values.supersedes as string | undefined)?.trim();
   const supersedes = rawSupersedes
     ? await resolveConceptIdCliArgument(bundle, rawSupersedes)
@@ -176,7 +176,7 @@ export async function artifact(argv: string[], deps: Partial<ArtifactCliDeps> = 
 
   // Derive a collision-safe id whose RECORD *and* BLOB key are both free. Considering existing blob
   // keys (not just record ids) is what stops a re-run after an orphaned blob from bricking on the
-  // stray blob's expect-absent conflict: the re-run simply picks the next free slug (review #150 F2).
+  // stray blob's expect-absent conflict: the re-run simply picks the next free slug.
   const [recordHeads, blobKeys] = await Promise.all([
     queryHeads(bundle, { prefix: "artifacts/" }),
     listBlobs(bundle, "artifacts/"),
@@ -224,7 +224,7 @@ export async function artifact(argv: string[], deps: Partial<ArtifactCliDeps> = 
   } catch (err) {
     // The blob is written but the record is not — NAME the orphan and point at recovery. mutateDoc
     // always throws a CliError, so we preserve its code (exit taxonomy) and APPEND the orphan context
-    // rather than rethrowing it untouched (the old wrapper was dead code — review #150 F1). A re-run
+    // rather than rethrowing it untouched. A re-run
     // picks a fresh id (the orphan's blob key is now 'taken'); the stray bytes stay deletable.
     const code = err instanceof CliError ? err.code : "RUNTIME";
     const why = err instanceof Error ? err.message : String(err);

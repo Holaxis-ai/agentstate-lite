@@ -46,7 +46,7 @@ export function diffDocsBetween(
   toRef: string,
   opts: DiffDocsOptions = {},
 ): DocChange[] {
-  // A prefix scope is pushed down as git's own `-- <pathspec>` (cost-only, C review N4): git
+  // Push a prefix scope down as git's own `-- <pathspec>` so git
   // computes the diff over just that subtree instead of the whole repo, which matters once an
   // in-tree bundle sits in a large code repo. The JS-side prefix-strip/filter below is unchanged
   // (still correct on an already-scoped diff) — this is a cost cut, not a behavior change.
@@ -94,7 +94,7 @@ export type ChangesSinceOutcome =
  * The enriched delta feed since a cursor token — {@link diffDocsBetween} over `<token>..HEAD`,
  * guarded by `git cat-file -e <token>^{commit}` so a rewritten-away cursor reports `dangling`
  * instead of a fatal `Invalid revision range` — the honest re-anchor path is the CURSOR module's
- * job (U2).
+ * job.
  */
 export function changesSince(boardPath: string, token: string): ChangesSinceOutcome {
   if (runGit(boardPath, ["cat-file", "-e", `${token}^{commit}`]).status !== 0) {

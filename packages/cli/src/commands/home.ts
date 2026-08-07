@@ -16,7 +16,7 @@
 // `home()` wraps the call in its OWN try/catch too, so even an injected/misbehaving dep can never
 // fail a session.
 //
-// BOARD AWARENESS (sync-verb §U4): home additionally renders a `board` block — the moment-(e)
+// BOARD AWARENESS: home additionally renders a `board` block — the
 // strings ("since this machine last synced", per-doc human lines, the unpushed/uncommitted
 // backstop, `board: up to date`) — read from the per-clone awareness CACHE (`cursor.ts`) that
 // sync/session-start's pull steps write. The RENDER's OFFLINE GUARANTEE is preserved: the default
@@ -209,7 +209,7 @@ export interface HomeDeps {
    */
   summarizeBundle: () => Promise<BundleSummary | UnreadableBundle | null>;
   /**
-   * The board-awareness probe (sync-verb §U4) — LOCAL git + the per-clone state file, never a
+   * The board-awareness probe — LOCAL git + the per-clone state file, never a
    * network op. Defaults to {@link defaultLoadBoardStatus}; tests inject a fake.
    */
   loadBoardStatus: (dir?: string) => Promise<BoardStatus | null>;
@@ -219,8 +219,8 @@ export interface HomeDeps {
    */
   boardPull?: BoardPullOutcome;
   /**
-   * True when an installed managed SessionStart hook predates `session-start` (the U6-inherited
-   * re-install prompt's signal). Defaults to hook.ts's {@link hookNeedsUpdate} (fs-only reads).
+   * True when an installed managed SessionStart hook predates `session-start`. Defaults to
+   * hook.ts's {@link hookNeedsUpdate} (fs-only reads).
    */
   hookNeedsUpdate: () => boolean;
   /**
@@ -347,7 +347,7 @@ export async function defaultLoadWorkspaces(home?: string, signal?: AbortSignal)
     .sort((a, b) => a.label.localeCompare(b.label));
 }
 
-// ── board awareness (sync-verb §U4) ───────────────────────────────────────────
+// ── board awareness ───────────────────────────────────────────────────────────
 
 /**
  * The IN-PROCESS pull outcome `session-start` hands the render (never persisted — the honest
@@ -387,7 +387,7 @@ export type BoardStatus =
    * The BOTH-WORLDS window (or its post-cleanup remnant): a fetched `origin/board` exists while
    * `.agentstate-lite/` is still committed at HEAD. `line` carries the ONE shared factory's truth
    * (the same message sync's refusal renders — pull-first, or the untrack escape), so home never
-   * says "run sync" for a sync that would only refuse (F5, one-hop guidance).
+   * says "run sync" for a sync that would only refuse.
    */
   | { state: "window"; line: string }
   | {
@@ -446,7 +446,7 @@ export const BOARD_CHANGES_SHOWN_LIMIT = 10;
 /** In-tree since-header: session-start's fetch is the "check", there is no sync verb here. */
 export const IN_TREE_SINCE_FIELD = "since_this_machine_last_checked";
 
-/** The hook-reinstall prompt (U6-inherited): the installed hook predates `session-start`. */
+/** The hook-reinstall prompt: the installed hook predates `session-start`. */
 export function hookUpdateNote(inv: string): string {
   return `the installed SessionStart hook predates \`session-start\` — re-run \`${inv} hook install\` to pick up the board-aware hook`;
 }
@@ -506,7 +506,7 @@ export function buildBoardBlock(
   const rows = status.cache?.delta ?? [];
   const visible = rows.filter((r) => !status.selfActors.includes(r.actor));
   if (visible.length > 0) {
-    // CURSOR HONESTY (decided trade-off, plan §U4): labeled by MACHINE reality — the cursor is
+    // CURSOR HONESTY: labeled by MACHINE reality — the cursor is
     // per-clone state, not a cross-machine per-person one (that defers to the hosted tier). The
     // in-tree header says "checked", not "synced": the fetch step is the check there, and the
     // rows are UPSTREAM changes `git pull` delivers, not changes already merged locally.
@@ -562,7 +562,7 @@ export async function defaultLoadBoardStatus(dir?: string): Promise<BoardStatus 
       const probed =
         remoteRefExists ||
         runGit(top, ["rev-parse", "--verify", "--quiet", `refs/heads/${BOARD_BRANCH}`]).status === 0;
-      // THE BOTH-WORLDS WINDOW (F5), from LOCAL EVIDENCE ONLY: the folder is committed at HEAD
+      // THE BOTH-WORLDS WINDOW, from LOCAL EVIDENCE ONLY: the folder is committed at HEAD
       // while a previously FETCHED origin/board ref exists. Sync would refuse this state with the
       // window/remnant/dual-board guidance — so home renders THAT truth instead of a "run sync"
       // dead end. The refusal copy is reused verbatim by running channel detection with an
@@ -744,7 +744,7 @@ export function buildHomeView(
         `; create your chosen setup here with \`${deps.invocation()} init --create-only --recipe <name>${target}\``;
     }
   }
-  // The board block (sync-verb §U4). FIRST-CONTACT footgun guard: when a board exists for this
+  // The board block. FIRST-CONTACT footgun guard: when a board exists for this
   // repo but isn't provisioned, the line above the fold is "run sync" — and the `init` hint is
   // SUPPRESSED entirely (the else-if above), so a founder can never be told to init a divergent
   // second bundle by our own hint.
@@ -754,7 +754,7 @@ export function buildHomeView(
     view.board = board.block;
   }
   if (hookUpdate) {
-    // U6-inherited re-install prompt: self-clearing (disappears once `hook install` is re-run).
+    // Re-install prompt: self-clearing (disappears once `hook install` is re-run).
     view.hook_update = hookUpdate;
   }
   if (bindingError) {
@@ -921,7 +921,7 @@ export async function home(argv: string[], deps: Partial<HomeDeps> = {}): Promis
     if (workspaceTimer) clearTimeout(workspaceTimer);
   }
 
-  // The board block (sync-verb §U4) — skipped for a --remote scope (the board is a git-tier LOCAL
+  // The board block — skipped for a --remote scope (the board is a git-tier LOCAL
   // concept). Double-guarded like everything else here: a throwing probe yields no board block.
   let board: { block?: string | Record<string, unknown>; firstContact?: string } | undefined;
   if (!remote) {
@@ -933,7 +933,7 @@ export async function home(argv: string[], deps: Partial<HomeDeps> = {}): Promis
     }
   }
 
-  // U6-inherited hook re-install prompt (fs-only reads; guarded — never fails the session).
+  // Hook re-install prompt (fs-only reads; guarded — never fails the session).
   let hookUpdate: string | undefined;
   try {
     if ((deps.hookNeedsUpdate ?? hookNeedsUpdate)()) hookUpdate = hookUpdateNote(invocation());

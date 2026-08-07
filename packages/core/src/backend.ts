@@ -108,7 +108,7 @@ function isAbsentFileError(err: unknown): boolean {
  * `fs.writeFile` clobbers the first's temp file, and the first write's `fs.rename` then makes the
  * SECOND write's `fs.rename` fail with ENOENT (its temp file is already gone). Found via the CLI's
  * `--remote` multi-writer convergence test (N concurrent `link add`s to one doc through one
- * `serve()` process — Stage 1 Unit 3 part B). `randomUUID()` makes the name collision-proof
+ * `serve()` process). `randomUUID()` makes the name collision-proof
  * regardless of clock resolution or process identity.
  */
 async function atomicWrite(filePath: string, content: string | Uint8Array): Promise<void> {

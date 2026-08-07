@@ -470,7 +470,7 @@ export type ProvisionOutcome =
  * True when `<dir>/.git` exists as a FILE (never a directory) — the structural signature of git's
  * own checkout machinery: a linked worktree OR a submodule (both point their `.git` at a real
  * gitdir elsewhere via this same file shape; a full repository's `.git` is a directory). This is
- * the ONLY gate that makes {@link repairWorktree} reachable: the U3a #1 never-touch guarantee
+ * the ONLY gate that makes {@link repairWorktree} reachable: the never-touch guarantee
  * requires that a repair attempt can NEVER fire against a plain foreign directory, only against
  * something that already looks like git's own machinery — {@link repairedWorktreeIsBoard} is what
  * then tells a genuine `board` worktree apart from a submodule or an unrelated worktree that merely
@@ -523,7 +523,7 @@ export function isShallowRepository(top: string): boolean {
 }
 
 /**
- * The ONE unambiguous local-branch adoption (establish/window journeys, F2): a leftover local
+ * The ONE unambiguous local-branch adoption for establish/window journeys: a leftover local
  * `board` branch — e.g. the committed-case establisher's own root commit after the cleanup PR
  * merged — that is a STRICT ANCESTOR of a LIVE-fetched `origin/board` is fast-forwarded to it and
  * adopted. Refusal-preserving by construction: EVERY guard failure returns false and the caller
@@ -560,7 +560,7 @@ function tryFastForwardAdoptLocalBoard(top: string, localSha: string, remoteSha:
 }
 
 /**
- * The tracked-folder REMNANT probe (establish/window journeys, F3): the folder-removal (cleanup)
+ * The tracked-folder REMNANT probe for establish/window journeys: the folder-removal (cleanup)
  * commit has already LANDED on this branch's remote counterpart AND this clone has already pulled
  * it, yet some board paths are STILL tracked at HEAD — a clone's own board commit, merged over the
  * removal, re-added them. In that state the window's "run 'git pull'" advice is a DEAD END (pull
@@ -586,8 +586,8 @@ export function trackedBoardRemnantPaths(top: string): string[] | null {
 /**
  * What a tracked-folder-facing-a-shared-board state should tell the user — the ONE string source
  * for the sync/provisioning refusal ({@link preShareWindowError}), channel detection
- * (`channel.ts`), and home's offline board line (F5: home renders this truth directly instead of
- * a "run sync" that sync then refuses). `state` is the structured discriminator the thrown
+ * (`channel.ts`), and home's offline board line. Home renders this truth directly instead of a
+ * "run sync" that sync then refuses. `state` is the structured discriminator the thrown
  * refusal carries in `details.state`.
  */
 export interface BoardWindowGuidance {
@@ -656,7 +656,7 @@ export function boardWindowGuidance(top: string, originConfigured = true): Board
  *    evidence is a PREVIOUSLY FETCHED `origin/board` ref while no `origin` remote is configured
  *    any more — the default wording would falsely claim the branch "exists on origin", and its
  *    bare `git pull` help cannot work with no remote to pull from;
- *  - the REMNANT arm ({@link trackedBoardRemnantPaths}, F3): the removal already landed AND was
+ *  - the REMNANT arm ({@link trackedBoardRemnantPaths}): the removal already landed AND was
  *    pulled, so "run 'git pull'" is a dead end — the refusal names the still-tracked paths and
  *    the `git rm -r --cached` escape instead.
  */
@@ -708,7 +708,7 @@ export function existingDirRefusal(reason: ExistingDirRefusalReason, boardPath: 
 }
 
 /**
- * SELF-HEALING board-worktree provisioning (all branches empirically grounded, §U1):
+ * SELF-HEALING board-worktree provisioning:
  * `git fetch --prune origin` runs BEFORE `board` is referenced (best-effort: offline provisioning still
  * works from a previously fetched `origin/board`); worktree absent but a board ref exists → a
  * fresh `git worktree add`; a pre-existing NON-EMPTY `.agentstate-lite/` that is NOT the board
@@ -729,7 +729,7 @@ export function existingDirRefusal(reason: ExistingDirRefusalReason, boardPath: 
  * directory that was never git's business to begin with).
  */
 export interface NetworkBudgetOptions {
-  /** Budget for the op's `git fetch` (default {@link NETWORK_TIMEOUT_MS}) — U4's pull slices this. */
+  /** Budget for the op's `git fetch` (default {@link NETWORK_TIMEOUT_MS}); callers may slice it. */
   fetchTimeoutMs?: number;
   /** ssh ConnectTimeout override, in seconds — see {@link RunOptions.connectTimeoutSeconds}. */
   connectTimeoutSeconds?: number;
@@ -818,7 +818,7 @@ export function provisionBoardWorktree(dir: string, budget: NetworkBudgetOptions
     };
   }
 
-  // F2 (establish/window journeys): the establisher's receipt chain — "git pull, then sync" —
+  // The establisher's "git pull, then sync" receipt chain
   // must survive a teammate advancing origin/board in the window. A leftover local branch that is
   // a STRICT ANCESTOR of a LIVE-fetched origin/board fast-forwards and is adopted; every other
   // shape keeps the `local_board` refusal verbatim. Memoized: the two refusal sites below share
@@ -849,7 +849,7 @@ export function provisionBoardWorktree(dir: string, budget: NetworkBudgetOptions
       // Non-empty and (per isProvisioned above) not currently a genuine `board` checkout: it may
       // STILL be the real board worktree, just wedged with stale pointers — try the structural
       // self-heal FIRST, reachable ONLY because the worktree signature is present (never for a
-      // plain foreign directory — the U3a #1 never-touch guarantee).
+      // plain foreign directory — the never-touch guarantee).
       const hadSignature = hasWorktreeSignature(boardPath);
       let reason: ExistingDirRefusalReason = "foreign";
       if (hadSignature) {
@@ -1060,7 +1060,7 @@ function primaryActor(docs: DocChange[]): string | undefined {
 }
 
 /**
- * The commit-subject grammar (test-pinned, §U1): stable `board:` prefix; single-doc
+ * The commit-subject grammar (test-pinned): stable `board:` prefix; single-doc
  * `board: <actor> — <verb> <id>`; multi-doc single-actor `board: <actor> — N docs` (NEVER
  * "1 docs" — one doc always takes the single-doc form); multi-actor `board: N docs from M actors`
  * (the subject names an actor only when exactly one). A commit that touches ONLY reserved files
@@ -1541,7 +1541,7 @@ export function push(boardPath: string): void {
 /**
  * The committed-folder establishment publishes the freshly created `board` branch WITH TRACKING —
  * `git push -u origin board`, run from the repo TOP (during establishment the branch exists only
- * as a ref; it is not checked out anywhere). The `-u` is LOAD-BEARING (panel round 2): without it
+ * as a ref; it is not checked out anywhere). The `-u` is LOAD-BEARING: without it
  * the establishing machine's fresh `board` branch has no tracking config at all — sync itself
  * always uses EXPLICIT `origin/board` refs precisely because that state exists, but the humans'
  * own git (`status`, `branch -vv`) reads the tracking config, and this is the one moment the
@@ -1711,7 +1711,7 @@ function swallowReason(err: BoardGitError): string {
 
 /**
  * `git fetch origin` → `git merge --ff-only origin/board`, SWALLOWING every nonzero exit — the
- * fail-soft matrix (§U1): not-a-repo, no-remote/no-upstream, detached HEAD, divergence, dirty
+ * fail-soft matrix: not-a-repo, no-remote/no-upstream, detached HEAD, divergence, dirty
  * refusal, auth/network, a held lock, even a missing git binary. This is the SessionStart pull's
  * primitive: it must never throw and never block a render on repo state.
  */
@@ -1762,7 +1762,7 @@ export function ffPull(boardPath: string, budget: NetworkBudgetOptions = {}): Ff
 /**
  * Local board commits ahead of the explicit `origin/board` ref, or `null` when no such ref exists
  * (no remote / never fetched) — the caller distinguishes "0 unpushed" from "no upstream to count
- * against" (the U4 backstop needs both).
+ * against" (the awareness backstop needs both).
  */
 export function unpushedCount(boardPath: string): number | null {
   if (runGit(boardPath, ["rev-parse", "--verify", "--quiet", `refs/remotes/${BOARD_REF}`]).status !== 0) {

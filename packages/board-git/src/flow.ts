@@ -80,9 +80,9 @@ export function folderPresentInCodeIndex(top: string): boolean {
 
 /**
  * The behind-origin freshness guard's probe: the commits on `origin/<branch>` that this clone
- * does NOT have and that TOUCH the board folder. Establishing past such a commit is the
- * reviewer-driven disaster (U5 review HIGH 1): the teammate's board commit is orphaned on the
- * frozen folder FOREVER (the root commit is cut from stale HEAD, the cleanup PR merges cleanly,
+ * does NOT have and that TOUCH the board folder. Establishing past such a commit would orphan the
+ * teammate's board commit on the frozen folder FOREVER (the root commit is cut from stale HEAD,
+ * the cleanup PR merges cleanly,
  * and sync refuses everywhere). Returns null when `origin/<branch>` doesn't resolve (a
  * never-pushed branch — nothing to be behind of); commits that DON'T touch the folder are
  * deliberately not blocking (the board tree is identical either way).
@@ -189,7 +189,7 @@ export function gitDirMarkerPath(top: string, key: string): string {
 }
 
 /**
- * Remove a marker and REPORT whether it is actually gone (F-D1): an unlink can fail silently in
+ * Remove a marker and REPORT whether it is actually gone: an unlink can fail silently in
  * spirit (immutable file, EPERM on the containing dir), and a receipt claiming "cleared" for a
  * file that survived is a lie. Never throws — `false` means "still present; say so honestly".
  */

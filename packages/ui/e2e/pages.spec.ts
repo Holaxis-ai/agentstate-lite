@@ -263,12 +263,12 @@ test("P1: an SSE outage self-heals — a change made while the stream was down a
 });
 
 test("P1: a session-rotating restart surfaces 'Connection lost' instead of staying silently stale (adversarial-review fold-in)", async ({ page }) => {
-  // The restart the review flagged: unlike the SSE-resilience test above (which pins the SAME
+  // Unlike the SSE-resilience test above (which pins the SAME
   // secret across the restart to prove reconnect recovery), THIS restart mints a genuinely
   // DIFFERENT secret — the real "stable port, rotated session" case. The open tab's cookie is
   // now dead everywhere; the interceptor's 403 handling (queryClient.ts / interceptor.ts) must
   // surface a clear recovery screen the moment ANY request the shell makes needs the session,
-  // not a per-view "could not load" banner (the review's "silently stale" finding).
+  // not a per-view "could not load" banner.
   const dir = await seedPagesBundle(TASKS);
   const first = await bootUiServerInProcess({ dir, sessionSecret: "restart-403-first-secret" });
   let second: Awaited<ReturnType<typeof bootUiServerInProcess>> | undefined;

@@ -7,7 +7,7 @@
 // agent can run `axi` from anywhere inside a bundle. `init` uses `resolveTargetDir` instead (it
 // CREATES the bundle, so the dir need not already exist).
 //
-// `--remote <url>` (Stage 1 Unit 3 part B) is the OTHER way to resolve a bundle: it produces a
+// `--remote <url>` is the OTHER way to resolve a bundle: it produces a
 // `{ root: <url>, backend: RemoteBackend }` handle wired to a `docs/WIRE-PROTOCOL.md` v0 server
 // (`agentstate-lite serve`). The sentinel `root` is the URL itself — it can never collide with a
 // real filesystem path, while still giving consumers a stable display identity (the
@@ -263,7 +263,7 @@ function wrapTransportErrors(remote: string): FetchLike {
   };
 }
 
-/** Session-wide override for the `--remote` API key (Stage-1 Unit 2b Part C). See {@link openRemoteBundle}. */
+/** Session-wide override for the `--remote` API key. See {@link openRemoteBundle}. */
 export const API_KEY_ENV_VAR = "AGENTSTATE_LITE_API_KEY";
 
 /**

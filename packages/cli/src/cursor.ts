@@ -64,7 +64,7 @@ export function syncStatePath(key: string, home: string = homedir()): string {
 
 /**
  * `~/.agentstate/sync/exports/<key-digest>` — the per-bundle directory sync's CONVERGING conflict
- * mechanic (U3b) exports the LOCAL version of each conflicted doc into ("yours saved at <path>").
+ * mechanic exports the LOCAL version of each conflicted doc into ("yours saved at <path>").
  * Deliberately OUTSIDE any worktree (the board worktree must end every sync pristine) and under
  * the same per-clone key discipline as the cursor/cache/marker state — exports for two different
  * bundles (or two clones of ONE bundle: each clone's conflicted local version is its own "yours")

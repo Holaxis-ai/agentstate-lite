@@ -75,7 +75,7 @@ export function toCliError(err: unknown, op: string): CliError {
   );
 }
 
-/** Write the awareness cache (U4's backstop feed) with honest, freshly-probed backstop counts. */
+/** Write the awareness cache with honest, freshly-probed backstop counts. */
 export async function writeAwarenessCache(key: string, boardPath: string, changes: DocChange[], note?: string): Promise<void> {
   await defaultSyncStore.writeCache(key, {
     updatedAt: new Date().toISOString(),
@@ -89,7 +89,7 @@ export async function writeAwarenessCache(key: string, boardPath: string, change
 /**
  * A full sync that COMMITS locally and THEN fails (fetch/rebase, or the converging conflict
  * terminal) must not rethrow bare: that would lose the "your work is saved" reassurance push-fail
- * gets and skip the cache write (U4's unpushed backstop would miss a stranded commit). Composes
+ * gets and skip the cache write (the unpushed backstop would miss a stranded commit). Composes
  * {@link pushFailureMessage}'s SAME message selection onto ANY post-commit failure.
  * `committedThisRun` gates it: when nothing NEW was committed this run (skip-empty, or a conflict
  * against a divergence committed before this run started), the error passes through UNCHANGED and

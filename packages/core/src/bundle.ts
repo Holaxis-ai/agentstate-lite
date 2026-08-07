@@ -482,7 +482,7 @@ export async function backlinks(bundle: Bundle, target: ConceptId): Promise<Link
   return queryEdges(bundle, { to: target });
 }
 
-// ── blobs: opaque bytes + a content-type (Stage-1 Unit 2a Part A) ──────────────
+// ── blobs: opaque bytes + a content-type ─────────────────────────────────────
 //
 // Thin, additive engine wrappers routing through `backendFor` — mirroring
 // `writeDocVersioned`'s shape (B4). Future consumers (the CLI's `promote`/`pull`,

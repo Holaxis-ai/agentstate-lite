@@ -19,7 +19,7 @@
 //     basis" outcome — honest nothing, not an error, and NEVER an assumed `origin/<branch>`.
 //     (The porcelain's "EXPLICIT refs, never @{u}" invariant is about the BOARD branch's ops,
 //     where no tracking config exists by construction; here the tracking config IS the table's
-//     one sanctioned source, per the twice-reviewed plan.)
+//     one sanctioned source.)
 //   • The CURSOR is MODE-SCOPED: tier `"git-intree"` (vs branch mode's `"git"`). Both modes share
 //     one repo object database AND one per-clone state key, so an existence-only token guard
 //     would let a cursor minted in one mode survive a mode flip and diff across unrelated trees —

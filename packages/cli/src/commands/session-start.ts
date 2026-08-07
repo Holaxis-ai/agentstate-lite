@@ -1,4 +1,4 @@
-// `agentstate-lite session-start` — the SessionStart hook payload (sync-verb plan §U4).
+// `agentstate-lite session-start` — the SessionStart hook payload.
 //
 // One subcommand, pull-then-render in-process — never two hook entries or a compound shell string:
 //
@@ -8,7 +8,7 @@
 //      the board-pending marker;
 //   2. THEN the home render, in-process, fs-only — home's own offline guarantee untouched.
 //
-// TIME BOX (plan §U4: pull budget ≤ 7s total, connect ≤ 5s, under the 10s hook timeout). The
+// TIME BOX (pull budget ≤ 7s total, connect ≤ 5s, under the 10s hook timeout). The
 // enforcement is layered:
 //   • every network-touching git op gets `timeoutMs` = the REMAINING budget (spawnSync's kill is
 //     the hard stop — a hung fetch dies inside the budget, whatever the transport is doing), and
@@ -70,9 +70,9 @@ import { cliInvocation } from "../invocation.js";
 import { parseOrUsage } from "../args.js";
 import { syncOutcomeLine } from "../sync-outcomes.js";
 
-/** Pull budget: ≤ 7s total (plan §U4), under hook.ts's 10s HOOK_TIMEOUT_SECONDS. */
+/** Pull budget: ≤ 7s total, under hook.ts's 10s HOOK_TIMEOUT_SECONDS. */
 export const SESSION_START_PULL_BUDGET_MS = 7_000;
-/** ssh connect budget: ≤ 5s (plan §U4). */
+/** ssh connect budget: ≤ 5s. */
 export const SESSION_START_CONNECT_TIMEOUT_SECONDS = 5;
 /**
  * The explicit budget floor: below this remaining budget, EVERY network boundary (the provision
@@ -170,7 +170,7 @@ export async function sessionStartPull(
       if (!top) return undefined;
       const boardPath = path.join(top, BUNDLE_DIR);
       const key = resolveBundleKey(boardPath);
-      // Marker refresh: every pull step that confirmed a board exists for this repo (plan §U2).
+      // Marker refresh: every pull step that confirmed a board exists for this repo.
       await defaultSyncStore.refreshMarker(key);
       if (remaining() < MIN_USEFUL_BUDGET_MS) return { offline: true, boardPath };
       // The in-tree fetch-and-report step (NO merge/rebase/checkout — the working tree is never
@@ -215,7 +215,7 @@ export async function sessionStartPull(
     const announcement = provisionAnnouncement(outcome);
 
     const key = resolveBundleKey(boardPath);
-    // Marker refresh: EVERY pull step that confirmed a provisioned board (plan §U2), regardless of
+    // Marker refresh: EVERY pull step that confirmed a provisioned board, regardless of
     // how the network half goes below.
     await defaultSyncStore.refreshMarker(key);
 
@@ -226,7 +226,7 @@ export async function sessionStartPull(
     // THE shared pull-and-record step (autopull.ts's `pullBoardAndRecord` — extracted from this
     // command so the opportunistic read-command trigger shares ONE state-write discipline): ff-only
     // pull; on success the cursor advances to the post-pull HEAD and the cache is rewritten
-    // (mirroring sync's step 5, with U2's honest re-anchor on a dangling cursor); a swallowed pull
+    // (mirroring sync's step 5, with an honest re-anchor on a dangling cursor); a swallowed pull
     // writes NOTHING ("cursor advanced only on a successful pull").
     const pulled = await pullBoardAndRecord(boardPath, key, {
       fetchTimeoutMs: remaining(),

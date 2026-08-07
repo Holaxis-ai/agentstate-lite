@@ -148,7 +148,7 @@ describe("PageFrame: bridge revocation race (P1)", () => {
     });
 
     // The reload is now in flight (getDoc pending) — a page->shell request arriving in exactly
-    // this gap is the window the reviewer flagged: pre-fix, the OLD "bundle-read" capability was
+    // this gap must not retain the OLD "bundle-read" capability, which was
     // still standing (only reset once getDoc resolved), so this would have been answered for
     // real. Post-fix, `loadPage` pre-revokes synchronously before its first `await`.
     act(() => {

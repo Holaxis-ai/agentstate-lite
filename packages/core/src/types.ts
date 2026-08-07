@@ -303,7 +303,7 @@ export interface StorageBackend {
    */
   delete(id: ConceptId, options?: DeleteOptions): Promise<boolean>;
 
-  // ── blobs: opaque bytes + a content-type (Stage-1 Unit 2a Part A) ────────────
+  // ── blobs: opaque bytes + a content-type ────────────────────────────────────
   //
   // A blob is NOT a concept document: it carries no frontmatter/body split, and its
   // key is a LITERAL bundle-relative path (never `.md` — the two namespaces are
@@ -369,7 +369,7 @@ export interface StorageBackend {
   queryHeads?(filter?: QueryFilter): Promise<HeadResult[]>;
 
   /**
-   * OPTIONAL capabilities self-declaration (Stage-1 Unit 2b Part B). `StorageBackend` carries
+   * OPTIONAL capabilities self-declaration. `StorageBackend` carries
    * no capabilities descriptor by default, so a wire router that wants to report an adapter's
    * real guarantees (`GET /v0/capabilities`, `docs/WIRE-PROTOCOL.md`) has historically inferred
    * them via `instanceof` against the two in-repo adapters — correct for those two, but unable

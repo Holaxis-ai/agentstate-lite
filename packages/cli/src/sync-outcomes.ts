@@ -264,8 +264,7 @@ export const SYNC_OUTCOMES = {
     help: (p) => `${p.inv} sync --establish`,
   }),
   // Full sync's own no_upstream arm (the rebase step's decision table) — same state as
-  // `ff.no-upstream.unpublished` (`--pull-only`'s translation), now the same copy (PR2 unification;
-  // filed PR #92 item 5).
+  // `ff.no-upstream.unpublished` (`--pull-only`'s translation), so it uses the same copy.
   "sync.full.no-upstream": row<{ inv: string }>({
     code: "NO_UPSTREAM",
     message: (p) => boardNotPublishedMessage(p.inv),
@@ -327,8 +326,7 @@ export const SYNC_OUTCOMES = {
       `establishment, push it and open its PR (or delete it: git branch -D ${p.cleanupBranch}), ` +
       `then re-run`,
   }),
-  // Unified wording (PR2, filed PR #92 item 2): the greenfield guard previously carried a bare,
-  // help-less message; it now matches the committed-case copy AND gains actionable help (greenfield
+  // The greenfield guard matches the committed-case copy and carries actionable help (greenfield
   // publication never needs --yes, so its remedy omits the flag the committed-case one carries).
   "establish.namespace-conflict.greenfield": row<{ inv: string; conflicts: string[] }>({
     code: "RUNTIME",
@@ -413,8 +411,8 @@ export const SYNC_OUTCOMES = {
       `the newer changes stay recoverable in '${p.branch}' history; after the cleanup PR ` +
       `merges and this clone joins via '${p.inv} sync', re-apply them with doc update`,
   }),
-  // Unified wording (PR2, filed PR #92 item 3): three call sites test the identical treeOf()
-  // failure; all now render markerUnavailableMessage (see its doc comment for the rationale).
+  // Three call sites test the identical treeOf() failure; all render markerUnavailableMessage
+  // (see its doc comment for the rationale).
   "marker.unavailable.tree": row<{ marker: string }>({
     code: "RUNTIME",
     message: (p) => markerUnavailableMessage(p.marker),

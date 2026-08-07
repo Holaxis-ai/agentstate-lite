@@ -265,7 +265,7 @@ describe("markdown renderer", () => {
     });
 
     it("an OMITTED limit resolves to the production constant — the default WIRING, not just its value", () => {
-      // Review P1: asserting MAX_NODES === 20_000 does not prove the renderer still USES it. Every
+      // Asserting MAX_NODES === 20_000 does not prove the renderer still USES it. Every
       // flood case injects a budget, so the production fallback could be changed to Infinity with
       // all of them green. Reporting the resolved bounds makes the omitted path assertable cheaply.
       const { limits } = renderMarkdown("hello", { fromId: "docs/x", onNavigateDoc });
@@ -273,7 +273,7 @@ describe("markdown renderer", () => {
     });
 
     it("the seam only ever TIGHTENS — over-max, non-finite, and non-positive overrides fail closed", () => {
-      // Review P2: this renderer is a resource-security boundary, so the test seam must not be able
+      // This renderer is a resource-security boundary, so the test seam must not be able
       // to relax it. NaN is the dangerous one: `count >= NaN` is always false, which would remove
       // the walk bound entirely rather than merely widening it.
       const render = (limits: { maxBodyChars?: number; maxNodes?: number }) =>
