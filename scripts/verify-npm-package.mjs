@@ -6,7 +6,7 @@ import { access, mkdtemp, mkdir, readFile, readdir, realpath, rm, stat, symlink,
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { promisify } from "node:util";
-import { fileURLToPath } from "node:url";
+import { fileURLToPath, pathToFileURL } from "node:url";
 
 const execFileAsync = promisify(execFile);
 const scriptPath = fileURLToPath(import.meta.url);
@@ -75,6 +75,89 @@ async function run(command, args, options = {}) {
     maxBuffer: 20 * 1024 * 1024,
     ...options,
   });
+}
+
+async function waitForJsonFile(file, timeoutMs = 10_000) {
+  const deadline = Date.now() + timeoutMs;
+  for (;;) {
+    try {
+      return JSON.parse(await readFile(file, "utf8"));
+    } catch (error) {
+      const retryable = error?.code === "ENOENT" || error instanceof SyntaxError;
+      if (!retryable) throw error;
+      if (Date.now() >= deadline) throw new Error(`timed out waiting for installed lock marker ${file}`);
+      await new Promise((resolve) => setTimeout(resolve, 10));
+    }
+  }
+}
+
+function installedLockBoundaryPreloadSource() {
+  return `import { promises as fs } from "node:fs";
+import path from "node:path";
+
+const barrierDir = process.env.ASLITE_INSTALLED_LOCK_BARRIER_DIR;
+const role = process.env.ASLITE_INSTALLED_LOCK_BARRIER_ROLE;
+if (!barrierDir || (role !== "holder" && role !== "contender")) {
+  throw new Error("installed lock-boundary preload requires barrier directory and role");
+}
+
+const originalMkdir = fs.mkdir.bind(fs);
+const releaseFile = path.join(barrierDir, "holder.release");
+const holderAcquiredFile = path.join(barrierDir, "holder.acquired.json");
+let boundaryObserved = false;
+
+async function waitFor(file) {
+  const deadline = Date.now() + 10000;
+  for (;;) {
+    try {
+      await fs.access(file);
+      return;
+    } catch (error) {
+      if (error?.code !== "ENOENT") throw error;
+      if (Date.now() >= deadline) throw new Error("timed out waiting for installed lock barrier " + file);
+      await new Promise((resolve) => setTimeout(resolve, 10));
+    }
+  }
+}
+
+async function mark(name, details) {
+  await fs.writeFile(
+    path.join(barrierDir, name),
+    JSON.stringify({ ...details, node: process.versions.node }) + "\\n",
+    "utf8",
+  );
+}
+
+fs.mkdir = async function instrumentedMkdir(requested, options) {
+  const lockPath = typeof requested === "string" ? requested : "";
+  const lockRootName = lockPath ? path.basename(path.dirname(lockPath)) : "";
+  const productionClaim =
+    !boundaryObserved &&
+    lockPath.endsWith(".lock") &&
+    lockRootName.startsWith("agentstate-lite-mutation-locks-") &&
+    options?.recursive !== true;
+  if (!productionClaim) return originalMkdir(requested, options);
+
+  boundaryObserved = true;
+  await mark(role + ".attempt.json", { lock_path: lockPath });
+  if (role === "holder") {
+    const result = await originalMkdir(requested, options);
+    await mark("holder.acquired.json", { lock_path: lockPath });
+    await waitFor(releaseFile);
+    return result;
+  }
+
+  await waitFor(holderAcquiredFile);
+  try {
+    const result = await originalMkdir(requested, options);
+    await mark("contender.unexpected-acquire.json", { lock_path: lockPath });
+    return result;
+  } catch (error) {
+    await mark("contender.contended.json", { lock_path: lockPath, fs_code: error?.code });
+    throw error;
+  }
+};
+`;
 }
 
 export function sanitizedNpmEnvironment(source, userConfig, cache) {
@@ -427,42 +510,85 @@ async function runInstalledProof(spec) {
       "create-only refusal must not change the existing bundle: ",
     );
 
-    // Run parent/child contenders through the packed CLI concurrently. This complements the
-    // source-suite barrier test by proving the installed artifact calls the production filesystem
-    // mutex: exactly one nested target may publish and the other must return the conflict class.
+    // Node's ESM --import preload is common to the supported Node 20/22/26 lines. Instrument the
+    // installed process externally (never through a product test hook) at its actual atomic
+    // production-lock mkdir: the holder owns the real lock directory while the contender proves
+    // EEXIST on the exact same path, and neither command may publish before the verifier releases it.
     const installedRaceRoot = path.join(scratch, "create-only-production-lock");
     const installedRaceParent = path.join(installedRaceRoot, "parent");
     const installedRaceChild = path.join(installedRaceParent, "deep", "child");
-    const installedRace = await Promise.allSettled([
-      runCli("aslite", [
-        "init",
-        "--create-only",
-        "--dir",
-        installedRaceParent,
-        "--recipe",
-        "none",
-        "--json",
-      ]),
-      runCli("aslite", [
-        "init",
-        "--create-only",
-        "--dir",
-        installedRaceChild,
-        "--recipe",
-        "none",
-        "--json",
-      ]),
-    ]);
-    const installedRaceWinners = installedRace.filter((outcome) => outcome.status === "fulfilled");
-    const installedRaceLosers = installedRace.filter((outcome) => outcome.status === "rejected");
-    assert.equal(installedRaceWinners.length, 1, "installed parent/child create-only race needs one winner");
-    assert.equal(installedRaceLosers.length, 1, "installed parent/child create-only race needs one loser");
-    parseJson(installedRaceWinners[0].value.stdout, "installed create-only production-lock winner");
-    assert.equal(
-      installedRaceLosers[0].reason.code,
-      5,
-      "installed production-lock loser must use the conflict exit class",
-    );
+    const installedBarrierDir = path.join(scratch, "installed-lock-boundary");
+    const installedPreload = path.join(installedBarrierDir, "installed-lock-boundary-preload.mjs");
+    await mkdir(installedBarrierDir);
+    await writeFile(installedPreload, installedLockBoundaryPreloadSource());
+    const runBarrierContender = (role, target) =>
+      run(
+        process.execPath,
+        [
+          "--import",
+          pathToFileURL(installedPreload).href,
+          installedEntrypoint,
+          "init",
+          "--create-only",
+          "--dir",
+          target,
+          "--recipe",
+          "none",
+          "--json",
+        ],
+        {
+          cwd: scratch,
+          env: {
+            ...commandEnv,
+            ASLITE_INSTALLED_LOCK_BARRIER_DIR: installedBarrierDir,
+            ASLITE_INSTALLED_LOCK_BARRIER_ROLE: role,
+          },
+        },
+      ).then(
+        (value) => ({ status: "fulfilled", value }),
+        (reason) => ({ status: "rejected", reason }),
+      );
+
+    const holderRun = runBarrierContender("holder", installedRaceParent);
+    const contenderRun = runBarrierContender("contender", installedRaceChild);
+    let barrierFailure;
+    try {
+      const [holderAttempt, contenderAttempt, holderAcquired, contenderContended] = await Promise.all([
+        waitForJsonFile(path.join(installedBarrierDir, "holder.attempt.json")),
+        waitForJsonFile(path.join(installedBarrierDir, "contender.attempt.json")),
+        waitForJsonFile(path.join(installedBarrierDir, "holder.acquired.json")),
+        waitForJsonFile(path.join(installedBarrierDir, "contender.contended.json")),
+      ]);
+      assert.equal(holderAttempt.lock_path, contenderAttempt.lock_path);
+      assert.equal(holderAcquired.lock_path, holderAttempt.lock_path);
+      assert.equal(contenderContended.lock_path, holderAttempt.lock_path);
+      assert.equal(contenderContended.fs_code, "EEXIST");
+      assert.equal(
+        await access(path.join(installedBarrierDir, "contender.unexpected-acquire.json")).then(
+          () => true,
+          () => false,
+        ),
+        false,
+        "the contender must observe the holder's real production lock",
+      );
+      assert.equal(
+        (await access(path.join(installedRaceParent, "index.md")).then(() => true, () => false)) ||
+          (await access(path.join(installedRaceChild, "index.md")).then(() => true, () => false)),
+        false,
+        "installed contenders must remain unpublished while the production lock claim is held",
+      );
+    } catch (error) {
+      barrierFailure = error;
+    } finally {
+      await writeFile(path.join(installedBarrierDir, "holder.release"), "release\n");
+    }
+
+    const installedRace = await Promise.all([holderRun, contenderRun]);
+    if (barrierFailure) throw barrierFailure;
+    assert.equal(installedRace[0].status, "fulfilled", "installed production-lock holder must win");
+    assert.equal(installedRace[1].status, "rejected", "installed production-lock contender must lose");
+    parseJson(installedRace[0].value.stdout, "installed create-only production-lock winner");
+    assert.equal(installedRace[1].reason.code, 5, "installed production-lock loser must use conflict exit 5");
     assert.equal(
       (await access(path.join(installedRaceParent, "index.md")).then(() => true, () => false)) &&
         (await access(path.join(installedRaceChild, "index.md")).then(() => true, () => false)),

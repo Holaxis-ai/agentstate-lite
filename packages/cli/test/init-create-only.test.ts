@@ -270,6 +270,74 @@ test("create-only binding discovery matches ordinary discovery for symlinked bin
   }
 });
 
+test("binding targets that disappear after realpath fail closed for direct and symlink paths", async (t) => {
+  for (const shape of ["direct", "symlink"] as const) {
+    await t.test(shape, async () => {
+      const base = await tempDir();
+      try {
+        const project = path.join(base, "project");
+        const logicalBoundTarget = path.join(base, "empty-bound-target");
+        await mkdir(project, { recursive: true });
+        await mkdir(logicalBoundTarget);
+        const physicalBoundTarget = await fsPromises.realpath(logicalBoundTarget);
+        const boundTarget =
+          shape === "symlink" ? path.join(base, "empty-bound-target-alias") : logicalBoundTarget;
+        if (shape === "symlink") await symlink(logicalBoundTarget, boundTarget);
+        await writeFile(
+          path.join(project, ".agentstate.json"),
+          `${JSON.stringify({ bundle: boundTarget })}\n`,
+        );
+
+        let boundTargetResolved = false;
+        let publishCalled = false;
+        await assert.rejects(
+          () =>
+            withCreateOnlyTarget(
+              path.join(project, "new-bundle"),
+              async () => {
+                publishCalled = true;
+              },
+              process.cwd(),
+              {
+                fs: {
+                  realpath: async (p) => {
+                    const resolved = await fsPromises.realpath(p);
+                    if (p === boundTarget) {
+                      assert.equal(resolved, physicalBoundTarget);
+                      boundTargetResolved = true;
+                    }
+                    return resolved;
+                  },
+                  lstat: async (p) => {
+                    if (boundTargetResolved && p === physicalBoundTarget) {
+                      throw Object.assign(new Error("injected post-realpath disappearance"), {
+                        code: "ENOENT",
+                        path: physicalBoundTarget,
+                      });
+                    }
+                    return fsPromises.lstat(p);
+                  },
+                },
+              },
+            ),
+          (err: unknown) =>
+            err instanceof CliError &&
+            err.code === "RUNTIME" &&
+            err.details?.phase === "preflight" &&
+            err.details.operation === "lstat-resolved-binding-target" &&
+            err.details.path === physicalBoundTarget &&
+            err.details.fs_code === "ENOENT",
+        );
+        assert.equal(boundTargetResolved, true);
+        assert.equal(publishCalled, false);
+        assert.equal(existsSync(path.join(project, "new-bundle", "index.md")), false);
+      } finally {
+        await rm(base, { recursive: true, force: true });
+      }
+    });
+  }
+});
+
 test("symlink targets and symlinked ancestor aliases cannot dodge the guard", async () => {
   const base = await tempDir();
   try {
@@ -733,44 +801,54 @@ test("raw publish failures have a truthful started-or-uncertain publication enve
   }
 });
 
-test("release failure cannot mask that publication started and may itself mask a publish error", async () => {
+test("release failure preserves the masked publish fault's complete structured provenance", async () => {
   const base = await tempDir();
   try {
     const target = path.join(base, "double-fault");
-    await assert.rejects(
-      () =>
-        withCreateOnlyTarget(
-          target,
-          async () => {
-            throw Object.assign(new Error("injected publish fault"), {
-              code: "EIO",
-              path: path.join(target, "index.md"),
-            });
+    const physicalTarget = path.join(await fsPromises.realpath(base), "double-fault");
+    const publishPath = path.join(physicalTarget, "index.md");
+    const lockPath = path.join(base, "double-fault.lock");
+    let thrown: unknown;
+    try {
+      await withCreateOnlyTarget(
+        target,
+        async () => {
+          throw Object.assign(new Error("injected publish fault"), {
+            code: "EIO",
+            path: publishPath,
+          });
+        },
+        process.cwd(),
+        {
+          withFilesystemMutationLockImpl: async (_key, fn) => {
+            try {
+              return await fn();
+            } finally {
+              throw new FilesystemMutationLockError("injected release failure", {
+                lockPath,
+                owner: null,
+                stale: false,
+                malformed: true,
+              });
+            }
           },
-          process.cwd(),
-          {
-            withFilesystemMutationLockImpl: async (_key, fn) => {
-              try {
-                return await fn();
-              } finally {
-                throw new FilesystemMutationLockError("injected release failure", {
-                  lockPath: path.join(base, "double-fault.lock"),
-                  owner: null,
-                  stale: false,
-                  malformed: true,
-                });
-              }
-            },
-          },
-        ),
-      (err: unknown) =>
-        err instanceof CliError &&
-        err.code === "RUNTIME" &&
-        err.details?.phase === "lock" &&
-        err.details.operation === "release-filesystem-mutation-lock" &&
-        err.details.publication_outcome === "started-or-uncertain" &&
-        err.details.prior_operation === "publish-index",
-    );
+        },
+      );
+    } catch (err) {
+      thrown = err;
+    }
+    assert.ok(thrown instanceof CliError);
+    assert.equal(thrown.code, "RUNTIME");
+    assert.equal(thrown.details?.phase, "lock");
+    assert.equal(thrown.details?.operation, "release-filesystem-mutation-lock");
+    assert.equal(thrown.details?.path, lockPath);
+    assert.equal(thrown.details?.publication_outcome, "started-or-uncertain");
+    assert.equal(thrown.details?.prior_code, "RUNTIME");
+    assert.equal(thrown.details?.prior_phase, "pre-publish");
+    assert.equal(thrown.details?.prior_operation, "publish-index");
+    assert.equal(thrown.details?.prior_path, publishPath);
+    assert.equal(thrown.details?.prior_fs_code, "EIO");
+    assert.deepEqual(thrown.details?.prior_residual_created_directories, [physicalTarget]);
   } finally {
     await rm(base, { recursive: true, force: true });
   }

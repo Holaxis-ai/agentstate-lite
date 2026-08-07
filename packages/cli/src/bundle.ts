@@ -564,6 +564,7 @@ async function existingBundleAt(
     createdDirectories,
   );
   if (!candidateInfo) return null;
+  if (!candidateInfo.isDirectory() && !candidateInfo.isSymbolicLink()) return null;
 
   let physicalCandidate: string;
   try {
@@ -571,16 +572,29 @@ async function existingBundleAt(
   } catch (err) {
     createOnlyUncertainty(phase, "realpath-binding-target", candidate, err, createdDirectories);
   }
-  const physicalInfo = candidateInfo.isSymbolicLink()
-    ? await optionalLstat(
-        io,
-        physicalCandidate,
-        phase,
-        "lstat-physical-binding-target",
-        createdDirectories,
-      )
-    : candidateInfo;
-  if (!physicalInfo || !physicalInfo.isDirectory()) return null;
+  let physicalInfo: Stats;
+  try {
+    physicalInfo = await io.lstat(physicalCandidate);
+  } catch (err) {
+    createOnlyUncertainty(
+      phase,
+      "lstat-resolved-binding-target",
+      physicalCandidate,
+      err,
+      createdDirectories,
+    );
+  }
+  if (physicalInfo.isSymbolicLink() || !physicalInfo.isDirectory()) {
+    createOnlyUncertainty(
+      phase,
+      "validate-resolved-binding-target-shape",
+      physicalCandidate,
+      Object.assign(new Error("resolved binding target is no longer a physical directory"), {
+        code: "ESHAPE",
+      }),
+      createdDirectories,
+    );
+  }
 
   const own = await optionalLstat(
     io,
@@ -977,6 +991,22 @@ export async function withCreateOnlyTarget<T>(
               : {}),
             ...(propagatedCriticalFailure.details?.operation
               ? { prior_operation: propagatedCriticalFailure.details.operation }
+              : {}),
+            ...(propagatedCriticalFailure.details?.path
+              ? { prior_path: propagatedCriticalFailure.details.path }
+              : {}),
+            ...(propagatedCriticalFailure.details?.fs_code
+              ? { prior_fs_code: propagatedCriticalFailure.details.fs_code }
+              : {}),
+            ...(propagatedCriticalFailure.details?.publication_outcome
+              ? { prior_publication_outcome: propagatedCriticalFailure.details.publication_outcome }
+              : {}),
+            ...(Array.isArray(propagatedCriticalFailure.details?.residual_created_directories)
+              ? {
+                  prior_residual_created_directories: [
+                    ...propagatedCriticalFailure.details.residual_created_directories,
+                  ],
+                }
               : {}),
           }
         : {};
