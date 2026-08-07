@@ -9,7 +9,7 @@ tags:
   - installation
   - onboarding
 actor: codex-npm-quickstart
-timestamp: '2026-08-07T00:23:44.737Z'
+timestamp: '2026-08-07T00:49:20.590Z'
 ---
 # Summary
 
@@ -40,17 +40,22 @@ The feedback loop must therefore exercise the packed/installed CLI as one litera
 - PR #211 owns canonical `user` install-scope vocabulary at `742af48ee353a7f4bd68d33e588ac23401b6fde0` and has a separate assigned review team. This work must not modify that branch or duplicate its review. Final quickstart wording and fixtures must reconcile the merged outcome before independent review.
 - `@holaxis/aslite@0.1.0-pre.3` is currently both `latest` and `next`; a clean unqualified registry install has already been verified. Release staging, upgrade selection, marketplace retirement, and guide curriculum remain outside this task.
 
-# Unverified assumptions to test before choosing an implementation
+# Assumptions resolved by the builder
 
-- Whether an existing installed-package harness can install the exact locally packed artifact into an isolated prefix/cache while exercising the same no-bundle output as a newcomer.
-- Whether current bundle-free orientation already gives an actionable literal next command, or requires a bounded copy change.
-- The exact literal command/output needed to create an attributed Task from the installed CLI without relying on repository-only helpers.
-- Which existing headless surface is the smallest honest proof of visible productive state: home/status output, a registered View, or a browser launcher smoke.
-- Whether the quickstart can remain independent of hook/skill installation and therefore avoid a semantic dependency on PR #211 beyond canonical wording.
+- The existing installed-package verifier can own the literal clean-directory journey; no second onboarding harness is needed.
+- Bundle-free `home` and `recipes` need only bounded command-copy changes to teach fail-closed creation.
+- The installed CLI can initialize `work-tracking`, create an attributed Task, and expose it through `home` without hook or skill installation.
+- The npm package README is the correct place to explain the human-intent/agent-authoring model; browser UI work is outside this unit.
+
+# Full-suite runner boundary diagnosed 2026-08-07
+
+`npm run check` is a composite runner. Its CLI stage starts many ephemeral localhost HTTP servers across remote, web, MCP, and UI test files using Node's process-isolated test runner and default parallelism. A run launched inside the command sandbox had local networking disabled. Server-dependent assertions therefore failed almost immediately, while local CLI, quickstart, package, script, and typecheck paths passed. One `ui.test.ts` child retained an open server handle, preventing the parent from emitting the final TAP summary until the captured run was interrupted.
+
+The invariant is: the full repository gate must run in an environment that permits loopback bind/connect and must be judged by its terminal exit code, not partial TAP output. The next action is one full rerun outside the network-restricted sandbox. Product code must not be changed in response to the sandbox-only cluster unless a failing test reproduces there.
 
 # Working boundary and next gate
 
-Use an isolated branch/worktree based on gated create-only SHA `81b3c39`. First inventory existing package and onboarding harnesses, then write one deterministic red acceptance journey before changing production copy or behavior. Do not touch PR #211 or the primary worktree. The builder checkpoint must later be reconciled onto merged `main`, independently reviewed, then sent to adversarial QA and the full package/repository/hosted gates before any PR handoff.
+The bounded builder diff remains limited to the existing home/recipes guidance, both READMEs, focused assertions, and the existing installed-package verifier. Do not touch PR #211 or the primary worktree. After the full gate, commit and push the builder checkpoint from the isolated branch. Final integration still depends on the create-only predecessor and PR #211 outcome, followed by independent exact-SHA review and adversarial QA.
 
 [tracks npm quickstart](../tasks/npm-quickstart-onboarding.md)
 [depends on create-only safety](../tasks/init-target-safety-guard.md)
