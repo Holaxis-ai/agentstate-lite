@@ -4,14 +4,18 @@ title: Use user as the canonical skill and hook install scope
 status: in_progress
 priority: '1'
 assignee: openai/codex
-actor: openai/codex
+actor: codex-pr211-reviewer
 description: >-
-  PR #211 is open at exact SHA 742af48. Implementation makes user canonical
-  across skill/hook/help/README/generated guidance/update verification,
-  preserves global as a silent alias, and normalizes receipts to user. Focused
-  tests: 132 passed. Full npm run check passed. Awaiting independent exact-SHA
-  review and CI.
-timestamp: '2026-08-06T13:21:26.299Z'
+  INDEPENDENT REVIEW PASS at exact PR #211 head
+  742af48ee353a7f4bd68d33e588ac23401b6fde0: no findings. Current main is
+  dc341159 after PR #210; the clean prospective merge was tested explicitly
+  because both branches touch hook code. Exact-head focused tests passed
+  150/150; integrated focused tests passed 156/156; built-CLI scope matrix
+  passed 18 lifecycle receipts plus 8 invalid inputs; full npm run check passed
+  on the integrated tree; hosted Node 20/22/26 checks are green on the original
+  base. Technically merge-ready without a rebase. If rebased or otherwise
+  changed, require a short exact-SHA confirmation review before Brian's merge.
+timestamp: '2026-08-07T00:31:11.974Z'
 ---
 # Problem
 
