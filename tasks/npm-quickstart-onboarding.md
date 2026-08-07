@@ -12,7 +12,7 @@ description: >-
 actor: codex-npm-quickstart
 status: in_progress
 priority: '1'
-timestamp: '2026-08-07T00:22:56.105Z'
+timestamp: '2026-08-07T00:26:52.173Z'
 ---
 [the tested new-user onboarding journey](../roadmap-items/distribution-neutral-resources.md)
 
@@ -57,3 +57,5 @@ does not change Q6's `work-tracking` oracle.
 [implementation plan](../plans/version-string-channel-identity.md)
 
 [depends on](init-target-safety-guard.md)
+
+[active implementation plan](../plans/npm-quickstart-implementation-2026-08-07.md)
