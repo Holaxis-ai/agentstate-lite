@@ -733,10 +733,10 @@ export function buildHomeView(
     } else {
       const target = deps.targetDir === undefined ? "" : ` --dir ${shellArg(deps.targetDir)}`;
       view.getting_started =
-        `no OKF bundle found in this directory — run \`${deps.invocation()} init --recipe none${target}\` ` +
+        `no OKF bundle found in this directory — run \`${deps.invocation()} init --create-only --recipe none${target}\` ` +
         `to create a blank bundle, or \`${deps.invocation()} recipes\` to compare available workspace setups` +
         (target
-          ? `; create your chosen setup here with \`${deps.invocation()} init --recipe <name>${target}\``
+          ? `; create your chosen setup here with \`${deps.invocation()} init --create-only --recipe <name>${target}\``
           : "");
     }
   }

@@ -17,15 +17,21 @@ prefix, resolves both command names from `PATH`, and exercises an offline bundle
 developer proof deliberately stamps `local-dev`, so it works on an in-progress/dirty checkout;
 `prepublishOnly` runs the same journey in strict `npm-package` mode and refuses unless Git proves
 an exact clean source commit.
-The zero-install trial flow is:
+From a new empty directory, the zero-install first-value flow is:
 
 ```sh
-npx -y @holaxis/aslite@next init
-npx -y @holaxis/aslite@next new "Context Note" cycle-1 --title "cycle-1"
-npx -y @holaxis/aslite@next doc update context-notes/cycle-1 --body "Chose token auth over sessions."
-npx -y @holaxis/aslite@next list
-npx -y @holaxis/aslite@next ui --open # opens a browser window: read the bundle's docs + launch its Views
+npx -y @holaxis/aslite@next
+npx -y @holaxis/aslite@next recipes
+npx -y @holaxis/aslite@next init --create-only --recipe work-tracking --dir .agentstate-lite
+npx -y @holaxis/aslite@next new "Task" first-task --title "Plan the first change" \
+  --status todo --actor quickstart-agent --dir .agentstate-lite
+npx -y @holaxis/aslite@next --dir .agentstate-lite
 ```
+
+`--create-only` fails before writing when the selected target is occupied or ambiguous. Use
+`recipe add` instead when you intend to modify an existing bundle. Bring source material or intent
+to your agent in the tool you already use. The agent organizes, types, links, and updates the
+bundle through `aslite`; these commands are the plumbing, not a manual data-entry workflow.
 
 Install it globally if you prefer (installs both the `aslite` command and the long-form alias
 `agentstate-lite`):

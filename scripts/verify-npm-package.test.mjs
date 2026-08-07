@@ -43,6 +43,30 @@ const manifest = {
   devDependencies: { local: "*" },
 };
 
+test("root and npm READMEs teach one literal create-only, agent-driven quickstart", async () => {
+  for (const [label, file] of [
+    ["root", path.join(repoRoot, "README.md")],
+    ["npm", path.join(repoRoot, "packages", "cli", "README.md")],
+  ]) {
+    const readme = await readFile(file, "utf8");
+    assert.match(
+      readme,
+      /init --create-only --recipe work-tracking/,
+      `${label} README must use the safe literal work-tracking creation command`,
+    );
+    assert.match(
+      readme,
+      /bring source material or intent\s+to your agent/i,
+      `${label} README must explain what the user contributes`,
+    );
+    assert.match(
+      readme,
+      /agent organizes,\s+types, links, and updates the\s+bundle/i,
+      `${label} README must explain the agent's authoring role`,
+    );
+  }
+});
+
 test("the expected tarball set is the fixed base plus the references tree", () => {
   assert.deepEqual(expectedTarballFiles(["a.md", "b/c.md"]), [
     "LICENSE",

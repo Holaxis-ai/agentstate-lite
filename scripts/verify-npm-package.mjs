@@ -449,12 +449,26 @@ async function runInstalledProof(spec) {
       adjacent_package_version: manifest.version,
       version_mismatch: false,
     });
-    const homeIdentity = parseJson((await runCli("aslite", ["--json"])).stdout, "aslite home --json")[
-      "agentstate-lite"
-    ];
+    const discoveryDir = path.join(scratch, "recipe-discovery");
+    await mkdir(discoveryDir);
+    const noBundleHome = parseJson(
+      (await runCli("aslite", ["--json"], { cwd: discoveryDir })).stdout,
+      "aslite home --json outside a bundle",
+    );
+    const homeIdentity = noBundleHome["agentstate-lite"];
     assert.equal(homeIdentity.version, manifest.version);
     assert.equal(homeIdentity.channel, spec.expectedChannel);
     assert.equal(homeIdentity.bin, installedEntrypointRealPath);
+    assert.match(
+      noBundleHome.getting_started,
+      /init --create-only --recipe none/,
+      "bundle-free home must advertise fail-closed creation",
+    );
+    assert.match(
+      noBundleHome.getting_started,
+      /aslite recipes/,
+      "bundle-free home must point at Recipe discovery",
+    );
 
     await runCli("agentstate-lite", ["--help"]);
     await runCli("aslite", ["--help"]);
@@ -464,8 +478,6 @@ async function runInstalledProof(spec) {
       /(?:agentstate-lite|aslite) recipes/,
       "init help must point at recipe discovery through an installed bin alias",
     );
-    const discoveryDir = path.join(scratch, "recipe-discovery");
-    await mkdir(discoveryDir);
     const discoveredRecipes = parseJson(
       (await runCli("aslite", ["recipes", "--json"], { cwd: discoveryDir })).stdout,
       "bundle-free recipes",
@@ -475,22 +487,34 @@ async function runInstalledProof(spec) {
     assert.ok(contextNotes, "the installed recipe inventory must include context-notes");
     assert.equal(contextNotes.applied, null, "bundle-free discovery must not imply an applied state");
     assert.deepEqual(contextNotes.commands, {
-      create_bundle: "aslite init --recipe context-notes",
+      create_bundle: "aslite init --create-only --recipe context-notes",
       add_to_bundle: "aslite recipe add context-notes",
     });
+    const workTracking = discoveredRecipes.recipes.find((recipe) => recipe.name === "work-tracking");
+    assert.ok(workTracking, "the installed recipe inventory must include work-tracking");
+    assert.deepEqual(workTracking.commands, {
+      create_bundle: "aslite init --create-only --recipe work-tracking",
+      add_to_bundle: "aslite recipe add work-tracking",
+    });
     assert.deepEqual(await readdir(discoveryDir), [], "recipe discovery must not create bundle files");
-    parseJson((await runCli("aslite", ["init", "--dir", bundle, "--recipe", "none", "--json"])).stdout, "init");
-    parseJson(
-      (await runCli("aslite", ["recipe", "add", "work-tracking", "--dir", bundle, "--json"])).stdout,
-      "recipe add",
+    const quickstartInit = parseJson(
+      (
+        await runCli("aslite", [
+          "init",
+          "--create-only",
+          "--recipe",
+          "work-tracking",
+          "--dir",
+          bundle,
+          "--json",
+        ])
+      ).stdout,
+      "quickstart init --create-only --recipe work-tracking",
     );
+    assert.equal(quickstartInit.recipe, "work-tracking");
 
-    // ── init --create-only: the installed guard proves the exact public spelling offline ──
-    const freshCreateOnly = path.join(scratch, "create-only-fresh");
-    parseJson(
-      (await runCli("aslite", ["init", "--create-only", "--dir", freshCreateOnly, "--recipe", "none", "--json"])).stdout,
-      "init --create-only (fresh)",
-    );
+    // The same installed guard must refuse to turn the new quickstart workspace into an
+    // open-or-modify path. This pins the journey's fail-closed retry boundary.
     const bundleSnapshotBefore = await snapshotTree(bundle);
     const refused = await runCli(
       "aslite",
@@ -610,11 +634,13 @@ async function runInstalledProof(spec) {
         await runCli("aslite", [
           "new",
           "Task",
-          "package-proof",
+          "first-task",
           "--title",
-          "Package proof",
+          "Plan the first change",
           "--status",
           "todo",
+          "--actor",
+          "quickstart-agent",
           "--dir",
           bundle,
           "--json",
@@ -622,14 +648,38 @@ async function runInstalledProof(spec) {
       ).stdout,
       "new",
     );
+    const createdTask = parseJson(
+      (await runCli("aslite", ["doc", "read", "tasks/first-task", "--dir", bundle, "--json"])).stdout,
+      "read attributed quickstart Task",
+    );
+    assert.equal(createdTask.actor, "quickstart-agent", "the literal quickstart Task must retain attribution");
+    assert.equal(createdTask.title, "Plan the first change", "the verifier must execute the documented Task command");
     const listed = parseJson(
       (await runCli("aslite", ["list", "--type", "Task", "--dir", bundle, "--json"])).stdout,
       "list",
     );
     assert.ok(
-      JSON.stringify(listed).includes("tasks/package-proof"),
+      JSON.stringify(listed).includes("tasks/first-task"),
       "the installed CLI must list the Task it created",
     );
+    const productiveHome = parseJson(
+      (await runCli("aslite", ["--dir", bundle, "--json"])).stdout,
+      "productive quickstart home",
+    );
+    assert.ok(
+      productiveHome.bundle.recent.rows.some((row) => row.id === "tasks/first-task"),
+      "home must surface the new Task as useful live state",
+    );
+    const productiveStatus = parseJson(
+      (await runCli("aslite", ["status", "--dir", bundle, "--json"])).stdout,
+      "productive quickstart status",
+    );
+    assert.equal(productiveStatus.kind_warnings, 0, "the attributed Task must keep the quickstart bundle kind-clean");
+
+    const installedReadme = await readFile(path.join(installedRoot, "README.md"), "utf8");
+    assert.match(installedReadme, /init --create-only --recipe work-tracking/);
+    assert.match(installedReadme, /bring source material or intent\s+to your agent/i);
+    assert.match(installedReadme, /agent organizes,\s+types, links, and updates the\s+bundle/i);
 
     // ── skill-channel proof: install → status → reinstall no-op → uninstall, project + global ──
     const project = path.join(scratch, "skill-project");
@@ -792,10 +842,11 @@ async function runInstalledProof(spec) {
       files: contractReceipt.files.length,
       bins: Object.keys(manifest.bin),
       workflow: [
+        "quickstart: home -> recipes -> init --create-only work-tracking -> attributed Task -> home/status",
         "recipes",
-        "init",
-        "recipe add",
+        "init --create-only",
         "new",
+        "doc read",
         "list",
         "skill install/status/uninstall",
         "hook install/uninstall",

@@ -104,7 +104,7 @@ test("A1.3 no-bundle fallback: no bundle block, getting_started hint, commands p
   assert.equal(typeof view.getting_started, "string");
   assert.match(
     view.getting_started as string,
-    new RegExp(`${INVOKE.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")} init --recipe none`),
+    new RegExp(`${INVOKE.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")} init --create-only --recipe none`),
   );
   assert.match(view.getting_started as string, new RegExp(`${INVOKE.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")} recipes`));
   assert.ok(view.commands);
@@ -135,9 +135,9 @@ test("A1.3b no-bundle --dir fallback preserves the explicit target in every acti
   });
 
   const gettingStarted = (JSON.parse(out) as Record<string, unknown>).getting_started as string;
-  assert.ok(gettingStarted.includes(`${INVOKE} init --recipe none --dir '${selected}'`));
+  assert.ok(gettingStarted.includes(`${INVOKE} init --create-only --recipe none --dir '${selected}'`));
   assert.ok(gettingStarted.includes(`${INVOKE} recipes`));
-  assert.ok(gettingStarted.includes(`${INVOKE} init --recipe <name> --dir '${selected}'`));
+  assert.ok(gettingStarted.includes(`${INVOKE} init --create-only --recipe <name> --dir '${selected}'`));
   assert.ok(!gettingStarted.includes(`recipes --dir`));
 });
 
