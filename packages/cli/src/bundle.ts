@@ -356,6 +356,7 @@ async function canonicalBundleRoot(
 
 interface CreateOnlyFilesystem {
   lstat(p: string): Promise<Stats>;
+  stat(p: string): Promise<Stats>;
   realpath(p: string): Promise<string>;
   readdir(p: string): Promise<string[]>;
   mkdir(p: string): Promise<void>;
@@ -364,6 +365,7 @@ interface CreateOnlyFilesystem {
 
 const createOnlyFs: CreateOnlyFilesystem = {
   lstat: (p) => fs.lstat(p),
+  stat: (p) => fs.stat(p),
   realpath: (p) => fs.realpath(p),
   readdir: (p) => fs.readdir(p),
   mkdir: (p) => fs.mkdir(p).then(() => undefined),
@@ -564,7 +566,15 @@ async function existingBundleAt(
     createdDirectories,
   );
   if (!candidateInfo) return null;
-  if (!candidateInfo.isDirectory() && !candidateInfo.isSymbolicLink()) return null;
+
+  let effectiveInfo = candidateInfo;
+  if (candidateInfo.isSymbolicLink()) {
+    try {
+      effectiveInfo = await io.stat(candidate);
+    } catch (err) {
+      createOnlyUncertainty(phase, "stat-binding-target", candidate, err, createdDirectories);
+    }
+  }
 
   let physicalCandidate: string;
   try {
@@ -584,17 +594,32 @@ async function existingBundleAt(
       createdDirectories,
     );
   }
-  if (physicalInfo.isSymbolicLink() || !physicalInfo.isDirectory()) {
+  if (
+    physicalInfo.isSymbolicLink() ||
+    effectiveInfo.isDirectory() !== physicalInfo.isDirectory()
+  ) {
     createOnlyUncertainty(
       phase,
       "validate-resolved-binding-target-shape",
       physicalCandidate,
-      Object.assign(new Error("resolved binding target is no longer a physical directory"), {
+      Object.assign(new Error("resolved binding target shape changed during observation"), {
         code: "ESHAPE",
       }),
       createdDirectories,
     );
   }
+  if (effectiveInfo.dev !== physicalInfo.dev || effectiveInfo.ino !== physicalInfo.ino) {
+    createOnlyUncertainty(
+      phase,
+      "validate-resolved-binding-target-identity",
+      physicalCandidate,
+      Object.assign(new Error("resolved binding target identity changed during observation"), {
+        code: "EPATHCHANGED",
+      }),
+      createdDirectories,
+    );
+  }
+  if (!physicalInfo.isDirectory()) return null;
 
   const own = await optionalLstat(
     io,

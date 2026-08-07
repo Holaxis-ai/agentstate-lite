@@ -270,6 +270,236 @@ test("create-only binding discovery matches ordinary discovery for symlinked bin
   }
 });
 
+test("stable direct and symlink binding targets to the same non-directory both permit create-only", async (t) => {
+  const base = await tempDir();
+  try {
+    const boundFile = path.join(base, "stable-non-bundle");
+    const boundAlias = path.join(base, "stable-non-bundle-alias");
+    await writeFile(boundFile, "not a bundle\n");
+    await symlink(boundFile, boundAlias);
+
+    for (const [shape, boundTarget] of [
+      ["direct", boundFile],
+      ["symlink", boundAlias],
+    ] as const) {
+      await t.test(shape, async () => {
+        const project = path.join(base, `${shape}-project`);
+        await mkdir(project);
+        await writeFile(
+          path.join(project, ".agentstate.json"),
+          `${JSON.stringify({ bundle: boundTarget })}\n`,
+        );
+
+        const receipt = await runInit([
+          "--create-only",
+          "--dir",
+          path.join(project, "new-bundle"),
+          "--recipe",
+          "none",
+        ]);
+        assert.equal(receipt.init, "ok");
+        assert.equal(await readFile(boundFile, "utf8"), "not a bundle\n");
+      });
+    }
+  } finally {
+    await rm(base, { recursive: true, force: true });
+  }
+});
+
+test("binding target effective snapshots follow symlinks exactly once and reuse direct lstat", async (t) => {
+  const base = await tempDir();
+  try {
+    const boundFile = path.join(base, "stable-non-bundle");
+    const boundAlias = path.join(base, "stable-non-bundle-alias");
+    await writeFile(boundFile, "not a bundle\n");
+    await symlink(boundFile, boundAlias);
+
+    for (const [shape, boundTarget, expectedStatCalls] of [
+      ["direct", boundFile, 0],
+      ["symlink", boundAlias, 1],
+    ] as const) {
+      await t.test(shape, async () => {
+        const project = path.join(base, `${shape}-snapshot-project`);
+        const newBundle = path.join(project, "new-bundle");
+        await mkdir(project);
+        await writeFile(
+          path.join(project, ".agentstate.json"),
+          `${JSON.stringify({ bundle: boundTarget })}\n`,
+        );
+        let statCalls = 0;
+
+        await assertCreateOnlyTarget(newBundle, process.cwd(), {
+          fs: {
+            stat: async (p) => {
+              assert.equal(p, boundTarget);
+              statCalls += 1;
+              return fsPromises.stat(p);
+            },
+          },
+        });
+        assert.equal(statCalls, expectedStatCalls);
+      });
+    }
+  } finally {
+    await rm(base, { recursive: true, force: true });
+  }
+});
+
+test("binding target observer rejects witnessed shape and identity transitions", async (t) => {
+  for (const [shape, transition, expectedOperation, expectedCode] of [
+    ["direct", "directory-to-file", "validate-resolved-binding-target-shape", "ESHAPE"],
+    ["symlink", "directory-to-file", "validate-resolved-binding-target-shape", "ESHAPE"],
+    ["symlink", "resolved-symlink", "validate-resolved-binding-target-shape", "ESHAPE"],
+    ["direct", "directory-replacement", "validate-resolved-binding-target-identity", "EPATHCHANGED"],
+    ["symlink", "directory-replacement", "validate-resolved-binding-target-identity", "EPATHCHANGED"],
+  ] as const) {
+    await t.test(`${shape} ${transition}`, async () => {
+      const base = await tempDir();
+      try {
+        const physicalBase = await fsPromises.realpath(base);
+        const project = path.join(physicalBase, "project");
+        const observedDirectory = path.join(physicalBase, "observed-directory");
+        const replacement = path.join(physicalBase, "replacement");
+        await mkdir(project);
+        await mkdir(observedDirectory);
+        if (transition === "directory-to-file") await writeFile(replacement, "replacement\n");
+        else if (transition === "resolved-symlink") await symlink(observedDirectory, replacement);
+        else await mkdir(replacement);
+        const replacementInfo = await fsPromises.lstat(replacement);
+        const boundTarget =
+          shape === "symlink" ? path.join(physicalBase, "observed-directory-alias") : observedDirectory;
+        if (shape === "symlink") await symlink(observedDirectory, boundTarget);
+        await writeFile(
+          path.join(project, ".agentstate.json"),
+          `${JSON.stringify({ bundle: boundTarget })}\n`,
+        );
+
+        let physicalLstatCalls = 0;
+        let publishCalled = false;
+        const newBundle = path.join(project, "new-bundle");
+        await assert.rejects(
+          () =>
+            withCreateOnlyTarget(
+              newBundle,
+              async () => {
+                publishCalled = true;
+              },
+              process.cwd(),
+              {
+                fs: {
+                  lstat: async (p) => {
+                    if (p === observedDirectory) {
+                      physicalLstatCalls += 1;
+                      const finalSnapshot = shape === "direct" ? physicalLstatCalls === 2 : true;
+                      if (finalSnapshot) return replacementInfo;
+                    }
+                    return fsPromises.lstat(p);
+                  },
+                },
+              },
+            ),
+          (err: unknown) =>
+            err instanceof CliError &&
+            err.code === "RUNTIME" &&
+            err.details?.phase === "preflight" &&
+            err.details.operation === expectedOperation &&
+            err.details.path === observedDirectory &&
+            err.details.fs_code === expectedCode,
+        );
+        assert.equal(publishCalled, false);
+        assert.equal(existsSync(path.join(newBundle, "index.md")), false);
+      } finally {
+        await rm(base, { recursive: true, force: true });
+      }
+    });
+  }
+});
+
+test("binding target observer faults retain exact operation, path, and fs code", async (t) => {
+  for (const [fault, expectedOperation, expectedCode] of [
+    ["followed-stat", "stat-binding-target", "EIO"],
+    ["dangling", "stat-binding-target", "ENOENT"],
+    ["realpath", "realpath-binding-target", "EIO"],
+    ["resolved-lstat", "lstat-resolved-binding-target", "EIO"],
+  ] as const) {
+    await t.test(fault, async () => {
+      const base = await tempDir();
+      try {
+        const physicalBase = await fsPromises.realpath(base);
+        const project = path.join(physicalBase, "project");
+        const physicalBoundTarget = path.join(physicalBase, "bound-target");
+        await mkdir(project);
+        let boundTarget = physicalBoundTarget;
+        if (fault === "dangling") {
+          boundTarget = path.join(physicalBase, "dangling-alias");
+          await symlink(physicalBoundTarget, boundTarget);
+        } else {
+          await mkdir(physicalBoundTarget);
+          if (fault === "followed-stat") {
+            boundTarget = path.join(physicalBase, "bound-target-alias");
+            await symlink(physicalBoundTarget, boundTarget);
+          }
+        }
+        await writeFile(
+          path.join(project, ".agentstate.json"),
+          `${JSON.stringify({ bundle: boundTarget })}\n`,
+        );
+
+        let physicalLstatCalls = 0;
+        const deps =
+          fault === "followed-stat"
+            ? {
+                fs: {
+                  stat: async (p: string) => {
+                    if (p === boundTarget) throw Object.assign(new Error("injected followed stat fault"), { code: "EIO" });
+                    return fsPromises.stat(p);
+                  },
+                },
+              }
+            : fault === "realpath"
+              ? {
+                  fs: {
+                    realpath: async (p: string) => {
+                      if (p === boundTarget) throw Object.assign(new Error("injected realpath fault"), { code: "EIO" });
+                      return fsPromises.realpath(p);
+                    },
+                  },
+                }
+              : fault === "resolved-lstat"
+                ? {
+                    fs: {
+                      lstat: async (p: string) => {
+                        if (p === physicalBoundTarget) {
+                          physicalLstatCalls += 1;
+                          if (physicalLstatCalls === 2) {
+                            throw Object.assign(new Error("injected resolved lstat fault"), { code: "EIO" });
+                          }
+                        }
+                        return fsPromises.lstat(p);
+                      },
+                    },
+                  }
+                : {};
+
+        const newBundle = path.join(project, "new-bundle");
+        await assert.rejects(
+          () => assertCreateOnlyTarget(newBundle, process.cwd(), deps),
+          (err: unknown) =>
+            err instanceof CliError &&
+            err.code === "RUNTIME" &&
+            err.details?.phase === "preflight" &&
+            err.details.operation === expectedOperation &&
+            err.details.path === boundTarget &&
+            err.details.fs_code === expectedCode,
+        );
+        assert.equal(existsSync(path.join(newBundle, "index.md")), false);
+      } finally {
+        await rm(base, { recursive: true, force: true });
+      }
+    });
+  }
+});
+
 test("binding targets that disappear after realpath fail closed for direct and symlink paths", async (t) => {
   for (const shape of ["direct", "symlink"] as const) {
     await t.test(shape, async () => {
