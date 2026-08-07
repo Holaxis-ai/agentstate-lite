@@ -5,16 +5,14 @@ status: in_progress
 priority: '1'
 assignee: codex-pr212-orchestrator
 description: >-
-  PR #212 correction cycle 2 complete at exact SHA
-  61ff794a6e1515f662c2005d800c814058da0139 (clean, unpushed). Three ab2d97f
-  re-review findings red/green: required post-realpath binding observation;
-  complete double-fault provenance; barrier-attributable installed
-  production-lock proof. Focused 44/44; CLI 1324/1324; scripts 128/128;
-  build/typecheck/skill/package green. Final allowed exact-SHA Review starts
-  now; new substantive finding triggers architecture reorientation before any
-  further fix.
+  PR #212 final planned Review CHANGES_REQUESTED at
+  61ff794a6e1515f662c2005d800c814058da0139 on one P2 stable-shape binding parity
+  regression (direct file allowed, symlink to same file RUNTIME). Three-cycle
+  cap reached: architecture reorientation active; no builder or QA until a
+  phase-aware binding-target truth table/state model is independently approved.
+  All other safety and distribution claims survived.
 actor: codex-pr212-orchestrator
-timestamp: '2026-08-07T15:57:48.527Z'
+timestamp: '2026-08-07T16:05:55.624Z'
 ---
 # Problem
 
