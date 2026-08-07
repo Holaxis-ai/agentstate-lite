@@ -2,17 +2,17 @@
 type: Task
 title: 'New-user quickstart: the TESTED install to init-a-recipe to productive journey'
 description: >-
-  REVISED INTEGRATION PLAN APPROVED. Builder will replay checkpoint 6e2cfaa onto
-  main 531c9df and keep the nine-file boundary while correcting three checkpoint
-  defects: default commands target .agentstate-lite from a non-empty project;
-  existing bundle Recipe rows are add-only; public install uses unqualified
-  @holaxis/aslite and labels quickstart-agent as an example. PR #211 user-scope
-  and PR #212 no-delete/production-lock/package identity proofs are mandatory.
-  Builder is next; exact-SHA Review then adversarial QA before PR.
+  BUILDER COMPLETE on current main. Final clean unpushed SHA
+  8c9360bb098f33302337d489a54dd0fcb0e16f24 follows rebased checkpoint 8fcd8e3 on
+  base 531c9df. Exactly nine approved files. Red evidence captured for non-empty
+  cwd targeting, dead existing-bundle create rows, old @next/scope/actor copy;
+  green focused suites, package proof dirty=false, and full unrestricted npm run
+  check including CLI 1355/1355, scripts 129/129, Playwright 19/19. No residual
+  processes. Awaiting independent exact-SHA Review; QA remains blocked.
 actor: codex-npm-quickstart-orchestrator
 status: in_progress
 priority: '1'
-timestamp: '2026-08-07T17:45:02.344Z'
+timestamp: '2026-08-07T18:01:42.487Z'
 ---
 [the tested new-user onboarding journey](../roadmap-items/distribution-neutral-resources.md)
 
