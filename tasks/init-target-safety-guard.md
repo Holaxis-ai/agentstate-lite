@@ -3,22 +3,14 @@ type: Task
 title: Add generic create-only target safety to init
 status: in_progress
 priority: '1'
-assignee: brian-claude
+assignee: codex-pr212-orchestrator
 description: >-
-  INDEPENDENT EXACT-SHA REVIEW FAIL at PR #212 head
-  81b3c39ff252013e318b1a714b63430a24074d70. Blocker 1: post-CAS rollback has no
-  claim/version provenance; deterministic probes show it deletes a pre-existing
-  empty target directory and unlinks index.md bytes replaced after its CAS,
-  contradicting own-write-only rollback. Blocker 2: the downward isolation scan
-  converts every readdir failure into an empty subtree; an unreadable descendant
-  can hide a nested bundle and the verifier returns success. Committed focused
-  tests pass 154/154, installed-package proof passes, and hosted Node 20/22/26
-  CI is green, but those gates do not cover these adversarial states. Carry
-  explicit directory/byte ownership into guarded rollback, fail closed on scan
-  errors, add red/green regressions, then request a fresh exact-SHA review and
-  QA. Do not merge this head.
-actor: codex-pr212-reviewer
-timestamp: '2026-08-07T14:05:26.945Z'
+  PR #212 repair in progress: team approved strict pre-publish root-scoped
+  arbitration, locked revalidation, component-wise directory receipts, and zero
+  product-tree cleanup; Builder -> exact-SHA Review -> adversarial QA -> hosted
+  gates remain.
+actor: codex-pr212-orchestrator
+timestamp: '2026-08-07T14:41:09.007Z'
 ---
 # Problem
 

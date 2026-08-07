@@ -8,7 +8,7 @@ description: >-
   Define security and trust-boundary review criteria, vet the shared template,
   then apply the approved template to packages/cli.
 actor: security-reviewer
-timestamp: '2026-08-07T14:19:08.639Z'
+timestamp: '2026-08-07T14:30:42.991Z'
 ---
 # Goal
 
@@ -36,4 +36,6 @@ Round-2 security re-review is recorded in [security review R2](../context-notes/
 
 Final freeze review is recorded in [security review R3](../context-notes/cli-architecture-review-security-template-review-r3.md). Security verdict: approve template v1.0 `sha256:02e263f4e78d8fd9e9c6d63a634e82d8ce968b5c54f5e8bb01d224a2279abd09` and domain model v1.0 `sha256:061758d30ed7cb406f4e48157470e742d48ec0a79aaced5fdf05b599e9f1c231`. No security regression was found from R2.
 
-No packages/cli findings have been produced. Task remains in progress pending orchestrator freeze and explicit phase-2 dispatch.
+The defensive packages/cli assessment at frozen source `81b3c39ff252013e318b1a714b63430a24074d70` is recorded in [the redacted findings note](../context-notes/cli-architecture-review-security-findings.md). Static coverage included filesystem, process, network, credentials, authorization, concurrency, resource, unsafe-default, and build/distribution boundaries. Potentially exploitable released concerns were withheld from the public bundle and marked for private routing; non-released create-only hardening gaps and defensive validation are recorded at a non-weaponizing level.
+
+The task remains in progress pending orchestrator aggregation, independent cross-review, and completion of any private disclosure workflow.

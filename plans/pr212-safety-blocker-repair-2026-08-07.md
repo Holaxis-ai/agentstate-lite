@@ -2,74 +2,101 @@
 type: Plan
 title: 'Plan: repair PR #212 rollback ownership and fail-closed isolation'
 description: >-
-  Team-reviewed repair plan for the two independent-review blockers on PR #212:
-  unsafe pathname rollback and fail-open descendant scans.
+  Frozen team plan: pre-publish root-scoped arbitration, strict revalidation,
+  zero product-tree deletion, deterministic Review/QA gates.
 actor: codex-pr212-orchestrator
-timestamp: '2026-08-07T14:27:29.476Z'
+timestamp: '2026-08-07T14:41:08.800Z'
 ---
-# Summary
+# PR #212 safety-blocker repair — frozen team plan
 
-Repair PR #212's two P1 safety blockers by replacing pathname-assumed cleanup with explicit ownership/provenance and by making every uncertain descendant scan fail closed. The repair must preserve the original create-only invariant—no successful nested pair—without deleting pre-existing or concurrently replaced state.
-
-# Goals
+## Purpose and goals
 
 Ultimate goal: make agentstate-lite shared, versioned, conflict-safe Markdown memory installable and usable by a human and agent fleet without founder intervention.
 
-Proximate goal: make `init --create-only` a truthful fail-closed creation primitive under concurrent and hostile filesystem transitions. This serves the ultimate goal by making the onboarding creation boundary safe enough for agents to invoke without founder supervision.
+Proximate goal: make `init --create-only` truthfully fail closed under cooperating concurrent creates and hostile filesystem transitions, without deleting filesystem state it cannot prove it owns. This serves the ultimate goal by making unattended onboarding safe and predictable.
 
-# Domain model and taxonomy
+## Problem statement
 
-- **Logical target:** the path spelling supplied by the caller.
-- **Physical target:** the symlink-resolved local directory selected after preflight.
-- **Preflight:** read-only rejection of existing, non-empty, bound, symlinked, or already nested targets.
-- **Claim:** the first exclusive filesystem mutation that establishes this invocation's participation in creation.
-- **Claim receipt:** immutable evidence of exactly which artifacts and directories this invocation created, including enough identity to distinguish later replacements.
-- **Publish point:** creation of `index.md`, which turns a directory into an OKF bundle visible to ordinary discovery.
-- **Isolation check:** the bidirectional ancestor/descendant proof that a parent and child create-only race cannot both report success.
-- **Rollback:** best-effort removal restricted to artifacts still provably owned by this invocation.
-- **Foreign state:** anything that pre-existed the claim or was created/replaced by another writer after it.
-- **Uncertainty:** any filesystem observation failure—permission denial, I/O error, disappearance, unexpected shape, or identity mismatch—that prevents proving safety.
+Exact SHA `81b3c39ff252013e318b1a714b63430a24074d70` publishes `index.md`, scans for a concurrent parent/child bundle, and then rolls back by pathname. Independent review demonstrated that it can delete a pre-existing empty target and a foreign replacement `index.md`. The recursive scan also treats filesystem errors as an empty subtree; team probes showed the same fail-open behavior in the generic upward `stat` path.
 
-Current sequence at reviewed SHA `81b3c39` is: resolve Recipe → preflight physical target → `claimCreateOnlyTarget()` creates missing directories but returns no receipt → `initBundle(expectNew)` publishes `index.md` → `verifyCreateOnlyIsolation()` scans up/down → conflict cleanup unlinks `target/index.md` and rmdirs upward by pathname. The two review blockers are consequences of missing provenance and fail-open scan error handling in that final stage.
+The old lifecycle cannot be repaired by adding a historical hash or inode check before `unlink`/`rmdir`: Node exposes no identity-conditional pathname deletion, so a replacement can occur between check and delete. The design therefore removes post-publication rollback rather than attempting to make it look owned.
 
-# Non-negotiable invariants
+## Domain model
 
-1. No invocation reports success when its target is nested inside another bundle or contains a nested bundle.
-2. No failure path deletes or overwrites a directory or file that this invocation did not create and still provably own.
-3. A won expect-absent write is historical evidence, not perpetual pathname ownership.
-4. Every observation error in an isolation proof fails closed; absence may be concluded only from a successful observation.
-5. Cleanup messages describe observed outcomes truthfully; never claim “nothing remains” when cleanup was skipped, uncertain, or failed.
-6. Recipe resolution remains before the first write, and ordinary `init` without `--create-only` remains backward compatible.
-7. The repair stays inside create-only target policy, its tests, generated public help if wording changes, and installed-package proof. It does not absorb npm quickstart, plugin regeneration, release, hook, or install-scope work.
+- **Logical target**: the path spelling supplied by the caller.
+- **Physical target**: the symlink-resolved path derived from the nearest existing ancestor.
+- **Strict observation**: an isolation decision where only an explicitly classified absence is absence; access, I/O, resource, disappearance, or shape uncertainty is a typed failure.
+- **Create-only arbitration mutex**: an external, private, same-user cross-process runtime lock shared by all targets under one physical path root. POSIX is intentionally host-global; Windows is drive/UNC-root scoped.
+- **Critical section**: strict locked revalidation through successful `index.md` expect-absent publication.
+- **Directory receipt**: the exact ordered paths created component-by-component by this invocation. It is diagnostic only and never authorizes deletion.
+- **Publish point**: the successful expect-absent `index.md` write.
+- **Foreign state**: any path or bytes not created by this invocation, including replacements at historically owned pathnames.
+- **Residue**: empty directories created before a failed publication. Residue is retained and reported; it is never pruned.
 
-# Validation contract
+## Frozen threat and compatibility boundary
 
-- **VAL-001 — pre-existing empty target:** force post-claim isolation failure after selecting an empty directory that existed before invocation. The directory remains byte/identity present; only invocation-owned artifacts may be removed.
-- **VAL-002 — replaced index:** after this invocation's expect-absent publication, atomically replace `index.md` before conflict handling. The replacement bytes remain exact and the command fails without claiming complete rollback.
-- **VAL-003 — unreadable descendant:** hide a nested bundle below a directory whose read fails. Isolation cannot return success; the command emits a typed fail-closed error and preserves the hidden subtree.
-- **VAL-004 — scan error matrix:** EACCES plus at least one injected non-permission readdir failure and disappearance/shape transition all fail closed with no foreign deletion.
-- **VAL-005 — parent/child race:** repeated built-CLI and installed-package parent/child races produce zero two-success rounds, zero successful nested pairs, and zero damaged winner/foreign state.
-- **VAL-006 — directory provenance:** nested missing-parent targets record and remove only directories created by the invocation; pre-existing ancestors and empty target directories survive.
-- **VAL-007 — cleanup truth:** injected unlink/rmdir/identity mismatch cannot produce an unconditional complete-cleanup claim.
-- **VAL-008 — regressions:** fresh targets and all Recipe forms still succeed; existing/bound/nested/symlink/non-empty targets still refuse before product writes; plain `init` behavior remains intact.
-- **VAL-009 — distribution:** focused source tests, built CLI, exact installed tarball, full repository gate, and hosted Node 20/22/26 CI all pass at the final exact SHA.
+The mutual-exclusion proof covers cooperating same-user `init --create-only` processes on a coherent local filesystem, matching the repository's existing filesystem-mutation-lock scope. Different OS users, raw filesystem writers that ignore the advisory lock, and incoherent/network filesystem caching cannot be excluded from mutating the tree. They remain in scope for the no-deletion and truthful/fail-closed guarantees.
 
-# Orchestration plan
+Plain `init` keeps the current reviewed branch's open-or-create/idempotent behavior. Recipe resolution remains before any write and Recipe application remains after bundle publication. Existing target, binding, enclosing bundle, conventional workspace, symlink, non-directory, and non-empty refusals retain their present user-facing conflict class. No quickstart, npm release, plugin-bundle, hook, sync, MCP, View, or unrelated architecture work enters this unit.
 
-1. **R0 fan-out:** independent architecture, adversarial-test, and product/acceptance agents review this model and the exact-head reproductions. Read-only except agentstate context notes.
-2. **Plan synthesis:** orchestrator reconciles disagreements, updates this Plan, and freezes the implementation boundary before code changes.
-3. **Builder:** first commit deterministic red regressions for VAL-001–VAL-004/VAL-007, then implement the smallest design that makes them green. Builder records design rationale and focused evidence.
-4. **Independent exact-SHA Review:** a fresh Reviewer receives the frozen criteria and commit, not the builder's reasoning. Any blocker returns to a fresh repair pass, maximum three review cycles.
-5. **Adversarial QA:** a fresh QA agent runs built and installed-artifact hostile filesystem/concurrency batteries after Review passes.
-6. **Repository/hosted gate:** run full `npm run check`, push the reviewed/QA SHA, monitor Node 20/22/26, and update the PR only when all gates pass.
+## Approved state machine
 
-# Open design questions for R0
+1. Resolve the Recipe before mutation, unchanged.
+2. Strictly resolve and inspect the logical target, read-only, to obtain the physical target and path-root lock key.
+3. Acquire the external create-only arbitration mutex using the repository's existing filesystem lock implementation.
+4. Under the mutex, strictly re-resolve and fully re-inspect the original logical target. Refuse if physical resolution changed or the target is no longer genuinely new.
+5. Create missing path components with non-recursive `mkdir`, recording every successful creation in an in-memory directory receipt. A pre-existing empty target yields an empty receipt.
+6. Strictly re-resolve/re-inspect immediately before publication and require the same physical target. The target must be empty. Any top-level entry proves it is not genuinely new, so recursive descendant scanning is unnecessary.
+7. While still holding the mutex, publish `index.md` through `initBundle(..., { expectNew: true })`. This is the only bundle-creation write and the linearization point.
+8. Release the mutex, then apply the already-resolved Recipe.
 
-- Can the publish-point rollback be made atomically conditional with available cross-platform primitives, or must arbitration move before `index.md` publication so post-CAS deletion disappears entirely?
-- What claim representation gives parent/child mutual visibility without mutating unrelated ancestors or relying on stale global locks?
-- Which directory identities can be recorded portably enough to prevent removing pre-existing/replaced directories, and where must uncertainty deliberately leave residue?
-- How should typed error taxonomy distinguish isolation conflict, scan uncertainty, and incomplete cleanup without weakening existing exit-code compatibility?
+No create-only failure path invokes `unlink`, `rmdir`, `rm`, or rename-to-quarantine. The post-CAS `verifyCreateOnlyIsolation` mechanism is deleted.
 
-[task](../tasks/init-target-safety-guard.md)
-[failed exact-SHA review](https://github.com/Holaxis-ai/agentstate-lite/pull/212#issuecomment-5218142850)
-[prior gate ledger](../context-notes/init-create-only-gate-complete-81b3c39.md)
+## Proof obligations
+
+1. **At most one parent/child success.** Parent and child share one root-scoped mutex. Their critical sections are ordered. After the first publishes, a child second entrant sees an enclosing bundle; a parent second entrant sees a non-empty target. The second fails before publication.
+2. **No unowned deletion.** There is no product-tree deletion in the create-only lifecycle. Pre-existing directories, replacement files, symlinks, and path-shape replacements therefore survive every handled failure.
+3. **Fail-closed observation.** Create-only policy uses dedicated strict probes rather than generic permissive discovery. Only `ENOENT` at an observation whose containing path was successfully established may mean absent. `EACCES`, `EPERM`, `EIO`, resource errors, unexpected disappearance, `ENOTDIR`, symlink/shape transition, and `realpath` failure are `RUNTIME` uncertainty before publication.
+4. **Truthful residue.** No message says "nothing remains" or "nothing was written" when a non-empty directory receipt exists or publication outcome is uncertain. Created empty directories may remain and are safe for retry because create-only accepts an existing empty target.
+5. **No lifecycle regression.** Successful create-only returns the same public receipt; ordinary init and all Recipe forms preserve the accepted PR baseline.
+
+## Frozen validation contract
+
+- **VAL-001 — pre-existing target preservation:** force failures before and after locked revalidation with a pre-existing empty target; assert its identity survives and no removal primitive is called.
+- **VAL-002 — zero product-tree deletion:** inject different-byte replacement, identical-byte/path ABA, symlink replacement, and empty-directory replacement around publish/release failures; assert exact foreign state survives. Static/dynamic tests reject any create-only call to `unlink`, `rmdir`, `rm`, or quarantine rename.
+- **VAL-003 — strict observation matrix:** deterministically inject EACCES, EPERM, EIO, EMFILE/ENFILE, unexpected ENOENT/ENOTDIR, ELOOP, and shape changes into target, ancestor-own-index, conventional-index, binding, `lstat`, `readdir`, and `realpath` observations. All uncertainty is typed `RUNTIME` before publication with operation/path/code details. A real chmod probe is supplemental only.
+- **VAL-004 — hidden descendant:** a target containing any top-level descendant, including an unreadable subtree hiding `index.md`, refuses without descending or succeeding; all subtree bytes survive.
+- **VAL-005 — deterministic mutex ordering:** barrier tests force parent-first and child-first ownership of the shared mutex for ordinary and conventional-child shapes. The blocked process cannot enter locked revalidation or reach publish until release. Assert zero two-success cases, zero nested pairs, one undamaged winner at most, and structured loser output. Live repeated races remain supplemental smoke.
+- **VAL-006 — exact directory receipt and residue truth:** component-wise creation records only directories this invocation created; no directory is pruned. Failures expose `residual_created_directories` when non-empty and never recommend `recipe add` for unreadable/shape-uncertain targets.
+- **VAL-007 — lock uncertainty:** timeout, stale/malformed lock, and release failure remain typed runtime failures with inspectable lock details. A release failure after publication must not trigger product-tree cleanup or claim that no bundle exists.
+- **VAL-008 — compatibility:** pin fresh create-only with default/none/named/path Recipes; preflight refusals; bad-Recipe-before-write behavior and corrected retry; plain init create/open/idempotence and Recipe transition; same-target contention and physical-root receipts.
+- **VAL-009 — distribution and exact-SHA gates:** focused source tests, build, deterministic built-CLI tests, exact locally packed/installed CLI proof, `npm run check`, and hosted Node 20/22/26 must pass on the same SHA submitted to Review and QA.
+
+Deterministic injected barriers/faults are the safety oracle. Scheduler races and permission-bit behavior are supplemental evidence, not proof.
+
+## Roles, dependencies, and gates
+
+1. **R0 architecture / adversarial-test / acceptance review — complete.** Architecture approved pre-publish root-scoped arbitration; the acceptance critic rejected the draft until deletion and ambiguity were removed; adversarial testing expanded strict observations beyond the reported `readdir` line.
+2. **Builder.** In an isolated worktree, first demonstrate the required new regressions red at `81b3c39`, then implement the approved state machine and make focused tests green. The risky mechanism and its tests land in one commit.
+3. **Independent Reviewer.** Detach an isolated worktree at the exact builder SHA. Audit the lock-key construction, critical-section boundaries, strict error classification, zero-deletion property, residue truth, and test provenance. Probe at least one criterion red against the old SHA. No editing.
+4. **Adversarial QA.** Only after Review approves, use a fresh isolated worktree at the same SHA. Exercise barrier-controlled multi-process orderings, raw path replacement, actual permission behavior where supported, built CLI, and installed tarball. No editing.
+5. **Orchestrator.** Run the repository gate, push the reviewed commit to the PR branch, verify hosted Node 20/22/26 on that exact SHA, update the public PR with evidence, and keep the bundle task/plan current.
+
+Builder -> Reviewer -> QA is a hard dependency chain. A code change after Review or QA restarts the exact-SHA gate. Review/fix cycles are capped at three before architectural reorientation.
+
+## Merge-ready definition of done
+
+- The approved state machine is implemented without post-publish product-tree cleanup.
+- Every VAL-001..VAL-009 requirement is evidenced on the final SHA.
+- Independent exact-SHA Review approves, followed by fresh adversarial QA approval.
+- `npm run check`, built CLI, and exact installed-package verification pass locally; hosted Node 20/22/26 pass on the same SHA.
+- The PR comment explains the repaired invariants, residue behavior, exact SHA, and evidence. The orchestrator does not merge.
+
+## Team evidence
+
+- Governing [task](../tasks/init-target-safety-guard.md)
+- [prior gate ledger](../context-notes/init-create-only-gate-complete-81b3c39.md)
+- `context-notes/pr212-r0-architecture-codex`
+- `context-notes/pr212-r0-adversarial-tests-codex`
+- `context-notes/pr212-r0-acceptance-critic-codex`
+- Independent review comment: https://github.com/Holaxis-ai/agentstate-lite/pull/212#issuecomment-5218142850
