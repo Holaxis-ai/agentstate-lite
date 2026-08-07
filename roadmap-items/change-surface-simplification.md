@@ -23,8 +23,8 @@ description: >-
   REJECTED, do not re-propose: deleting the committed-folder establishment
   machinery — it is the supported in-tree -> dedicated-board upgrade path and a
   recorded permanent affordance.
-actor: openai/codex
-timestamp: '2026-07-20T00:41:45.005Z'
+actor: codex-orchestrator
+timestamp: '2026-08-07T13:58:41.571Z'
 ---
 [contains](../tasks/sync-establish-phase-carve.md)
 
@@ -37,3 +37,5 @@ timestamp: '2026-07-20T00:41:45.005Z'
 [contains](../tasks/sync-copy-unification.md)
 
 [contains](../tasks/prune-unused-log-api.md)
+
+[contains](../tasks/cli-architecture-review.md)

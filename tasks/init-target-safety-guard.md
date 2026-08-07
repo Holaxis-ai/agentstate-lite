@@ -5,16 +5,20 @@ status: in_progress
 priority: '1'
 assignee: brian-claude
 description: >-
-  PR #212 OPEN and READY FOR BRIAN MERGE at
-  https://github.com/Holaxis-ai/agentstate-lite/pull/212 for exact SHA
-  81b3c39ff252013e318b1a714b63430a24074d70 on feat/init-create-only. Independent
-  exact-SHA review passed across five rounds; adversarial
-  interruption/race/hostile-filesystem QA, installed-tarball proof, and full
-  local npm run check all passed. The branch combines cleanly with current main
-  including merged PR #211. Hosted CI passed on Node 20, 22, and 26. Awaiting
-  only Brian-owned merge gate.
-actor: codex-npm-quickstart
-timestamp: '2026-08-07T13:51:35.023Z'
+  INDEPENDENT EXACT-SHA REVIEW FAIL at PR #212 head
+  81b3c39ff252013e318b1a714b63430a24074d70. Blocker 1: post-CAS rollback has no
+  claim/version provenance; deterministic probes show it deletes a pre-existing
+  empty target directory and unlinks index.md bytes replaced after its CAS,
+  contradicting own-write-only rollback. Blocker 2: the downward isolation scan
+  converts every readdir failure into an empty subtree; an unreadable descendant
+  can hide a nested bundle and the verifier returns success. Committed focused
+  tests pass 154/154, installed-package proof passes, and hosted Node 20/22/26
+  CI is green, but those gates do not cover these adversarial states. Carry
+  explicit directory/byte ownership into guarded rollback, fail closed on scan
+  errors, add red/green regressions, then request a fresh exact-SHA review and
+  QA. Do not merge this head.
+actor: codex-pr212-reviewer
+timestamp: '2026-08-07T14:05:26.945Z'
 ---
 # Problem
 
