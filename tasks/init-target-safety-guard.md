@@ -5,18 +5,16 @@ status: in_progress
 priority: '1'
 assignee: brian-claude
 description: >-
-  PR-READY at exact SHA 81b3c39ff252013e318b1a714b63430a24074d70 on pushed
-  branch feat/init-create-only (4 commits: e84a66e feature, a438c5f + b42a4ae
-  review fixes, a5c0838 QA fixes, 81b3c39 round-4 fix). Gate complete:
-  independent exact-SHA review PASS (5 rounds; every round through r4 found real
-  defects) + adversarial QA PASS (interruption/race/hostile-fs batteries,
-  installed-tarball proof, red-proofed final fix). Full npm run check exit 0.
-  Ledger: context-notes/init-create-only-gate-complete-81b3c39. Pre-existing
-  findings filed as tasks/binding-fifo-read-hang,
-  tasks/crash-leftover-lock-no-owner, tasks/flaky-timing-test-cluster. Awaiting
-  Brian-owned PR open + merge.
-actor: claude/brian-claude
-timestamp: '2026-08-06T00:56:49.803Z'
+  PR #212 OPEN at https://github.com/Holaxis-ai/agentstate-lite/pull/212 for
+  exact SHA 81b3c39ff252013e318b1a714b63430a24074d70 on feat/init-create-only
+  (five commits). Gate complete: independent exact-SHA review PASS across five
+  rounds, adversarial interruption/race/hostile-filesystem QA PASS,
+  installed-tarball proof PASS, and full npm run check exit 0. The reviewed
+  branch combines cleanly with current main including merged PR #211. Hosted
+  Node 20/22/26 CI is running; awaiting those results and Brian-owned merge
+  gate.
+actor: codex-npm-quickstart
+timestamp: '2026-08-07T13:45:47.353Z'
 ---
 # Problem
 
