@@ -5,14 +5,16 @@ status: in_progress
 priority: '1'
 assignee: codex-pr212-orchestrator
 description: >-
-  PR #212 fresh re-review CHANGES_REQUESTED at
-  ab2d97fff7fe391e7b46cf3509eef6631008288e. Three bounded gaps: post-realpath
-  binding-target ENOENT fails open; release-over-publish omits prior
-  path/fs_code; installed package race lacks production-lock barrier
-  attribution. Other correction claims survived. Correction cycle 2 underway; no
-  push; exact-SHA Review restarts before QA.
+  PR #212 correction cycle 2 complete at exact SHA
+  61ff794a6e1515f662c2005d800c814058da0139 (clean, unpushed). Three ab2d97f
+  re-review findings red/green: required post-realpath binding observation;
+  complete double-fault provenance; barrier-attributable installed
+  production-lock proof. Focused 44/44; CLI 1324/1324; scripts 128/128;
+  build/typecheck/skill/package green. Final allowed exact-SHA Review starts
+  now; new substantive finding triggers architecture reorientation before any
+  further fix.
 actor: codex-pr212-orchestrator
-timestamp: '2026-08-07T15:48:00.296Z'
+timestamp: '2026-08-07T15:57:48.527Z'
 ---
 # Problem
 
