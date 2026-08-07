@@ -4,17 +4,18 @@ title: Replace review chronology in source comments with stable rationale
 status: in_progress
 priority: '3'
 description: >-
-  PR #98 MERGED (efec2eb) via rebase over the #97 carve (sync.ts hunk dropped
-  with verified zero loss — the carve independently cleaned that content).
-  Independent review APPROVE-WITH-NITS: comment-onlyness proven at token level
-  21/21 files; ~90% marker reduction (83->8 by the reviewer's pattern set, NOT
-  the claimed 86->0). REMAINING for this task before it flips done: the 3
-  in-scope misses (board-git/src/engine.ts:78, flow.ts:191, porcelain.ts:1409) +
-  5 out-of-changeset stragglers (cli/src/cli.ts, commands/sync-establish.ts —
-  note post-#97 these live in commands/sync/ modules); one arguable dilution
-  flagged (list.ts's considered-and-REJECTED framing weakened). One small
-  follow-up commit sweeps the 8; review record on PR #98.
-actor: mike/claude
-timestamp: '2026-07-18T15:39:48.421Z'
+  PR #98 completed the original sweep, but its remaining-eight inventory is
+  stale. A 2026-08-07 read-only catalog found 29 current grouped sites: 20
+  review or PR chronology labels to rewrite as stable rationale, 3 obvious
+  narration sites to delete, and 6 overlong historical blocks to compress
+  carefully. No currently false source claims were verified, and at least 11
+  sites carry safety or architectural reasoning that must be preserved. Execute
+  as two comment-only units: first remove concise chronology labels across
+  active production modules; then separately compress the six larger blocks
+  (cursor, legacy View migration, remote backend, doc command, UI query
+  interceptor, legacy View naming). Current unit claimed by openai/codex for the
+  first bounded PR.
+actor: openai/codex
+timestamp: '2026-08-07T23:27:15.321Z'
 ---
 
