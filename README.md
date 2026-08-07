@@ -18,7 +18,7 @@ Install the test-user prerelease from npm. The package puts the stable short com
 carrying another copy of the executable:
 
 ```sh
-npm install -g @holaxis/aslite@next
+npm install -g @holaxis/aslite
 aslite --version
 aslite skill install --scope user
 aslite hook install --scope user
@@ -26,7 +26,7 @@ aslite hook install --scope user
 
 Restart Claude Code or Codex after installing the skill. `hook install` is optional: it gives
 Claude Code, Codex, and OpenCode a compact AgentState orientation at session start. To try one
-command without installing anything, substitute `npx -y @holaxis/aslite@next` for `aslite`.
+orientation command without installing anything, run `npx -y @holaxis/aslite`.
 
 The older marketplace plugin remains temporarily available as a rollback channel while the npm
 upgrade journey is proven. New test installations should use npm so agents rely on `PATH`, not a
@@ -48,6 +48,8 @@ writes; use `recipe add` when you deliberately want to add capability to an exis
 Bring source material or intent to your agent in the tool you already use. The agent organizes,
 types, links, and updates the bundle through `aslite`; these commands are the plumbing, not a
 manual data-entry workflow.
+
+`quickstart-agent` is an advisory example actor label; replace it with the actual agent identity.
 
 The conventional `.agentstate-lite/` folder at the project root is discovered with zero
 config (the way git finds `.git`) — every command after setup runs bare from anywhere in

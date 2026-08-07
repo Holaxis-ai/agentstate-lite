@@ -104,7 +104,9 @@ test("A1.3 no-bundle fallback: no bundle block, getting_started hint, commands p
   assert.equal(typeof view.getting_started, "string");
   assert.match(
     view.getting_started as string,
-    new RegExp(`${INVOKE.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")} init --create-only --recipe none`),
+    new RegExp(
+      `${INVOKE.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")} init --create-only --recipe none --dir '\\.agentstate-lite'`,
+    ),
   );
   assert.match(view.getting_started as string, new RegExp(`${INVOKE.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")} recipes`));
   assert.ok(view.commands);
@@ -120,7 +122,7 @@ test("A1.3 no-bundle fallback: no bundle block, getting_started hint, commands p
   assert.ok(out.length > 0);
 });
 
-test("A1.3b no-bundle --dir fallback preserves the explicit target in every actionable command", async () => {
+test("A1.3b no-bundle --dir fallback creates in the explicit project's conventional child", async () => {
   let out = "";
   const selected = "/tmp/selected bundle";
   await home(["--dir", selected, "--json"], {
@@ -135,9 +137,10 @@ test("A1.3b no-bundle --dir fallback preserves the explicit target in every acti
   });
 
   const gettingStarted = (JSON.parse(out) as Record<string, unknown>).getting_started as string;
-  assert.ok(gettingStarted.includes(`${INVOKE} init --create-only --recipe none --dir '${selected}'`));
+  const target = path.join(selected, ".agentstate-lite");
+  assert.ok(gettingStarted.includes(`${INVOKE} init --create-only --recipe none --dir '${target}'`));
   assert.ok(gettingStarted.includes(`${INVOKE} recipes`));
-  assert.ok(gettingStarted.includes(`${INVOKE} init --create-only --recipe <name> --dir '${selected}'`));
+  assert.ok(gettingStarted.includes(`${INVOKE} init --create-only --recipe <name> --dir '${target}'`));
   assert.ok(!gettingStarted.includes(`recipes --dir`));
 });
 

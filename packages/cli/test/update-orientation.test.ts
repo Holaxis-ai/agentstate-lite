@@ -69,7 +69,7 @@ const HOME_BASELINE_TOON = [
   "  version: 0.1.0-pre.3",
   "  channel: local-dev",
   '  description: "read and write a local OKF knowledge bundle (context notes, docs, cross-links, live bundle Views)"',
-  'getting_started: "no OKF bundle found in this directory — run `aslite init --create-only --recipe none` to create a blank bundle, or `aslite recipes` to compare available workspace setups"',
+  `getting_started: "no OKF bundle found in this directory — run \`aslite init --create-only --recipe none --dir '.agentstate-lite'\` to create a blank bundle, or \`aslite recipes\` to compare available workspace setups; create your chosen setup here with \`aslite init --create-only --recipe <name> --dir '.agentstate-lite'\`"`,
   "commands:",
   '  Bundle: "bundle locate, catalog, init, index generate, status"',
   '  "Documents & links": "doc write, doc update, doc read, doc history, doc delete, list, link"',
@@ -92,7 +92,7 @@ const HOME_BASELINE_JSON = `${JSON.stringify({
       "read and write a local OKF knowledge bundle (context notes, docs, cross-links, live bundle Views)",
   },
   getting_started:
-    "no OKF bundle found in this directory — run `aslite init --create-only --recipe none` to create a blank bundle, or `aslite recipes` to compare available workspace setups",
+    "no OKF bundle found in this directory — run `aslite init --create-only --recipe none --dir '.agentstate-lite'` to create a blank bundle, or `aslite recipes` to compare available workspace setups; create your chosen setup here with `aslite init --create-only --recipe <name> --dir '.agentstate-lite'`",
   commands: {
     Bundle: "bundle locate, catalog, init, index generate, status",
     "Documents & links": "doc write, doc update, doc read, doc history, doc delete, list, link",
