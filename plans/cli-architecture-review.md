@@ -2,7 +2,7 @@
 type: Plan
 title: Plan — targeted packages/cli architecture review
 actor: codex-orchestrator
-timestamp: '2026-08-07T14:18:25.599Z'
+timestamp: '2026-08-07T15:07:05.865Z'
 ---
 # Purpose
 Create a reusable, evidence-oriented architecture review template, obtain cross-disciplinary approval, apply it to packages/cli, and publish the result in the bundle.
@@ -17,7 +17,7 @@ Create a reusable, evidence-oriented architecture review template, obtain cross-
 
 # Reviewed workflow and dependencies
 1. Divergent template design: specialists independently propose criteria/evidence standards; skeptic drafts the domain taxonomy. Parallel. COMPLETE.
-2. Convergent synthesis: orchestrator combines proposals into an exact draft and updates this plan. Depends on step 1. IN PROGRESS.
+2. Convergent synthesis: orchestrator combines proposals into an exact draft and updates this plan. Depends on step 1. COMPLETE.
 3. Applicability and reuse gate: paper-apply the draft to a pure library and a stateful/distributed adapter; every module/artifact is required, sampled with population/method/residual risk, N/A only when absent or unreachable, or not assessed with blocker/residual risk. Applicable material security items not assessed force an incomplete target verdict. Depends on step 2.
 4. Reviewer gate: every specialist reviews the exact template revision. Security verifies threat/boundary/disclosure controls; testing verifies coverage/testability/false-confidence controls; skeptic tests negative claims, scoring, proportionality, cross-project reuse, and stopping rules. Revise for blocking issues, maximum three cycles. Depends on steps 2-3.
 5. Approved-template freeze: persist approved status/version plus domain taxonomy. Freeze the material capability/risk universe, evidence ladder, finding schema, counterevidence, and private disclosure routing. Nonmaterial template amendments defer to a future version; a material defect blocks the affected area, creates a new version, and forces affected evidence/applicability to rerun or remain explicitly version-scoped. Depends on step 4.
@@ -29,3 +29,11 @@ Create a reusable, evidence-oriented architecture review template, obtain cross-
 
 # Acceptance criteria
 The parent task remains authoritative. Additionally: no aggregate architecture score; consequence, confidence, and action priority remain independent. Every applicable material capability/risk in the frozen purpose/system/threat/requirement universe traces to surfaces, plural authorities and owned responsibilities, state/dependencies, contracts, failure behavior, and verification. Every rubric item traces back to a product obligation, applicable risk, or demonstrated carrying cost. No finding quota. No source changes, commits, pushes, PRs, or public technical disclosure of an exploitable released-revision vulnerability (including main where main is the release channel).
+
+# Completion
+
+All ten workflow stages completed. The reusable template and its approval record are under `reviews/`; the frozen CLI review and exact-version approval record are under `reviews/`; Reviewer and QA gates passed; private security routes remain redacted; the parent and specialist tasks record their outcomes. Board sync and orchestration reflection are the final session-close operations.
+
+[final report](../reviews/cli-package-architecture-review.md)
+
+[report approval](../reviews/cli-package-architecture-review-approval.md)

@@ -24,7 +24,7 @@ description: >-
   machinery — it is the supported in-tree -> dedicated-board upgrade path and a
   recorded permanent affordance.
 actor: codex-orchestrator
-timestamp: '2026-08-07T13:58:41.571Z'
+timestamp: '2026-08-07T14:45:48.698Z'
 ---
 [contains](../tasks/sync-establish-phase-carve.md)
 
@@ -39,3 +39,9 @@ timestamp: '2026-08-07T13:58:41.571Z'
 [contains](../tasks/prune-unused-log-api.md)
 
 [contains](../tasks/cli-architecture-review.md)
+
+[contains](../tasks/cli-architecture-review-security.md)
+
+[contains](../tasks/cli-architecture-review-testing.md)
+
+[contains](../tasks/cli-architecture-review-design-skeptic.md)
