@@ -9,7 +9,7 @@ import { parseArgs } from "node:util";
 import { existsSync } from "node:fs";
 import path from "node:path";
 import { initBundle, loadKinds } from "@agentstate-lite/core";
-import { resolveTargetDir } from "../bundle.js";
+import { resolveTargetDir, withCreateOnlyTarget } from "../bundle.js";
 import { CliError } from "../errors.js";
 import { parseOrUsage } from "../args.js";
 import { render, resolveMode } from "../output.js";
@@ -20,7 +20,7 @@ import { resolveRecipe, DEFAULT_RECIPE_REF } from "../recipe-source.js";
 export const INIT_USAGE = `agentstate-lite init — create (or open) an OKF knowledge bundle
 
 Usage:
-  agentstate-lite init [--dir <path>] [--okf-version <v>] [--recipe <name-or-path>]
+  agentstate-lite init [--dir <path>] [--okf-version <v>] [--recipe <name-or-path>] [--create-only]
 
 Options:
   --dir <path>            Directory to init the bundle in (default: the current directory)
@@ -28,13 +28,23 @@ Options:
   --recipe <name-or-path> Apply a recipe on create (default: context-notes; 'none' for a bare
                            bundle) — a built-in name or a path to a recipe folder; see
                            'agentstate-lite recipes' to list built-ins
+  --create-only           Require a genuinely NEW workspace: refuse before publication when
+                           the target is already a bundle, is non-empty or a symlink, sits inside
+                           an enclosing bundle or bound project workspace, or is created
+                           concurrently. Without the flag, init keeps its open-or-create behavior.
+                           Recoveries: 'recipe add' modifies an existing bundle; a different
+                           explicit --dir creates a new one. A runtime failure can retain empty
+                           directories named in residual_created_directories; they are never
+                           deleted automatically. The receipt's root is the PHYSICAL path.
   --json                  Emit compact JSON instead of TOON
   -h, --help              Show this help
 `;
 
-/** Injectable seam so the parse→init wiring is unit-testable. */
+/** Injectable seams so the parse→init wiring — including the CAS-conflict mapping — is unit-testable. */
 export interface InitCliDeps {
   stdout: (s: string) => void;
+  /** Core bundle creator override (tests pin the VersionConflict → ALREADY_EXISTS mapping). */
+  initBundleImpl: typeof initBundle;
 }
 
 /**
@@ -66,6 +76,7 @@ export async function init(argv: string[], deps: Partial<InitCliDeps> = {}): Pro
           dir: { type: "string" },
           "okf-version": { type: "string" },
           recipe: { type: "string" },
+          "create-only": { type: "boolean" },
           // Declared (not just left to error out generically) so a misdirected `init --remote`
           // gets the SPECIFIC message below instead of parseArgs's generic unknown-option text.
           remote: { type: "string" },
@@ -92,7 +103,19 @@ export async function init(argv: string[], deps: Partial<InitCliDeps> = {}): Pro
     );
   }
 
-  const root = resolveTargetDir(values.dir);
+  // Recipe RESOLUTION is hoisted before any write (QA F2): a recipe typo must fail at exit 2
+  // with NOTHING created — under --create-only the old ordering left a bundle behind and wedged
+  // the retry at exit 5. Resolution needs no bundle; APPLICATION still runs after create.
+  const recipeRef = values.recipe?.trim() || DEFAULT_RECIPE_REF;
+  let loadedRecipe: Awaited<ReturnType<typeof resolveRecipe>> | undefined;
+  if (recipeRef !== "none") {
+    loadedRecipe = await resolveRecipe(recipeRef);
+    if (!loadedRecipe.ok) {
+      throw new CliError("USAGE", loadedRecipe.error.message, { help: `${cliInvocation()} recipes` });
+    }
+  }
+
+  const createOnly = Boolean(values["create-only"]);
   const okfVersion = values["okf-version"]?.trim();
   // The engine (`initBundle`) no longer seeds anything (CLAUDE.md gate 3: core special-cases
   // nothing about conventions) — it just creates the bundle. `init` applies the default recipe
@@ -100,19 +123,33 @@ export async function init(argv: string[], deps: Partial<InitCliDeps> = {}): Pro
   // one, now expressed as a product-surface commitment in the CLI, not an engine default).
   // Idempotent (expect-absent CAS per doc) — re-running `init` against an already-recipe'd bundle
   // is a no-op for each convention doc. `--recipe none` opts out to a bare bundle.
-  const bundle = await initBundle(root, okfVersion ? { okfVersion } : {});
-  const recipeRef = values.recipe?.trim() || DEFAULT_RECIPE_REF;
+  // Create-only owns one root-scoped critical section from strict revalidation through the
+  // expect-absent index publication. Recipe application remains outside the lock and after a valid
+  // bundle exists. Plain init keeps its historical open-or-create path unchanged.
+  let root: string;
+  let bundle;
+  if (createOnly) {
+    const result = await withCreateOnlyTarget(values.dir, (physicalTarget) =>
+      (deps.initBundleImpl ?? initBundle)(physicalTarget, {
+        ...(okfVersion ? { okfVersion } : {}),
+        expectNew: true,
+      }),
+    );
+    root = result.root;
+    bundle = result.value;
+  } else {
+    root = resolveTargetDir(values.dir);
+    bundle = await (deps.initBundleImpl ?? initBundle)(root, {
+      ...(okfVersion ? { okfVersion } : {}),
+    });
+  }
   let recipeApplied = "none";
   let selectedRecipeKinds: string[] = [];
   let warnings: unknown[] = [];
-  if (recipeRef !== "none") {
-    const loaded = await resolveRecipe(recipeRef);
-    if (!loaded.ok) {
-      throw new CliError("USAGE", loaded.error.message, { help: `${cliInvocation()} recipes` });
-    }
-    const result = await applyRecipe(bundle, loaded.recipe);
+  if (loadedRecipe?.ok) {
+    const result = await applyRecipe(bundle, loadedRecipe.recipe);
     recipeApplied = result.id;
-    selectedRecipeKinds = loaded.recipe.governs;
+    selectedRecipeKinds = loadedRecipe.recipe.governs;
     // Duplicate-`governs` against the TARGET bundle (approved §B decision 8(ii)), same as
     // `recipe add` — surfaced via the EXISTING `loadKinds` machinery, no new conflict machinery.
     const registry = await loadKinds(bundle);

@@ -57,9 +57,9 @@ export const COMMAND_GROUPS: CommandGroup[] = [
           "Register and deterministically resolve this user's explicitly named local workspaces",
       },
       {
-        usage: "init [--dir <path>] [--okf-version <v>] [--recipe <name-or-path>]",
+        usage: "init [--dir <path>] [--okf-version <v>] [--recipe <name-or-path>] [--create-only]",
         summary:
-          "Create (or open) an OKF knowledge bundle in a directory — greenfield setup; a project that already shares a board is set up by sync, not init",
+          "Create (or open) an OKF knowledge bundle in a directory — greenfield setup; a project that already shares a board is set up by sync, not init. --create-only requires a genuinely NEW target and refuses existing, non-empty, symlinked, enclosing, bound, or concurrent targets before publication; runtime failures retain and report any empty directories they created instead of deleting them — 'recipe add' modifies a verified existing bundle",
       },
       {
         usage: "index generate [--dir <path>] [--check] [--force] [--actor <name>]",

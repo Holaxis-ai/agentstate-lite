@@ -44,9 +44,18 @@
 // `Authorization` header entirely (no auth enforced there), so an ungated local bundle works
 // exactly as before with no key configured.
 import { BUNDLE_DIR } from "@agentstate-lite/board-git";
-import { promises as fs } from "node:fs";
+import { promises as fs, type Stats } from "node:fs";
 import path from "node:path";
-import { RemoteBackend, RemoteError, type Bundle, type FetchLike } from "@agentstate-lite/core";
+import {
+  FilesystemMutationLockError,
+  RemoteBackend,
+  RemoteError,
+  VersionConflict,
+  withFilesystemMutationLock,
+  type Bundle,
+  type FetchLike,
+  type FilesystemMutationLockOptions,
+} from "@agentstate-lite/core";
 import { CliError } from "./errors.js";
 import { cliInvocation } from "./invocation.js";
 import { normalizeServer } from "./config.js";
@@ -170,6 +179,39 @@ function bindingUriIntent(value: string): BindingUriIntent | null {
   return { detail: `invalid ${scheme} URL ${value}` };
 }
 
+/** Parse one project binding identically for ordinary discovery and strict create-only discovery. */
+function parseProjectBinding(file: string, raw: string): ProjectBinding {
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(raw);
+  } catch (err) {
+    throw new CliError(
+      "USAGE",
+      `malformed project binding ${file}: invalid JSON (${err instanceof Error ? err.message : String(err)})`,
+      { help: `fix or remove ${file}` },
+    );
+  }
+  const rawBundle = (parsed as Record<string, unknown> | null)?.bundle;
+  if (typeof rawBundle !== "string" || rawBundle.trim() === "") {
+    throw new CliError(
+      "USAGE",
+      `malformed project binding ${file}: "bundle" must be a non-empty filesystem path`,
+      { help: `fix or remove ${file}` },
+    );
+  }
+  const value = rawBundle.trim();
+  const uriIntent = bindingUriIntent(value);
+  if (uriIntent) {
+    const remote = uriIntent.suggestedRemote ?? "<url>";
+    throw new CliError(
+      "USAGE",
+      `project binding ${file} cannot use ${uriIntent.detail}; URL bindings no longer activate remotes — pass --remote ${remote} explicitly or replace "bundle" with a filesystem path`,
+      { help: `${cliInvocation()} <command> --remote ${remote}` },
+    );
+  }
+  return { file, target: path.resolve(path.dirname(file), value) };
+}
+
 /**
  * Discover + parse + validate the nearest `.agentstate.json` walking up from `startDir` (default
  * cwd) — nearest ancestor wins. Returns `null` when none exists anywhere up-tree (the common case;
@@ -195,35 +237,7 @@ export async function resolveProjectBinding(startDir: string = process.cwd()): P
       { help: `fix or remove ${file}` },
     );
   }
-  let parsed: unknown;
-  try {
-    parsed = JSON.parse(raw);
-  } catch (err) {
-    throw new CliError(
-      "USAGE",
-      `malformed project binding ${file}: invalid JSON (${err instanceof Error ? err.message : String(err)})`,
-      { help: `fix or remove ${file}` },
-    );
-  }
-  const rawBundle = (parsed as Record<string, unknown> | null)?.bundle;
-  if (typeof rawBundle !== "string" || rawBundle.trim() === "") {
-    throw new CliError(
-      "USAGE",
-      `malformed project binding ${file}: "bundle" must be a non-empty filesystem path`,
-      { help: `fix or remove ${file}` },
-    );
-  }
-  const trimmed = rawBundle.trim();
-  const uriIntent = bindingUriIntent(trimmed);
-  if (uriIntent) {
-    const remote = uriIntent.suggestedRemote ?? "<url>";
-    throw new CliError(
-      "USAGE",
-      `project binding ${file} cannot use ${uriIntent.detail}; URL bindings no longer activate remotes — pass --remote ${remote} explicitly or replace "bundle" with a filesystem path`,
-      { help: `${cliInvocation()} <command> --remote ${remote}` },
-    );
-  }
-  return { file, target: path.resolve(dir, trimmed) };
+  return parseProjectBinding(file, raw);
 }
 
 /**
@@ -338,6 +352,722 @@ async function canonicalBundleRoot(
     // the same user-facing class as an initially missing bundle rather than leaking a raw fs error.
     throw new CliError("NOT_FOUND", notFoundMessage, { help });
   }
+}
+
+interface CreateOnlyFilesystem {
+  lstat(p: string): Promise<Stats>;
+  stat(p: string): Promise<Stats>;
+  realpath(p: string): Promise<string>;
+  readdir(p: string): Promise<string[]>;
+  mkdir(p: string): Promise<void>;
+  readFile(p: string): Promise<string>;
+}
+
+const createOnlyFs: CreateOnlyFilesystem = {
+  lstat: (p) => fs.lstat(p),
+  stat: (p) => fs.stat(p),
+  realpath: (p) => fs.realpath(p),
+  readdir: (p) => fs.readdir(p),
+  mkdir: (p) => fs.mkdir(p).then(() => undefined),
+  readFile: (p) => fs.readFile(p, "utf8"),
+};
+
+export interface CreateOnlyTargetDeps {
+  fs?: Partial<CreateOnlyFilesystem>;
+  withFilesystemMutationLockImpl?: typeof withFilesystemMutationLock;
+  lockOptions?: FilesystemMutationLockOptions;
+}
+
+export interface CreateOnlyTargetReceipt<T> {
+  root: string;
+  createdDirectories: string[];
+  value: T;
+}
+
+interface CreateOnlyResolution {
+  logical: string;
+  target: string;
+  physicalPrefix: string;
+  missingTail: string[];
+  targetStat?: Stats;
+}
+
+type CreateOnlyPhase = "preflight" | "locked-revalidation" | "directory-creation" | "pre-publish" | "lock";
+type CreateOnlyPublicationState = "not-started" | "started-or-uncertain" | "published";
+
+function createOnlyRecoveryHelp(): string {
+  return (
+    `${cliInvocation()} recipe add <name> --dir <existing-bundle>  (modify a verified existing bundle), or ` +
+    `${cliInvocation()} init --create-only --dir <new-path>  (a different, genuinely new location)`
+  );
+}
+
+function createOnlyConflict(message: string, details: Record<string, unknown> = {}): never {
+  throw new CliError("ALREADY_EXISTS", message, { details, help: createOnlyRecoveryHelp() });
+}
+
+function fsCode(err: unknown): string | undefined {
+  return (err as NodeJS.ErrnoException)?.code;
+}
+
+function createOnlyUncertainty(
+  phase: CreateOnlyPhase,
+  operation: string,
+  p: string,
+  err: unknown,
+  createdDirectories: string[] = [],
+  extraDetails: Record<string, unknown> = {},
+): never {
+  const code = fsCode(err);
+  throw new CliError(
+    "RUNTIME",
+    `cannot safely ${operation} create-only path ${p}${code ? ` (${code})` : ""}: ${err instanceof Error ? err.message : String(err)}`,
+    {
+      details: {
+        phase,
+        operation,
+        path: p,
+        ...(code ? { fs_code: code } : {}),
+        residual_created_directories: [...createdDirectories],
+        ...extraDetails,
+      },
+      help: `inspect access and path identity at ${p}, then retry or choose a different explicit --dir`,
+    },
+  );
+}
+
+function samePhysicalPath(a: string, b: string): boolean {
+  const left = path.resolve(a);
+  const right = path.resolve(b);
+  return process.platform === "win32" ? left.toLowerCase() === right.toLowerCase() : left === right;
+}
+
+/** Parent and child targets intentionally share this conservative physical-root arbitration key. */
+export function createOnlyArbitrationLockKey(physicalTarget: string): string {
+  return path.parse(path.resolve(physicalTarget)).root;
+}
+
+async function optionalLstat(
+  io: CreateOnlyFilesystem,
+  p: string,
+  phase: CreateOnlyPhase,
+  operation: string,
+  createdDirectories: string[] = [],
+): Promise<Stats | null> {
+  try {
+    return await io.lstat(p);
+  } catch (err) {
+    if (fsCode(err) === "ENOENT") return null;
+    createOnlyUncertainty(phase, operation, p, err, createdDirectories);
+  }
+}
+
+async function resolveCreateOnlyPhysicalTarget(
+  logical: string,
+  io: CreateOnlyFilesystem,
+  phase: CreateOnlyPhase,
+  createdDirectories: string[] = [],
+): Promise<CreateOnlyResolution> {
+  let existingPrefix = logical;
+  const missingTail: string[] = [];
+  let targetStat: Stats | undefined;
+  for (;;) {
+    try {
+      const info = await io.lstat(existingPrefix);
+      if (existingPrefix === logical) targetStat = info;
+      break;
+    } catch (err) {
+      const code = fsCode(err);
+      if (code === "ENOTDIR") {
+        createOnlyConflict(`create-only target ${logical} runs through an existing file — pass a directory path`, {
+          phase,
+          operation: "lstat",
+          path: existingPrefix,
+          fs_code: code,
+          residual_created_directories: [...createdDirectories],
+        });
+      }
+      if (code !== "ENOENT") createOnlyUncertainty(phase, "lstat", existingPrefix, err, createdDirectories);
+      const parent = path.dirname(existingPrefix);
+      if (parent === existingPrefix) createOnlyUncertainty(phase, "lstat", existingPrefix, err, createdDirectories);
+      missingTail.unshift(path.basename(existingPrefix));
+      existingPrefix = parent;
+    }
+  }
+
+  if (missingTail.length === 0 && targetStat) {
+    if (targetStat.isSymbolicLink()) {
+      createOnlyConflict(`create-only target ${logical} is a symlink — pass the physical directory instead`, {
+        phase,
+        operation: "lstat",
+        path: logical,
+        residual_created_directories: [...createdDirectories],
+      });
+    }
+    if (!targetStat.isDirectory()) {
+      createOnlyConflict(`create-only target ${logical} exists and is not a directory`, {
+        phase,
+        operation: "lstat",
+        path: logical,
+        residual_created_directories: [...createdDirectories],
+      });
+    }
+  }
+
+  let physicalPrefix: string;
+  try {
+    physicalPrefix = await io.realpath(existingPrefix);
+  } catch (err) {
+    createOnlyUncertainty(phase, "realpath", existingPrefix, err, createdDirectories);
+  }
+  return {
+    logical,
+    target: path.join(physicalPrefix, ...missingTail),
+    physicalPrefix,
+    missingTail,
+    ...(targetStat ? { targetStat } : {}),
+  };
+}
+
+async function assertObservedDirectory(
+  io: CreateOnlyFilesystem,
+  dir: string,
+  phase: CreateOnlyPhase,
+  createdDirectories: string[],
+): Promise<void> {
+  let info: Stats;
+  try {
+    info = await io.lstat(dir);
+  } catch (err) {
+    createOnlyUncertainty(phase, "lstat", dir, err, createdDirectories);
+  }
+  if (info.isSymbolicLink() || !info.isDirectory()) {
+    createOnlyUncertainty(
+      phase,
+      "validate-directory-shape",
+      dir,
+      Object.assign(new Error("observed path is no longer a physical directory"), { code: "ESHAPE" }),
+      createdDirectories,
+    );
+  }
+}
+
+async function existingBundleAt(
+  io: CreateOnlyFilesystem,
+  candidate: string,
+  phase: CreateOnlyPhase,
+  createdDirectories: string[],
+): Promise<string | null> {
+  const candidateInfo = await optionalLstat(
+    io,
+    candidate,
+    phase,
+    "lstat-binding-target",
+    createdDirectories,
+  );
+  if (!candidateInfo) return null;
+
+  let effectiveInfo = candidateInfo;
+  if (candidateInfo.isSymbolicLink()) {
+    try {
+      effectiveInfo = await io.stat(candidate);
+    } catch (err) {
+      createOnlyUncertainty(phase, "stat-binding-target", candidate, err, createdDirectories);
+    }
+  }
+
+  let physicalCandidate: string;
+  try {
+    physicalCandidate = await io.realpath(candidate);
+  } catch (err) {
+    createOnlyUncertainty(phase, "realpath-binding-target", candidate, err, createdDirectories);
+  }
+  let physicalInfo: Stats;
+  try {
+    physicalInfo = await io.lstat(physicalCandidate);
+  } catch (err) {
+    createOnlyUncertainty(
+      phase,
+      "lstat-resolved-binding-target",
+      physicalCandidate,
+      err,
+      createdDirectories,
+    );
+  }
+  if (
+    physicalInfo.isSymbolicLink() ||
+    effectiveInfo.isDirectory() !== physicalInfo.isDirectory()
+  ) {
+    createOnlyUncertainty(
+      phase,
+      "validate-resolved-binding-target-shape",
+      physicalCandidate,
+      Object.assign(new Error("resolved binding target shape changed during observation"), {
+        code: "ESHAPE",
+      }),
+      createdDirectories,
+    );
+  }
+  if (effectiveInfo.dev !== physicalInfo.dev || effectiveInfo.ino !== physicalInfo.ino) {
+    createOnlyUncertainty(
+      phase,
+      "validate-resolved-binding-target-identity",
+      physicalCandidate,
+      Object.assign(new Error("resolved binding target identity changed during observation"), {
+        code: "EPATHCHANGED",
+      }),
+      createdDirectories,
+    );
+  }
+  if (!physicalInfo.isDirectory()) return null;
+
+  const own = await optionalLstat(
+    io,
+    path.join(physicalCandidate, "index.md"),
+    phase,
+    "lstat-own-index",
+    createdDirectories,
+  );
+  if (own) return physicalCandidate;
+  const conventional = path.join(physicalCandidate, CONVENTIONAL_BUNDLE_DIR_NAME);
+  const conventionalInfo = await optionalLstat(io, conventional, phase, "lstat-conventional-directory", createdDirectories);
+  if (!conventionalInfo) return null;
+  if (conventionalInfo.isSymbolicLink() || !conventionalInfo.isDirectory()) {
+    createOnlyUncertainty(
+      phase,
+      "validate-conventional-directory-shape",
+      conventional,
+      Object.assign(new Error("conventional bundle path is not a physical directory"), { code: "ESHAPE" }),
+      createdDirectories,
+    );
+  }
+  const index = await optionalLstat(io, path.join(conventional, "index.md"), phase, "lstat-conventional-index", createdDirectories);
+  return index ? conventional : null;
+}
+
+async function strictProjectBinding(
+  io: CreateOnlyFilesystem,
+  start: string,
+  phase: CreateOnlyPhase,
+  createdDirectories: string[],
+): Promise<ProjectBinding | null> {
+  let dir = start;
+  for (;;) {
+    await assertObservedDirectory(io, dir, phase, createdDirectories);
+    const file = path.join(dir, PROJECT_BINDING_FILE_NAME);
+    const info = await optionalLstat(io, file, phase, "lstat-binding", createdDirectories);
+    if (info) {
+      if (!info.isFile() && !info.isSymbolicLink()) {
+        throw new CliError("USAGE", `malformed project binding ${file}: expected a regular file`, {
+          help: `fix or remove ${file}`,
+        });
+      }
+      let raw: string;
+      try {
+        raw = await io.readFile(file);
+      } catch (err) {
+        createOnlyUncertainty(phase, "read-binding", file, err, createdDirectories);
+      }
+      return parseProjectBinding(file, raw);
+    }
+    const parent = path.dirname(dir);
+    if (parent === dir) return null;
+    dir = parent;
+  }
+}
+
+async function inspectCreateOnlyTarget(
+  logical: string,
+  io: CreateOnlyFilesystem,
+  phase: CreateOnlyPhase,
+  createdDirectories: string[] = [],
+): Promise<CreateOnlyResolution> {
+  const resolved = await resolveCreateOnlyPhysicalTarget(logical, io, phase, createdDirectories);
+  const target = resolved.target;
+  if (resolved.missingTail.length === 0) {
+    if (await optionalLstat(io, path.join(target, "index.md"), phase, "lstat-own-index", createdDirectories)) {
+      createOnlyConflict(`create-only target ${target} is already an OKF bundle`, {
+        phase,
+        residual_created_directories: [...createdDirectories],
+      });
+    }
+    const conventional = path.join(target, CONVENTIONAL_BUNDLE_DIR_NAME);
+    const conventionalInfo = await optionalLstat(io, conventional, phase, "lstat-conventional-directory", createdDirectories);
+    if (conventionalInfo) {
+      if (conventionalInfo.isSymbolicLink() || !conventionalInfo.isDirectory()) {
+        createOnlyUncertainty(
+          phase,
+          "validate-conventional-directory-shape",
+          conventional,
+          Object.assign(new Error("conventional bundle path is not a physical directory"), { code: "ESHAPE" }),
+          createdDirectories,
+        );
+      }
+      if (await optionalLstat(io, path.join(conventional, "index.md"), phase, "lstat-conventional-index", createdDirectories)) {
+        createOnlyConflict(`an existing project workspace ${conventional} already serves this location — join it rather than creating a second bundle`, {
+          phase,
+          residual_created_directories: [...createdDirectories],
+        });
+      }
+    }
+    let entries: string[];
+    try {
+      entries = await io.readdir(target);
+    } catch (err) {
+      createOnlyUncertainty(phase, "readdir", target, err, createdDirectories);
+    }
+    if (entries.length > 0) {
+      createOnlyConflict(
+        `create-only target ${target} exists and is not empty (${entries.length} entr${entries.length === 1 ? "y" : "ies"}) — a new workspace must not adopt existing files`,
+        { phase, residual_created_directories: [...createdDirectories] },
+      );
+    }
+  }
+
+  const existingParent = resolved.missingTail.length > 0 ? resolved.physicalPrefix : path.dirname(target);
+  let ancestor = existingParent;
+  for (;;) {
+    await assertObservedDirectory(io, ancestor, phase, createdDirectories);
+    if (await optionalLstat(io, path.join(ancestor, "index.md"), phase, "lstat-upward-own-index", createdDirectories)) {
+      createOnlyConflict(`create-only target ${target} would nest inside the existing bundle at ${ancestor}`, {
+        phase,
+        residual_created_directories: [...createdDirectories],
+      });
+    }
+    const conventional = path.join(ancestor, CONVENTIONAL_BUNDLE_DIR_NAME);
+    const conventionalInfo = await optionalLstat(io, conventional, phase, "lstat-upward-conventional-directory", createdDirectories);
+    if (conventionalInfo) {
+      if (conventionalInfo.isSymbolicLink() || !conventionalInfo.isDirectory()) {
+        createOnlyUncertainty(
+          phase,
+          "validate-upward-conventional-directory-shape",
+          conventional,
+          Object.assign(new Error("conventional bundle path is not a physical directory"), { code: "ESHAPE" }),
+          createdDirectories,
+        );
+      }
+      if (await optionalLstat(io, path.join(conventional, "index.md"), phase, "lstat-upward-conventional-index", createdDirectories)) {
+        createOnlyConflict(`an existing project workspace ${conventional} already serves this location — join it rather than creating a second bundle`, {
+          phase,
+          residual_created_directories: [...createdDirectories],
+        });
+      }
+    }
+    const parent = path.dirname(ancestor);
+    if (parent === ancestor) break;
+    ancestor = parent;
+  }
+
+  const binding = await strictProjectBinding(io, existingParent, phase, createdDirectories);
+  if (binding) {
+    const boundBundle = await existingBundleAt(io, binding.target, phase, createdDirectories);
+    if (boundBundle && !samePhysicalPath(boundBundle, target)) {
+      createOnlyConflict(
+        `project binding ${binding.file} already resolves this location to the existing bundle at ${boundBundle} — bare commands here would keep using it, shadowing a new bundle`,
+        { phase, residual_created_directories: [...createdDirectories] },
+      );
+    }
+  }
+  return resolved;
+}
+
+function createOnlyIo(deps: CreateOnlyTargetDeps): CreateOnlyFilesystem {
+  return { ...createOnlyFs, ...deps.fs };
+}
+
+/** Read-only strict create-only inspection. Ordinary discovery intentionally remains permissive. */
+export async function assertCreateOnlyTarget(
+  dirFlag: string | undefined,
+  startDir: string = process.cwd(),
+  deps: CreateOnlyTargetDeps = {},
+): Promise<string> {
+  const logical = path.resolve(startDir, dirFlag ?? startDir);
+  return (await inspectCreateOnlyTarget(logical, createOnlyIo(deps), "preflight")).target;
+}
+
+async function createMissingDirectories(
+  resolution: CreateOnlyResolution,
+  io: CreateOnlyFilesystem,
+  createdDirectories: string[],
+): Promise<void> {
+  let current = resolution.physicalPrefix;
+  for (const segment of resolution.missingTail) {
+    const next = path.join(current, segment);
+    try {
+      await io.mkdir(next);
+      createdDirectories.push(next);
+    } catch (err) {
+      if (fsCode(err) === "EEXIST") {
+        createOnlyConflict(`create-only target ${resolution.target} changed while its directories were being created`, {
+          phase: "directory-creation",
+          operation: "mkdir",
+          path: next,
+          fs_code: "EEXIST",
+          residual_created_directories: [...createdDirectories],
+        });
+      }
+      if (fsCode(err) === "ENOTDIR") {
+        createOnlyConflict(`create-only target ${resolution.target} runs through an existing file — pass a directory path`, {
+          phase: "directory-creation",
+          operation: "mkdir",
+          path: next,
+          fs_code: "ENOTDIR",
+          residual_created_directories: [...createdDirectories],
+        });
+      }
+      createOnlyUncertainty("directory-creation", "mkdir", next, err, createdDirectories);
+    }
+    current = next;
+  }
+}
+
+function sameMissingTail(a: CreateOnlyResolution, b: CreateOnlyResolution): boolean {
+  return (
+    a.missingTail.length === b.missingTail.length &&
+    a.missingTail.every((segment, index) => segment === b.missingTail[index])
+  );
+}
+
+function sameDirectoryIdentity(a: Stats | undefined, b: Stats | undefined): boolean {
+  return Boolean(a && b && a.dev === b.dev && a.ino === b.ino);
+}
+
+function assertLockedResolutionStable(
+  initial: CreateOnlyResolution,
+  locked: CreateOnlyResolution,
+  createdDirectories: string[],
+): void {
+  if (!samePhysicalPath(locked.target, initial.target)) {
+    createOnlyUncertainty(
+      "locked-revalidation",
+      "compare-physical-target",
+      initial.logical,
+      Object.assign(new Error(`physical target changed from ${initial.target} to ${locked.target}`), {
+        code: "EPATHCHANGED",
+      }),
+      createdDirectories,
+    );
+  }
+  if (!sameMissingTail(initial, locked)) {
+    createOnlyUncertainty(
+      "locked-revalidation",
+      "compare-target-presence",
+      initial.target,
+      Object.assign(new Error("target component presence changed after preflight"), {
+        code: "EPATHCHANGED",
+      }),
+      createdDirectories,
+    );
+  }
+  if (initial.targetStat && !sameDirectoryIdentity(initial.targetStat, locked.targetStat)) {
+    createOnlyUncertainty(
+      "locked-revalidation",
+      "compare-target-identity",
+      initial.target,
+      Object.assign(new Error("existing target directory identity changed after preflight"), {
+        code: "EPATHCHANGED",
+      }),
+      createdDirectories,
+    );
+  }
+}
+
+function assertPrePublishResolutionStable(
+  locked: CreateOnlyResolution,
+  beforePublish: CreateOnlyResolution,
+  target: string,
+  createdDirectories: string[],
+): void {
+  if (!samePhysicalPath(beforePublish.target, target)) {
+    createOnlyUncertainty(
+      "pre-publish",
+      "compare-physical-target",
+      locked.logical,
+      Object.assign(new Error(`physical target changed from ${target} to ${beforePublish.target}`), {
+        code: "EPATHCHANGED",
+      }),
+      createdDirectories,
+    );
+  }
+  if (beforePublish.missingTail.length > 0 || !beforePublish.targetStat) {
+    createOnlyUncertainty(
+      "pre-publish",
+      "validate-target-presence",
+      target,
+      Object.assign(new Error("target disappeared after directory creation"), { code: "ENOENT" }),
+      createdDirectories,
+    );
+  }
+  if (locked.targetStat && !sameDirectoryIdentity(locked.targetStat, beforePublish.targetStat)) {
+    createOnlyUncertainty(
+      "pre-publish",
+      "compare-target-identity",
+      target,
+      Object.assign(new Error("existing target directory identity changed before publication"), {
+        code: "EPATHCHANGED",
+      }),
+      createdDirectories,
+    );
+  }
+}
+
+function decorateCreateOnlyFailure(
+  err: unknown,
+  target: string,
+  createdDirectories: string[],
+  publicationState: CreateOnlyPublicationState,
+): never {
+  if (err instanceof VersionConflict) {
+    createOnlyConflict(`create-only target ${target} gained a bundle concurrently — another process created it first`, {
+      phase: "pre-publish",
+      operation: "write-index-expect-absent",
+      path: path.join(target, "index.md"),
+      residual_created_directories: [...createdDirectories],
+      publication_outcome: publicationState,
+    });
+  }
+  if (err instanceof CliError) {
+    throw new CliError(err.code, err.message, {
+      help: err.help,
+      details: {
+        ...err.details,
+        residual_created_directories: [...createdDirectories],
+        publication_outcome: publicationState,
+      },
+    });
+  }
+  createOnlyUncertainty(
+    publicationState === "not-started" ? "directory-creation" : "pre-publish",
+    publicationState === "not-started" ? "create-only-critical-section" : "publish-index",
+    publicationState === "not-started"
+      ? ((err as NodeJS.ErrnoException)?.path ?? target)
+      : ((err as NodeJS.ErrnoException)?.path ?? path.join(target, "index.md")),
+    err,
+    createdDirectories,
+    { publication_outcome: publicationState },
+  );
+}
+
+/**
+ * Own the complete create-only critical section: strict locked revalidation, component-wise
+ * directory creation, final strict inspection, and expect-absent publication. The receipt is
+ * diagnostic only; no failure path removes anything from the product tree.
+ */
+export async function withCreateOnlyTarget<T>(
+  dirFlag: string | undefined,
+  publish: (physicalTarget: string) => Promise<T>,
+  startDir: string = process.cwd(),
+  deps: CreateOnlyTargetDeps = {},
+): Promise<CreateOnlyTargetReceipt<T>> {
+  const io = createOnlyIo(deps);
+  const logical = path.resolve(startDir, dirFlag ?? startDir);
+  const initial = await inspectCreateOnlyTarget(logical, io, "preflight");
+  const target = initial.target;
+  const createdDirectories: string[] = [];
+  let criticalSectionEntered = false;
+  let publicationState: CreateOnlyPublicationState = "not-started";
+  let propagatedCriticalFailure: unknown;
+  let value!: T;
+  const lock = deps.withFilesystemMutationLockImpl ?? withFilesystemMutationLock;
+  const lockKey = createOnlyArbitrationLockKey(target);
+
+  try {
+    await lock(
+      lockKey,
+      async () => {
+        criticalSectionEntered = true;
+        try {
+          const locked = await inspectCreateOnlyTarget(logical, io, "locked-revalidation", createdDirectories);
+          assertLockedResolutionStable(initial, locked, createdDirectories);
+          await createMissingDirectories(locked, io, createdDirectories);
+          const beforePublish = await inspectCreateOnlyTarget(logical, io, "pre-publish", createdDirectories);
+          assertPrePublishResolutionStable(locked, beforePublish, target, createdDirectories);
+          publicationState = "started-or-uncertain";
+          value = await publish(target);
+          publicationState = "published";
+        } catch (err) {
+          try {
+            decorateCreateOnlyFailure(err, target, createdDirectories, publicationState);
+          } catch (decorated) {
+            propagatedCriticalFailure = decorated;
+            throw decorated;
+          }
+        }
+      },
+      deps.lockOptions,
+    );
+  } catch (err) {
+    if (err === propagatedCriticalFailure) throw err;
+
+    const releaseFailure = criticalSectionEntered;
+    const operation = releaseFailure
+      ? "release-filesystem-mutation-lock"
+      : "acquire-filesystem-mutation-lock";
+    const lockPath =
+      err instanceof FilesystemMutationLockError
+        ? err.lockPath
+        : ((err as NodeJS.ErrnoException)?.path ?? lockKey);
+    const priorDetails =
+      propagatedCriticalFailure instanceof CliError
+        ? {
+            prior_code: propagatedCriticalFailure.code,
+            ...(propagatedCriticalFailure.details?.phase
+              ? { prior_phase: propagatedCriticalFailure.details.phase }
+              : {}),
+            ...(propagatedCriticalFailure.details?.operation
+              ? { prior_operation: propagatedCriticalFailure.details.operation }
+              : {}),
+            ...(propagatedCriticalFailure.details?.path
+              ? { prior_path: propagatedCriticalFailure.details.path }
+              : {}),
+            ...(propagatedCriticalFailure.details?.fs_code
+              ? { prior_fs_code: propagatedCriticalFailure.details.fs_code }
+              : {}),
+            ...(propagatedCriticalFailure.details?.publication_outcome
+              ? { prior_publication_outcome: propagatedCriticalFailure.details.publication_outcome }
+              : {}),
+            ...(Array.isArray(propagatedCriticalFailure.details?.residual_created_directories)
+              ? {
+                  prior_residual_created_directories: [
+                    ...propagatedCriticalFailure.details.residual_created_directories,
+                  ],
+                }
+              : {}),
+          }
+        : {};
+    const code = fsCode(err);
+    // TypeScript cannot observe assignments made inside the mutex callback; retain the declared
+    // state-machine type at this boundary instead of narrowing the outer variable to its initializer.
+    const observedPublicationState = publicationState as CreateOnlyPublicationState;
+    const message = releaseFailure
+      ? observedPublicationState === "published"
+        ? `create-only bundle was published at ${target}, but its arbitration lock could not be released safely: ${err instanceof Error ? err.message : String(err)}`
+        : observedPublicationState === "started-or-uncertain"
+          ? `create-only publication started at ${target}, its outcome is uncertain, and the arbitration lock could not be released safely: ${err instanceof Error ? err.message : String(err)}`
+          : `create-only entered its critical section for ${target} but failed before publication, and the arbitration lock could not be released safely: ${err instanceof Error ? err.message : String(err)}`
+      : `cannot acquire the create-only arbitration lock for ${target}: ${err instanceof Error ? err.message : String(err)}`;
+    throw new CliError("RUNTIME", message, {
+      details: {
+        phase: "lock",
+        operation,
+        path: lockPath,
+        lock_path: lockPath,
+        ...(code ? { fs_code: code } : {}),
+        ...(err instanceof FilesystemMutationLockError
+          ? {
+              owner: err.owner,
+              stale: err.stale,
+              malformed: err.malformed,
+            }
+          : {}),
+        publication_outcome: observedPublicationState,
+        residual_created_directories: [...createdDirectories],
+        ...priorDetails,
+      },
+      help: `inspect ${lockPath} and ${target} before retrying`,
+    });
+  }
+  return { root: target, createdDirectories, value };
 }
 
 /**

@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { execFile } from "node:child_process";
-import { chmod, mkdtemp, mkdir, rm, writeFile } from "node:fs/promises";
+import { chmod, mkdtemp, mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import test from "node:test";
@@ -191,6 +191,15 @@ test("Windows resolution requires the npm .cmd shim inside the prefix", async ()
   } finally {
     await rm(scratch, { recursive: true, force: true });
   }
+});
+
+test("installed create-only proof holds the real production lock boundary before publication", async () => {
+  const source = await readFile(path.join(repoRoot, "scripts", "verify-npm-package.mjs"), "utf8");
+  assert.match(source, /installed-lock-boundary-preload\.mjs/);
+  assert.match(source, /--import/);
+  assert.match(source, /holder\.acquired\.json/);
+  assert.match(source, /contender\.contended\.json/);
+  assert.match(source, /must remain unpublished while the production lock claim is held/);
 });
 
 test("the complete local proof survives an untracked file and poisoned npm lifecycle configuration", async () => {

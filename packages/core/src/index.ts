@@ -88,6 +88,19 @@ export { freshness } from "./freshness.js";
 export { FilesystemBackend } from "./backend.js";
 export { MemoryBackend } from "./memory-backend.js";
 
+// Internal-workspace filesystem arbitration authority. CLI create-only policy reuses this
+// external same-user lock rather than defining a second lock protocol or writing claims into a
+// portable bundle tree.
+export {
+  withFilesystemMutationLock,
+  FilesystemMutationLockError,
+  filesystemMutationLockPath,
+} from "./filesystem-lock.js";
+export type {
+  FilesystemMutationLockOptions,
+  FilesystemMutationLockOwner,
+} from "./filesystem-lock.js";
+
 // `RemoteBackend` is the CLIENT half of the wire-protocol v0 seam-over-HTTP contract
 // (docs/WIRE-PROTOCOL.md) — a FUTURE plug-in adapter, proven here against the
 // in-repo reference server (`@agentstate-lite/server`) by the tri-backend contract

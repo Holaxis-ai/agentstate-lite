@@ -72,7 +72,7 @@ export function backendFor(bundle: Bundle): StorageBackend {
 export async function initBundle(root: string, options: InitBundleOptions = {}): Promise<Bundle> {
   const resolved = path.resolve(root);
   const backend = new FilesystemBackend(resolved);
-  if ((await backend.readReserved("", "index.md")) === null) {
+  if (options.expectNew || (await backend.readReserved("", "index.md")) === null) {
     const okfVersion = options.okfVersion ?? "0.1";
     const name = path.basename(resolved);
     const body = `${GENERATED_INDEX_MARKER}\n# ${name}\n\nAn Open Knowledge Format bundle.\n`;
@@ -83,12 +83,14 @@ export async function initBundle(root: string, options: InitBundleOptions = {}):
     // go through the seam's CAS discipline rather than silently assume no one else got there
     // first. `expectedVersion: null` makes that assumption explicit and a `VersionConflict` (the
     // OTHER racer won) is swallowed — the loser's own bundle is equally initialized either way.
+    // With `expectNew`, the CAS is the create guarantee itself: a losing racer (or a pre-existing
+    // index.md, read fresh by the expect-absent write) MUST surface as `VersionConflict`.
     try {
       await backend.writeReserved("", "index.md", stringifyWithData({ okf_version: okfVersion }, body), {
         expectedVersion: null,
       });
     } catch (err) {
-      if (!(err instanceof VersionConflict)) throw err;
+      if (options.expectNew || !(err instanceof VersionConflict)) throw err;
     }
   }
   return { root: resolved };
