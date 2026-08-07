@@ -2,11 +2,10 @@
 type: Context Note
 title: 'Pre-compact handoff: merged release safety and active predecessors'
 description: >-
-  PR #210 is ready for Brian's merge gate at exact head f1c992b: the reviewed
-  tree passed hosted Node 20/22/26 CI, all agents completed, and no merge was
-  performed.
-actor: codex-pr210-final-ci
-timestamp: '2026-08-07T00:13:04.695Z'
+  PR #210 merged by Brian as dc341159 after the reviewed tree passed hosted Node
+  20/22/26 CI; all PR #210 orchestration work is complete.
+actor: codex-pr210-final-state
+timestamp: '2026-08-07T00:14:33.439Z'
 ---
 # Summary
 
@@ -63,3 +62,7 @@ GitHub restored webhook-triggered Actions throughput at `2026-08-07T00:01:00Z`. 
 Pull-request workflow run [31133295908](https://github.com/Holaxis-ai/agentstate-lite/actions/runs/31133295908) completed successfully on `f1c992b`: Node 20 built-CLI smoke passed, and the complete `npm run check` gate passed on Node 22 and Node 26. GitHub reports PR #210 OPEN, MERGEABLE, CLEAN, and all three check runs successful. Local HEAD equals origin, the worktree is clean, and the final empty commit is tree-identical to the reviewed code.
 
 The final evidence comment is https://github.com/Holaxis-ai/agentstate-lite/pull/210#issuecomment-5210202640. The proximate goal is complete and `tasks/hook-compatibility-ownership` can be closed as `done`: PR #210 is ready for Brian's merge gate. No merge was performed.
+
+## Merge completion
+
+Brian (`briand-ai`) merged PR #210 at `2026-08-07T00:11:12Z`, after the final evidence comment was posted. GitHub records merge commit `dc341159a6478e8e8e5b43c3e7e71e0dc44cc105`, now at `refs/heads/main`; final PR head was `f1c992bf78bf17416aac00dd42b441680e39dbd6`. This Codex session did not perform the merge. The work and its proximate goal are fully complete.

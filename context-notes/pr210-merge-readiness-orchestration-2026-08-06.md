@@ -2,15 +2,14 @@
 type: Context Note
 title: PR 210 merge-readiness orchestration start
 description: >-
-  PR #210 is ready for the maintainer merge gate at exact head f1c992b:
-  independent review and adversarial QA passed, hosted Node 20/22/26 CI is
-  green, and no merge was performed.
+  PR #210 merged by Brian at 2026-08-07T00:11:12Z as dc341159 after exact-head
+  independent review, adversarial QA, and green hosted Node 20/22/26 CI.
 tags:
   - pr210
   - orchestration
   - hook-ownership
-actor: codex-pr210-final-ci
-timestamp: '2026-08-07T00:13:00.015Z'
+actor: codex-pr210-final-state
+timestamp: '2026-08-07T00:14:24.849Z'
 ---
 ---
 type: Context Note
@@ -107,3 +106,9 @@ The recovery event was admitted as pull-request workflow run [31133295908](https
 Final integrity checks show local HEAD equals the remote branch at `f1c992b`, the isolated worktree is clean, the exact tree matches the independently reviewed tree, and GitHub reports PR #210 OPEN, MERGEABLE, CLEAN, with all three check runs successful. Final hosted-CI evidence was posted at https://github.com/Holaxis-ai/agentstate-lite/pull/210#issuecomment-5210202640.
 
 Proximate goal completed: carry the repaired ownership boundary through independent review, adversarial QA, local runtime gates, and the normal hosted CI gate. This serves the ultimate goal by making the foreign-configuration safety claim independently reproducible and externally gated. PR #210 is ready for Brian's merge gate. No merge was performed.
+
+## Merge completion
+
+After the final evidence was posted, Brian (`briand-ai`) merged PR #210 at `2026-08-07T00:11:12Z`. GitHub records merge commit `dc341159a6478e8e8e5b43c3e7e71e0dc44cc105`, and `refs/heads/main` resolves to that commit. The final PR head remains `f1c992bf78bf17416aac00dd42b441680e39dbd6`. This orchestration session did not perform the merge.
+
+The ultimate-goal contribution is now integrated on `main`: hook ownership recognition, installation/deduplication, and uninstall use the reviewed fail-closed provenance boundary, backed by independent review, adversarial QA, and green hosted Node 20/22/26 gates.
