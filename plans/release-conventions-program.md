@@ -4,7 +4,7 @@ title: >-
   Release-conventions program: recorded + enforced conventions, cadence
   decision, first-stable path (orchestrated)
 actor: anthropic/claude
-timestamp: '2026-08-07T17:54:33.900Z'
+timestamp: '2026-08-07T17:59:43.505Z'
 ---
 # Goal
 
@@ -73,3 +73,10 @@ trustworthy primary distribution channel.
   reproduced, class-pinning test red-probed, all gates 0). Independent review dispatched on the
   exact SHA; PR text delivered to Brian. P5B note: after merge the bot reaches its direct
   push-to-main again — protection sequencing stays with release-protection-bot-bridge.
+- 2026-08-07: CI-fix REVIEWED — APPROVE (empirical audit: boundary clean, completeness traced from
+  real ui imports, core-first ordering proven load-bearing, red-probe caught the intended failure,
+  129/129 scripts suite). One minor follow-up filed here: the coverage test scans only ui
+  `dependencies`; core sits in devDependencies and is protected only by a hardcoded assertion — a
+  future value-imported devDep could escape; harden by scanning both maps. Operational note for
+  merge: the bot's FIRST green run will emit one larger catch-up commit (12 runs of artifact
+  backlog incl. 1.0.147->1.0.148) — expected, not a malfunction. READY FOR BRIAN'S MERGE.
