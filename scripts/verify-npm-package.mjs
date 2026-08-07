@@ -426,6 +426,49 @@ async function runInstalledProof(spec) {
       await snapshotTree(bundle),
       "create-only refusal must not change the existing bundle: ",
     );
+
+    // Run parent/child contenders through the packed CLI concurrently. This complements the
+    // source-suite barrier test by proving the installed artifact calls the production filesystem
+    // mutex: exactly one nested target may publish and the other must return the conflict class.
+    const installedRaceRoot = path.join(scratch, "create-only-production-lock");
+    const installedRaceParent = path.join(installedRaceRoot, "parent");
+    const installedRaceChild = path.join(installedRaceParent, "deep", "child");
+    const installedRace = await Promise.allSettled([
+      runCli("aslite", [
+        "init",
+        "--create-only",
+        "--dir",
+        installedRaceParent,
+        "--recipe",
+        "none",
+        "--json",
+      ]),
+      runCli("aslite", [
+        "init",
+        "--create-only",
+        "--dir",
+        installedRaceChild,
+        "--recipe",
+        "none",
+        "--json",
+      ]),
+    ]);
+    const installedRaceWinners = installedRace.filter((outcome) => outcome.status === "fulfilled");
+    const installedRaceLosers = installedRace.filter((outcome) => outcome.status === "rejected");
+    assert.equal(installedRaceWinners.length, 1, "installed parent/child create-only race needs one winner");
+    assert.equal(installedRaceLosers.length, 1, "installed parent/child create-only race needs one loser");
+    parseJson(installedRaceWinners[0].value.stdout, "installed create-only production-lock winner");
+    assert.equal(
+      installedRaceLosers[0].reason.code,
+      5,
+      "installed production-lock loser must use the conflict exit class",
+    );
+    assert.equal(
+      (await access(path.join(installedRaceParent, "index.md")).then(() => true, () => false)) &&
+        (await access(path.join(installedRaceChild, "index.md")).then(() => true, () => false)),
+      false,
+      "installed production lock must never allow both nested bundles to publish",
+    );
     assert.match(initHelp, /--create-only/, "installed init help must carry the exact create-only spelling");
     const appliedRecipes = parseJson(
       (await runCli("aslite", ["recipes", "--dir", bundle, "--json"])).stdout,

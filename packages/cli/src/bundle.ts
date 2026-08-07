@@ -179,6 +179,39 @@ function bindingUriIntent(value: string): BindingUriIntent | null {
   return { detail: `invalid ${scheme} URL ${value}` };
 }
 
+/** Parse one project binding identically for ordinary discovery and strict create-only discovery. */
+function parseProjectBinding(file: string, raw: string): ProjectBinding {
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(raw);
+  } catch (err) {
+    throw new CliError(
+      "USAGE",
+      `malformed project binding ${file}: invalid JSON (${err instanceof Error ? err.message : String(err)})`,
+      { help: `fix or remove ${file}` },
+    );
+  }
+  const rawBundle = (parsed as Record<string, unknown> | null)?.bundle;
+  if (typeof rawBundle !== "string" || rawBundle.trim() === "") {
+    throw new CliError(
+      "USAGE",
+      `malformed project binding ${file}: "bundle" must be a non-empty filesystem path`,
+      { help: `fix or remove ${file}` },
+    );
+  }
+  const value = rawBundle.trim();
+  const uriIntent = bindingUriIntent(value);
+  if (uriIntent) {
+    const remote = uriIntent.suggestedRemote ?? "<url>";
+    throw new CliError(
+      "USAGE",
+      `project binding ${file} cannot use ${uriIntent.detail}; URL bindings no longer activate remotes — pass --remote ${remote} explicitly or replace "bundle" with a filesystem path`,
+      { help: `${cliInvocation()} <command> --remote ${remote}` },
+    );
+  }
+  return { file, target: path.resolve(path.dirname(file), value) };
+}
+
 /**
  * Discover + parse + validate the nearest `.agentstate.json` walking up from `startDir` (default
  * cwd) — nearest ancestor wins. Returns `null` when none exists anywhere up-tree (the common case;
@@ -204,35 +237,7 @@ export async function resolveProjectBinding(startDir: string = process.cwd()): P
       { help: `fix or remove ${file}` },
     );
   }
-  let parsed: unknown;
-  try {
-    parsed = JSON.parse(raw);
-  } catch (err) {
-    throw new CliError(
-      "USAGE",
-      `malformed project binding ${file}: invalid JSON (${err instanceof Error ? err.message : String(err)})`,
-      { help: `fix or remove ${file}` },
-    );
-  }
-  const rawBundle = (parsed as Record<string, unknown> | null)?.bundle;
-  if (typeof rawBundle !== "string" || rawBundle.trim() === "") {
-    throw new CliError(
-      "USAGE",
-      `malformed project binding ${file}: "bundle" must be a non-empty filesystem path`,
-      { help: `fix or remove ${file}` },
-    );
-  }
-  const trimmed = rawBundle.trim();
-  const uriIntent = bindingUriIntent(trimmed);
-  if (uriIntent) {
-    const remote = uriIntent.suggestedRemote ?? "<url>";
-    throw new CliError(
-      "USAGE",
-      `project binding ${file} cannot use ${uriIntent.detail}; URL bindings no longer activate remotes — pass --remote ${remote} explicitly or replace "bundle" with a filesystem path`,
-      { help: `${cliInvocation()} <command> --remote ${remote}` },
-    );
-  }
-  return { file, target: path.resolve(dir, trimmed) };
+  return parseProjectBinding(file, raw);
 }
 
 /**
@@ -386,6 +391,7 @@ interface CreateOnlyResolution {
 }
 
 type CreateOnlyPhase = "preflight" | "locked-revalidation" | "directory-creation" | "pre-publish" | "lock";
+type CreateOnlyPublicationState = "not-started" | "started-or-uncertain" | "published";
 
 function createOnlyRecoveryHelp(): string {
   return (
@@ -408,6 +414,7 @@ function createOnlyUncertainty(
   p: string,
   err: unknown,
   createdDirectories: string[] = [],
+  extraDetails: Record<string, unknown> = {},
 ): never {
   const code = fsCode(err);
   throw new CliError(
@@ -420,6 +427,7 @@ function createOnlyUncertainty(
         path: p,
         ...(code ? { fs_code: code } : {}),
         residual_created_directories: [...createdDirectories],
+        ...extraDetails,
       },
       help: `inspect access and path identity at ${p}, then retry or choose a different explicit --dir`,
     },
@@ -548,11 +556,41 @@ async function existingBundleAt(
   phase: CreateOnlyPhase,
   createdDirectories: string[],
 ): Promise<string | null> {
-  const resolved = await resolveCreateOnlyPhysicalTarget(candidate, io, phase, createdDirectories);
-  if (resolved.missingTail.length > 0) return null;
-  const own = await optionalLstat(io, path.join(resolved.target, "index.md"), phase, "lstat-own-index", createdDirectories);
-  if (own) return resolved.target;
-  const conventional = path.join(resolved.target, CONVENTIONAL_BUNDLE_DIR_NAME);
+  const candidateInfo = await optionalLstat(
+    io,
+    candidate,
+    phase,
+    "lstat-binding-target",
+    createdDirectories,
+  );
+  if (!candidateInfo) return null;
+
+  let physicalCandidate: string;
+  try {
+    physicalCandidate = await io.realpath(candidate);
+  } catch (err) {
+    createOnlyUncertainty(phase, "realpath-binding-target", candidate, err, createdDirectories);
+  }
+  const physicalInfo = candidateInfo.isSymbolicLink()
+    ? await optionalLstat(
+        io,
+        physicalCandidate,
+        phase,
+        "lstat-physical-binding-target",
+        createdDirectories,
+      )
+    : candidateInfo;
+  if (!physicalInfo || !physicalInfo.isDirectory()) return null;
+
+  const own = await optionalLstat(
+    io,
+    path.join(physicalCandidate, "index.md"),
+    phase,
+    "lstat-own-index",
+    createdDirectories,
+  );
+  if (own) return physicalCandidate;
+  const conventional = path.join(physicalCandidate, CONVENTIONAL_BUNDLE_DIR_NAME);
   const conventionalInfo = await optionalLstat(io, conventional, phase, "lstat-conventional-directory", createdDirectories);
   if (!conventionalInfo) return null;
   if (conventionalInfo.isSymbolicLink() || !conventionalInfo.isDirectory()) {
@@ -580,7 +618,7 @@ async function strictProjectBinding(
     const file = path.join(dir, PROJECT_BINDING_FILE_NAME);
     const info = await optionalLstat(io, file, phase, "lstat-binding", createdDirectories);
     if (info) {
-      if (info.isSymbolicLink() || !info.isFile()) {
+      if (!info.isFile() && !info.isSymbolicLink()) {
         throw new CliError("USAGE", `malformed project binding ${file}: expected a regular file`, {
           help: `fix or remove ${file}`,
         });
@@ -591,31 +629,7 @@ async function strictProjectBinding(
       } catch (err) {
         createOnlyUncertainty(phase, "read-binding", file, err, createdDirectories);
       }
-      let parsed: unknown;
-      try {
-        parsed = JSON.parse(raw);
-      } catch (err) {
-        throw new CliError("USAGE", `malformed project binding ${file}: invalid JSON (${err instanceof Error ? err.message : String(err)})`, {
-          help: `fix or remove ${file}`,
-        });
-      }
-      const rawBundle = (parsed as Record<string, unknown> | null)?.bundle;
-      if (typeof rawBundle !== "string" || rawBundle.trim() === "") {
-        throw new CliError("USAGE", `malformed project binding ${file}: "bundle" must be a non-empty filesystem path`, {
-          help: `fix or remove ${file}`,
-        });
-      }
-      const value = rawBundle.trim();
-      const uriIntent = bindingUriIntent(value);
-      if (uriIntent) {
-        const remote = uriIntent.suggestedRemote ?? "<url>";
-        throw new CliError(
-          "USAGE",
-          `project binding ${file} cannot use ${uriIntent.detail}; URL bindings no longer activate remotes — pass --remote ${remote} explicitly or replace "bundle" with a filesystem path`,
-          { help: `${cliInvocation()} <command> --remote ${remote}` },
-        );
-      }
-      return { file, target: path.resolve(dir, value) };
+      return parseProjectBinding(file, raw);
     }
     const parent = path.dirname(dir);
     if (parent === dir) return null;
@@ -768,11 +782,101 @@ async function createMissingDirectories(
   }
 }
 
+function sameMissingTail(a: CreateOnlyResolution, b: CreateOnlyResolution): boolean {
+  return (
+    a.missingTail.length === b.missingTail.length &&
+    a.missingTail.every((segment, index) => segment === b.missingTail[index])
+  );
+}
+
+function sameDirectoryIdentity(a: Stats | undefined, b: Stats | undefined): boolean {
+  return Boolean(a && b && a.dev === b.dev && a.ino === b.ino);
+}
+
+function assertLockedResolutionStable(
+  initial: CreateOnlyResolution,
+  locked: CreateOnlyResolution,
+  createdDirectories: string[],
+): void {
+  if (!samePhysicalPath(locked.target, initial.target)) {
+    createOnlyUncertainty(
+      "locked-revalidation",
+      "compare-physical-target",
+      initial.logical,
+      Object.assign(new Error(`physical target changed from ${initial.target} to ${locked.target}`), {
+        code: "EPATHCHANGED",
+      }),
+      createdDirectories,
+    );
+  }
+  if (!sameMissingTail(initial, locked)) {
+    createOnlyUncertainty(
+      "locked-revalidation",
+      "compare-target-presence",
+      initial.target,
+      Object.assign(new Error("target component presence changed after preflight"), {
+        code: "EPATHCHANGED",
+      }),
+      createdDirectories,
+    );
+  }
+  if (initial.targetStat && !sameDirectoryIdentity(initial.targetStat, locked.targetStat)) {
+    createOnlyUncertainty(
+      "locked-revalidation",
+      "compare-target-identity",
+      initial.target,
+      Object.assign(new Error("existing target directory identity changed after preflight"), {
+        code: "EPATHCHANGED",
+      }),
+      createdDirectories,
+    );
+  }
+}
+
+function assertPrePublishResolutionStable(
+  locked: CreateOnlyResolution,
+  beforePublish: CreateOnlyResolution,
+  target: string,
+  createdDirectories: string[],
+): void {
+  if (!samePhysicalPath(beforePublish.target, target)) {
+    createOnlyUncertainty(
+      "pre-publish",
+      "compare-physical-target",
+      locked.logical,
+      Object.assign(new Error(`physical target changed from ${target} to ${beforePublish.target}`), {
+        code: "EPATHCHANGED",
+      }),
+      createdDirectories,
+    );
+  }
+  if (beforePublish.missingTail.length > 0 || !beforePublish.targetStat) {
+    createOnlyUncertainty(
+      "pre-publish",
+      "validate-target-presence",
+      target,
+      Object.assign(new Error("target disappeared after directory creation"), { code: "ENOENT" }),
+      createdDirectories,
+    );
+  }
+  if (locked.targetStat && !sameDirectoryIdentity(locked.targetStat, beforePublish.targetStat)) {
+    createOnlyUncertainty(
+      "pre-publish",
+      "compare-target-identity",
+      target,
+      Object.assign(new Error("existing target directory identity changed before publication"), {
+        code: "EPATHCHANGED",
+      }),
+      createdDirectories,
+    );
+  }
+}
+
 function decorateCreateOnlyFailure(
   err: unknown,
   target: string,
   createdDirectories: string[],
-  publishStarted: boolean,
+  publicationState: CreateOnlyPublicationState,
 ): never {
   if (err instanceof VersionConflict) {
     createOnlyConflict(`create-only target ${target} gained a bundle concurrently — another process created it first`, {
@@ -780,6 +884,7 @@ function decorateCreateOnlyFailure(
       operation: "write-index-expect-absent",
       path: path.join(target, "index.md"),
       residual_created_directories: [...createdDirectories],
+      publication_outcome: publicationState,
     });
   }
   if (err instanceof CliError) {
@@ -788,16 +893,19 @@ function decorateCreateOnlyFailure(
       details: {
         ...err.details,
         residual_created_directories: [...createdDirectories],
-        ...(publishStarted ? { publication_outcome: "uncertain" } : {}),
+        publication_outcome: publicationState,
       },
     });
   }
   createOnlyUncertainty(
-    publishStarted ? "pre-publish" : "directory-creation",
-    publishStarted ? "publish-index" : "create-only-critical-section",
-    target,
+    publicationState === "not-started" ? "directory-creation" : "pre-publish",
+    publicationState === "not-started" ? "create-only-critical-section" : "publish-index",
+    publicationState === "not-started"
+      ? ((err as NodeJS.ErrnoException)?.path ?? target)
+      : ((err as NodeJS.ErrnoException)?.path ?? path.join(target, "index.md")),
     err,
     createdDirectories,
+    { publication_outcome: publicationState },
   );
 }
 
@@ -817,70 +925,92 @@ export async function withCreateOnlyTarget<T>(
   const initial = await inspectCreateOnlyTarget(logical, io, "preflight");
   const target = initial.target;
   const createdDirectories: string[] = [];
-  let publishStarted = false;
-  let published = false;
+  let criticalSectionEntered = false;
+  let publicationState: CreateOnlyPublicationState = "not-started";
+  let propagatedCriticalFailure: unknown;
   let value!: T;
   const lock = deps.withFilesystemMutationLockImpl ?? withFilesystemMutationLock;
+  const lockKey = createOnlyArbitrationLockKey(target);
 
   try {
     await lock(
-      createOnlyArbitrationLockKey(target),
+      lockKey,
       async () => {
+        criticalSectionEntered = true;
         try {
           const locked = await inspectCreateOnlyTarget(logical, io, "locked-revalidation", createdDirectories);
-          if (!samePhysicalPath(locked.target, target)) {
-            createOnlyUncertainty(
-              "locked-revalidation",
-              "compare-physical-target",
-              logical,
-              Object.assign(new Error(`physical target changed from ${target} to ${locked.target}`), { code: "EPATHCHANGED" }),
-              createdDirectories,
-            );
-          }
+          assertLockedResolutionStable(initial, locked, createdDirectories);
           await createMissingDirectories(locked, io, createdDirectories);
           const beforePublish = await inspectCreateOnlyTarget(logical, io, "pre-publish", createdDirectories);
-          if (!samePhysicalPath(beforePublish.target, target)) {
-            createOnlyUncertainty(
-              "pre-publish",
-              "compare-physical-target",
-              logical,
-              Object.assign(new Error(`physical target changed from ${target} to ${beforePublish.target}`), { code: "EPATHCHANGED" }),
-              createdDirectories,
-            );
-          }
-          publishStarted = true;
+          assertPrePublishResolutionStable(locked, beforePublish, target, createdDirectories);
+          publicationState = "started-or-uncertain";
           value = await publish(target);
-          published = true;
+          publicationState = "published";
         } catch (err) {
-          decorateCreateOnlyFailure(err, target, createdDirectories, publishStarted);
+          try {
+            decorateCreateOnlyFailure(err, target, createdDirectories, publicationState);
+          } catch (decorated) {
+            propagatedCriticalFailure = decorated;
+            throw decorated;
+          }
         }
       },
       deps.lockOptions,
     );
   } catch (err) {
-    if (err instanceof FilesystemMutationLockError) {
-      throw new CliError(
-        "RUNTIME",
-        published
-          ? `create-only bundle was published at ${target}, but its arbitration lock could not be released safely: ${err.message}`
-          : `cannot acquire the create-only arbitration lock for ${target}: ${err.message}`,
-        {
-          details: {
-            phase: "lock",
-            operation: published ? "release-filesystem-mutation-lock" : "acquire-filesystem-mutation-lock",
-            path: err.lockPath,
-            lock_path: err.lockPath,
-            owner: err.owner,
-            stale: err.stale,
-            malformed: err.malformed,
-            publication_outcome: published ? "published" : "not-published",
-            residual_created_directories: [...createdDirectories],
-          },
-          help: `inspect ${err.lockPath} and ${target} before retrying`,
-        },
-      );
-    }
-    throw err;
+    if (err === propagatedCriticalFailure) throw err;
+
+    const releaseFailure = criticalSectionEntered;
+    const operation = releaseFailure
+      ? "release-filesystem-mutation-lock"
+      : "acquire-filesystem-mutation-lock";
+    const lockPath =
+      err instanceof FilesystemMutationLockError
+        ? err.lockPath
+        : ((err as NodeJS.ErrnoException)?.path ?? lockKey);
+    const priorDetails =
+      propagatedCriticalFailure instanceof CliError
+        ? {
+            prior_code: propagatedCriticalFailure.code,
+            ...(propagatedCriticalFailure.details?.phase
+              ? { prior_phase: propagatedCriticalFailure.details.phase }
+              : {}),
+            ...(propagatedCriticalFailure.details?.operation
+              ? { prior_operation: propagatedCriticalFailure.details.operation }
+              : {}),
+          }
+        : {};
+    const code = fsCode(err);
+    // TypeScript cannot observe assignments made inside the mutex callback; retain the declared
+    // state-machine type at this boundary instead of narrowing the outer variable to its initializer.
+    const observedPublicationState = publicationState as CreateOnlyPublicationState;
+    const message = releaseFailure
+      ? observedPublicationState === "published"
+        ? `create-only bundle was published at ${target}, but its arbitration lock could not be released safely: ${err instanceof Error ? err.message : String(err)}`
+        : observedPublicationState === "started-or-uncertain"
+          ? `create-only publication started at ${target}, its outcome is uncertain, and the arbitration lock could not be released safely: ${err instanceof Error ? err.message : String(err)}`
+          : `create-only entered its critical section for ${target} but failed before publication, and the arbitration lock could not be released safely: ${err instanceof Error ? err.message : String(err)}`
+      : `cannot acquire the create-only arbitration lock for ${target}: ${err instanceof Error ? err.message : String(err)}`;
+    throw new CliError("RUNTIME", message, {
+      details: {
+        phase: "lock",
+        operation,
+        path: lockPath,
+        lock_path: lockPath,
+        ...(code ? { fs_code: code } : {}),
+        ...(err instanceof FilesystemMutationLockError
+          ? {
+              owner: err.owner,
+              stale: err.stale,
+              malformed: err.malformed,
+            }
+          : {}),
+        publication_outcome: observedPublicationState,
+        residual_created_directories: [...createdDirectories],
+        ...priorDetails,
+      },
+      help: `inspect ${lockPath} and ${target} before retrying`,
+    });
   }
   return { root: target, createdDirectories, value };
 }

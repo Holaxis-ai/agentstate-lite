@@ -18,11 +18,17 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
-import { FilesystemMutationLockError, initBundle, VersionConflict } from "@agentstate-lite/core";
+import {
+  FilesystemMutationLockError,
+  initBundle,
+  VersionConflict,
+  withFilesystemMutationLock,
+} from "@agentstate-lite/core";
 import { init } from "../src/commands/init.js";
 import {
   assertCreateOnlyTarget,
   createOnlyArbitrationLockKey,
+  resolveProjectBinding,
   withCreateOnlyTarget,
 } from "../src/bundle.js";
 import { CliError } from "../src/errors.js";
@@ -211,6 +217,54 @@ test("bindings: an existing bound bundle refuses; malformed and URL bindings kee
     );
     const url = await expectRefusal(["--create-only", "--dir", path.join(proj4, "nb")], /URL bindings/);
     assert.equal(url.code, "USAGE");
+  } finally {
+    await rm(base, { recursive: true, force: true });
+  }
+});
+
+test("create-only binding discovery matches ordinary discovery for symlinked binding files and targets", async () => {
+  const base = await tempDir();
+  try {
+    const symlinkedBindingProject = path.join(base, "symlinked-binding-project");
+    const bindingSource = path.join(base, "binding-source.json");
+    const emptyBoundTarget = path.join(base, "empty-bound-target");
+    await mkdir(symlinkedBindingProject, { recursive: true });
+    await mkdir(emptyBoundTarget);
+    await writeFile(bindingSource, `${JSON.stringify({ bundle: emptyBoundTarget })}\n`);
+    const symlinkedBindingFile = path.join(symlinkedBindingProject, ".agentstate.json");
+    await symlink(bindingSource, symlinkedBindingFile);
+    assert.deepEqual(await resolveProjectBinding(symlinkedBindingProject), {
+      file: symlinkedBindingFile,
+      target: emptyBoundTarget,
+    });
+
+    const throughSymlinkedBinding = await runInit([
+      "--create-only",
+      "--dir",
+      path.join(symlinkedBindingProject, "new-bundle"),
+      "--recipe",
+      "none",
+    ]);
+    assert.equal(throughSymlinkedBinding.init, "ok");
+
+    const targetAliasProject = path.join(base, "target-alias-project");
+    const targetAlias = path.join(base, "empty-bound-target-alias");
+    await mkdir(targetAliasProject, { recursive: true });
+    await symlink(emptyBoundTarget, targetAlias);
+    await writeFile(
+      path.join(targetAliasProject, ".agentstate.json"),
+      `${JSON.stringify({ bundle: targetAlias })}\n`,
+    );
+    assert.equal((await resolveProjectBinding(targetAliasProject))?.target, targetAlias);
+
+    const throughSymlinkedTarget = await runInit([
+      "--create-only",
+      "--dir",
+      path.join(targetAliasProject, "new-bundle"),
+      "--recipe",
+      "none",
+    ]);
+    assert.equal(throughSymlinkedTarget.init, "ok");
   } finally {
     await rm(base, { recursive: true, force: true });
   }
@@ -416,6 +470,93 @@ test("locked revalidation refuses content or a symlink introduced after prefligh
   }
 });
 
+test("a target that disappears after locked observation is uncertainty, never fresh absence", async () => {
+  const base = await tempDir();
+  try {
+    const target = path.join(base, "disappearing-target");
+    let targetLstats = 0;
+    let publishCalled = false;
+    const logicalTarget = path.resolve(target);
+    const physicalTarget = path.join(await fsPromises.realpath(base), "disappearing-target");
+
+    await assert.rejects(
+      () =>
+        withCreateOnlyTarget(
+          target,
+          async () => {
+            publishCalled = true;
+          },
+          process.cwd(),
+          {
+            fs: {
+              lstat: async (p) => {
+                if (p === logicalTarget) {
+                  targetLstats += 1;
+                  if (targetLstats === 3) {
+                    throw Object.assign(new Error("injected target disappearance"), { code: "ENOENT" });
+                  }
+                }
+                return fsPromises.lstat(p);
+              },
+            },
+          },
+        ),
+      (err: unknown) =>
+        err instanceof CliError &&
+        err.code === "RUNTIME" &&
+        err.details?.phase === "pre-publish" &&
+        err.details.operation === "validate-target-presence" &&
+        err.details.path === physicalTarget &&
+        err.details.fs_code === "ENOENT" &&
+        err.details.publication_outcome === "not-started",
+    );
+    assert.equal(targetLstats, 3);
+    assert.equal(publishCalled, false);
+    assert.equal(existsSync(path.join(target, "index.md")), false);
+  } finally {
+    await rm(base, { recursive: true, force: true });
+  }
+});
+
+test("a pre-existing target removed before locked revalidation is not recreated", async () => {
+  const base = await tempDir();
+  try {
+    const target = path.join(base, "removed-before-lock");
+    await mkdir(target);
+    let publishCalled = false;
+    const physicalTarget = path.join(await fsPromises.realpath(base), "removed-before-lock");
+
+    await assert.rejects(
+      () =>
+        withCreateOnlyTarget(
+          target,
+          async () => {
+            publishCalled = true;
+          },
+          process.cwd(),
+          {
+            withFilesystemMutationLockImpl: async (_key, fn) => {
+              await fsPromises.rmdir(target);
+              return fn();
+            },
+          },
+        ),
+      (err: unknown) =>
+        err instanceof CliError &&
+        err.code === "RUNTIME" &&
+        err.details?.phase === "locked-revalidation" &&
+        err.details.operation === "compare-target-presence" &&
+        err.details.path === physicalTarget &&
+        err.details.fs_code === "EPATHCHANGED" &&
+        err.details.publication_outcome === "not-started",
+    );
+    assert.equal(publishCalled, false);
+    assert.equal(existsSync(target), false);
+  } finally {
+    await rm(base, { recursive: true, force: true });
+  }
+});
+
 test("a project-root target holding a conventional workspace is refused BY NAME, not as clutter", async () => {
   const base = await tempDir();
   try {
@@ -479,54 +620,60 @@ test("root-scoped mutex deterministically orders parent/child publication in bot
         const child = conventional
           ? path.join(parent, "deep", "project", ".agentstate-lite")
           : path.join(parent, "deep", "child");
-        const attempts: string[] = [];
+        const attempts: Array<{ role: "parent" | "child"; key: string }> = [];
         const entered: string[] = [];
-        const pending = new Map<string, { fn: () => Promise<unknown>; resolve: (v: unknown) => void; reject: (e: unknown) => void }>();
         let releaseFirst!: () => void;
         const firstHeld = new Promise<void>((resolve) => (releaseFirst = resolve));
-        let firstAtPublish!: () => void;
-        const firstPublishing = new Promise<void>((resolve) => (firstAtPublish = resolve));
+        let firstEntered!: () => void;
+        const firstCriticalSection = new Promise<void>((resolve) => (firstEntered = resolve));
+        let secondAttempted!: () => void;
+        const secondLockAttempt = new Promise<void>((resolve) => (secondAttempted = resolve));
 
-        const schedule = (role: "parent" | "child") =>
-          async (_key: string, fn: () => Promise<unknown>): Promise<unknown> =>
-            new Promise((resolve, reject) => {
-              attempts.push(role);
-              pending.set(role, { fn, resolve, reject });
-              if (pending.size === 2) {
-                void (async () => {
-                  for (const orderedRole of [firstRole, firstRole === "parent" ? "child" : "parent"] as const) {
-                    const job = pending.get(orderedRole)!;
-                    entered.push(orderedRole);
-                    try {
-                      job.resolve(await job.fn());
-                    } catch (err) {
-                      job.reject(err);
-                    }
-                  }
-                })();
-              }
-            });
+        const productionLock = (role: "parent" | "child") =>
+          async (
+            key: string,
+            fn: () => Promise<unknown>,
+            options?: Parameters<typeof withFilesystemMutationLock>[2],
+          ): Promise<unknown> => {
+            attempts.push({ role, key });
+            if (role !== firstRole) secondAttempted();
+            return withFilesystemMutationLock(
+              key,
+              async () => {
+                entered.push(role);
+                if (role === firstRole) {
+                  firstEntered();
+                  await firstHeld;
+                }
+                return fn();
+              },
+              options,
+            );
+          };
         const run = (role: "parent" | "child", target: string) =>
           withCreateOnlyTarget(
             target,
-            async (physical) => {
-              if (role === firstRole) {
-                firstAtPublish();
-                await firstHeld;
-              }
-              return initBundle(physical, { expectNew: true });
-            },
+            (physical) => initBundle(physical, { expectNew: true }),
             process.cwd(),
-            { withFilesystemMutationLockImpl: schedule(role) as never },
+            { withFilesystemMutationLockImpl: productionLock(role) as typeof withFilesystemMutationLock },
           );
 
-        const parentRun = run("parent", parent);
-        const childRun = run("child", child);
-        await firstPublishing;
+        const firstTarget = firstRole === "parent" ? parent : child;
+        const secondRole = firstRole === "parent" ? "child" : "parent";
+        const secondTarget = secondRole === "parent" ? parent : child;
+        const firstRun = run(firstRole, firstTarget);
+        await firstCriticalSection;
+        const secondRun = run(secondRole, secondTarget);
+        await secondLockAttempt;
         assert.deepEqual(entered, [firstRole], "the second critical section remains blocked");
         assert.equal(attempts.length, 2, "both preflights reached the shared mutex");
+        assert.deepEqual(
+          attempts.map(({ key }) => key),
+          [createOnlyArbitrationLockKey(parent), createOnlyArbitrationLockKey(parent)],
+          "both invocations pass the production mutex the shared conservative root key",
+        );
         releaseFirst();
-        const outcomes = await Promise.allSettled([parentRun, childRun]);
+        const outcomes = await Promise.allSettled([firstRun, secondRun]);
         assert.equal(outcomes.filter((result) => result.status === "fulfilled").length, 1);
         assert.equal(existsSync(path.join(parent, "index.md")) && existsSync(path.join(child, "index.md")), false);
       }
@@ -551,6 +698,110 @@ test("safety regression: a pre-existing empty target is never removed after a cr
     assert.equal(after.dev, before.dev);
     assert.equal(after.ino, before.ino);
     assert.equal(after.isDirectory(), true);
+  } finally {
+    await rm(base, { recursive: true, force: true });
+  }
+});
+
+test("raw publish failures have a truthful started-or-uncertain publication envelope", async () => {
+  const base = await tempDir();
+  try {
+    const target = path.join(base, "a", "b", "publish-failure");
+    const physicalBase = await fsPromises.realpath(base);
+    const physicalTarget = path.join(physicalBase, "a", "b", "publish-failure");
+    await assert.rejects(
+      () =>
+        withCreateOnlyTarget(target, async () => {
+          throw Object.assign(new Error("injected publish fault"), {
+            code: "EIO",
+            path: path.join(physicalTarget, "index.md"),
+          });
+        }),
+      (err: unknown) =>
+        err instanceof CliError &&
+        err.code === "RUNTIME" &&
+        err.details?.phase === "pre-publish" &&
+        err.details.operation === "publish-index" &&
+        err.details.path === path.join(physicalTarget, "index.md") &&
+        err.details.fs_code === "EIO" &&
+        err.details.publication_outcome === "started-or-uncertain" &&
+        Array.isArray(err.details.residual_created_directories) &&
+        err.details.residual_created_directories.length === 3,
+    );
+  } finally {
+    await rm(base, { recursive: true, force: true });
+  }
+});
+
+test("release failure cannot mask that publication started and may itself mask a publish error", async () => {
+  const base = await tempDir();
+  try {
+    const target = path.join(base, "double-fault");
+    await assert.rejects(
+      () =>
+        withCreateOnlyTarget(
+          target,
+          async () => {
+            throw Object.assign(new Error("injected publish fault"), {
+              code: "EIO",
+              path: path.join(target, "index.md"),
+            });
+          },
+          process.cwd(),
+          {
+            withFilesystemMutationLockImpl: async (_key, fn) => {
+              try {
+                return await fn();
+              } finally {
+                throw new FilesystemMutationLockError("injected release failure", {
+                  lockPath: path.join(base, "double-fault.lock"),
+                  owner: null,
+                  stale: false,
+                  malformed: true,
+                });
+              }
+            },
+          },
+        ),
+      (err: unknown) =>
+        err instanceof CliError &&
+        err.code === "RUNTIME" &&
+        err.details?.phase === "lock" &&
+        err.details.operation === "release-filesystem-mutation-lock" &&
+        err.details.publication_outcome === "started-or-uncertain" &&
+        err.details.prior_operation === "publish-index",
+    );
+  } finally {
+    await rm(base, { recursive: true, force: true });
+  }
+});
+
+test("raw arbitration acquisition failures are typed and publication is not-started", async () => {
+  const base = await tempDir();
+  try {
+    const target = path.join(base, "raw-lock-failure");
+    const lockPath = path.join(base, "raw.lock");
+    await assert.rejects(
+      () =>
+        withCreateOnlyTarget(target, (physical) => initBundle(physical, { expectNew: true }), process.cwd(), {
+          withFilesystemMutationLockImpl: async () => {
+            throw Object.assign(new Error("injected raw lock failure"), {
+              code: "EACCES",
+              path: lockPath,
+            });
+          },
+        }),
+      (err: unknown) =>
+        err instanceof CliError &&
+        err.code === "RUNTIME" &&
+        err.details?.phase === "lock" &&
+        err.details.operation === "acquire-filesystem-mutation-lock" &&
+        err.details.path === lockPath &&
+        err.details.fs_code === "EACCES" &&
+        err.details.publication_outcome === "not-started" &&
+        Array.isArray(err.details.residual_created_directories) &&
+        err.details.residual_created_directories.length === 0,
+    );
   } finally {
     await rm(base, { recursive: true, force: true });
   }
@@ -738,7 +989,7 @@ test("arbitration key is shared by parent and child and lock uncertainty is type
           err instanceof CliError &&
           err.code === "RUNTIME" &&
           err.details?.operation === "acquire-filesystem-mutation-lock" &&
-          err.details.publication_outcome === "not-published",
+          err.details.publication_outcome === "not-started",
       );
     }
   } finally {
