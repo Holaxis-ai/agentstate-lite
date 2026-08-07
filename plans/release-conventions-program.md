@@ -4,7 +4,7 @@ title: >-
   Release-conventions program: recorded + enforced conventions, cadence
   decision, first-stable path (orchestrated)
 actor: anthropic/claude
-timestamp: '2026-08-07T17:39:50.662Z'
+timestamp: '2026-08-07T17:54:33.900Z'
 ---
 # Goal
 
@@ -68,3 +68,8 @@ trustworthy primary distribution channel.
 - 2026-08-07: roadmap recorded; mapper report delivered; CI-fix builder dispatched.
 
 [grounded in](../decisions/version-update-contract.md)
+- 2026-08-07: CI-fix BUILT — fix/ci-version-bundle-sibling-builds @ a384ae0 (owning-primitive fix
+  in embed-ui-assets.mjs buildUiDist: exported ordered UI_DIST_PREREQUISITE_WORKSPACES; red
+  reproduced, class-pinning test red-probed, all gates 0). Independent review dispatched on the
+  exact SHA; PR text delivered to Brian. P5B note: after merge the bot reaches its direct
+  push-to-main again — protection sequencing stays with release-protection-bot-bridge.
