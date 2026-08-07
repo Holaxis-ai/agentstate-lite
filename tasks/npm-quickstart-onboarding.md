@@ -2,21 +2,17 @@
 type: Task
 title: 'New-user quickstart: the TESTED install to init-a-recipe to productive journey'
 description: >-
-  REVIEW + QA APPROVED exact clean SHA 8c9360bb098f33302337d489a54dd0fcb0e16f24
-  with zero findings. Independent Review confirmed the nine-file boundary,
-  corrected state matrix/default/user/actor contract, literal installed journey,
-  and retained PR #212 barriers. Fresh adversarial QA installed the exact
-  tarball once in a non-empty project, proved discovery no-write, literal
-  emitted create, exit-5 byte-identical retry, local/remote add-only
-  projections, attributed Task visibility, focused 102/102, scripts 129/129,
-  exact package dirty=false, full npm run check, MCP browser 15/15, UI 19/19,
-  clean worktree, and no residual processes. Approved for lease-protected push,
-  PR creation, and hosted Node 20/22/26 verification; any code change restarts
-  Review and QA.
+  DELIVERY IN PROGRESS. Review + fresh adversarial QA approved exact clean SHA
+  8c9360bb098f33302337d489a54dd0fcb0e16f24 with zero findings. Lease-protected
+  push updated feat/npm-quickstart-onboarding from known old SHA 6e2cfaa to the
+  approved SHA; remote was re-read and matches. PR #213 is open:
+  https://github.com/Holaxis-ai/agentstate-lite/pull/213. Hosted CI tests are
+  queued on the exact head: Node 22, Node 26, and built-CLI Node 20. Do not
+  merge until those checks are green; any code change restarts Review and QA.
 actor: codex-npm-quickstart-orchestrator
 status: in_progress
 priority: '1'
-timestamp: '2026-08-07T18:20:52.250Z'
+timestamp: '2026-08-07T18:21:53.090Z'
 ---
 [the tested new-user onboarding journey](../roadmap-items/distribution-neutral-resources.md)
 
