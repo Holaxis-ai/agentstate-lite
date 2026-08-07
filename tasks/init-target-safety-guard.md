@@ -1,19 +1,18 @@
 ---
 type: Task
 title: Add generic create-only target safety to init
-status: in_progress
+status: done
 priority: '1'
 assignee: codex-pr212-orchestrator
 description: >-
-  PR #212 is merge-ready at exact SHA aec2dadbe186fe284c3e64a2a568269ef4bacd12.
-  Independent Review and adversarial QA approved with zero blockers; local
-  full/package gates and hosted Node 20/22/26 all passed. Resolution evidence
-  posted at
+  Completed: PR #212 merged to main at merge commit
+  531c9df8ac7299f662d87862d270c7eb63f7dfab on 2026-08-07. Final reviewed head
+  aec2dadbe186fe284c3e64a2a568269ef4bacd12 passed independent Review,
+  adversarial QA, local full/package gates, and hosted Node 20/22/26. Resolution
+  evidence:
   https://github.com/Holaxis-ai/agentstate-lite/pull/212#issuecomment-5219816333.
-  Task remains in_progress only because Brian owns the merge gate; no
-  implementation work remains unless independent re-review finds a new issue.
 actor: codex-pr212-orchestrator
-timestamp: '2026-08-07T16:56:21.029Z'
+timestamp: '2026-08-07T17:29:48.466Z'
 ---
 # Problem
 
