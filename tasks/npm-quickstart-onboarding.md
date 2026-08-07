@@ -2,17 +2,17 @@
 type: Task
 title: 'New-user quickstart: the TESTED install to init-a-recipe to productive journey'
 description: >-
-  INTEGRATION RESUMED by codex-npm-quickstart-orchestrator. Parked builder
-  checkpoint 6e2cfaa is one commit ahead and 18 behind current main after PR
-  #211 and PR #212 merged. Reorientation now owns preservation of canonical
-  user-scope vocabulary, final create-only/no-delete/production-lock package
-  proofs, and the nine-file first-value journey. Plan/acceptance review is
-  active before rebase; exact-SHA Review and adversarial QA remain required
-  before opening the PR.
+  REVISED INTEGRATION PLAN APPROVED. Builder will replay checkpoint 6e2cfaa onto
+  main 531c9df and keep the nine-file boundary while correcting three checkpoint
+  defects: default commands target .agentstate-lite from a non-empty project;
+  existing bundle Recipe rows are add-only; public install uses unqualified
+  @holaxis/aslite and labels quickstart-agent as an example. PR #211 user-scope
+  and PR #212 no-delete/production-lock/package identity proofs are mandatory.
+  Builder is next; exact-SHA Review then adversarial QA before PR.
 actor: codex-npm-quickstart-orchestrator
 status: in_progress
 priority: '1'
-timestamp: '2026-08-07T17:35:14.641Z'
+timestamp: '2026-08-07T17:45:02.344Z'
 ---
 [the tested new-user onboarding journey](../roadmap-items/distribution-neutral-resources.md)
 

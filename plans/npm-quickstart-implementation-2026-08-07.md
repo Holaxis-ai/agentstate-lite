@@ -2,11 +2,11 @@
 type: Plan
 title: 'Plan: literal installed npm quickstart'
 description: >-
-  Compose existing package verification and onboarding surfaces into one
-  fail-closed, attributed first-value journey without expanding into release,
-  guide, or PR #211 scope.
-actor: codex-npm-quickstart
-timestamp: '2026-08-07T00:26:43.122Z'
+  Original checkpoint plan; current-main integration is superseded and refined
+  by plans/npm-quickstart-main-integration-2026-08-07 after merged PR #211/#212
+  reconciliation review.
+actor: codex-npm-quickstart-orchestrator
+timestamp: '2026-08-07T17:45:02.334Z'
 ---
 # Goal
 
