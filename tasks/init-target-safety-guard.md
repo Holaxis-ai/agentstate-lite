@@ -5,13 +5,14 @@ status: in_progress
 priority: '1'
 assignee: codex-pr212-orchestrator
 description: >-
-  PR #212 final Review at 61ff794 found one P2 stable direct-file/symlink-file
-  parity defect. Three-cycle architecture reorientation is complete: a bounded
-  local effective-target snapshot model is frozen and one observer/test-only
-  Builder correction is authorized. All other safety and distribution claims
-  survived; fresh exact-SHA Review is required before QA.
+  PR #212 correction 3 is complete at clean unpushed SHA
+  aec2dadbe186fe284c3e64a2a568269ef4bacd12. Scope is only the private
+  binding-target observer and focused tests; required parity was red at 61ff794
+  and is green, focused 21/21, owning file 61/61, build/typecheck/package
+  verification passed. Awaiting fresh independent exact-SHA Review; QA remains
+  blocked until approval.
 actor: codex-pr212-orchestrator
-timestamp: '2026-08-07T16:18:48.052Z'
+timestamp: '2026-08-07T16:28:28.508Z'
 ---
 # Problem
 
