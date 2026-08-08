@@ -203,6 +203,9 @@ export function expectedTagState({ declaration, versions, observedTags }) {
   }
 
   // Transaction phases: priors = newest published excluding the candidate.
+  // Assumes npm staged-but-unapproved versions do NOT appear in the public packument; if npm
+  // stage semantics differ, the candidate reads as published earlier and the tolerated staged
+  // window simply lengthens — no other logic depends on the assumption.
   const { phase, kind, version } = declaration;
   const prior = newestOf(versions.filter((v) => v !== version));
   if (!prior) {
@@ -214,16 +217,29 @@ export function expectedTagState({ declaration, versions, observedTags }) {
     violations.push(violation("candidate_unpublished", `phase promoted declares ${version} but it is not published`));
     return { expected: null, notes, violations };
   }
+  let expected;
   if ((phase === "staged" || phase === "approved") && !candidatePublished) {
     // npm cannot point a dist-tag at an unpublished version: expect the at-rest prior state.
     notes.push(`candidate ${version} not yet published; expecting tags to still hold the prior known-good ${prior}`);
-    return { expected: resolveTags({ kind, phase: "at_rest", priorLatest: prior, priorNext: prior }), notes, violations };
+    expected = resolveTags({ kind, phase: "at_rest", priorLatest: prior, priorNext: prior });
+  } else {
+    expected = resolveTags({ kind, phase, version, priorLatest: prior, priorNext: prior });
   }
-  const expected = resolveTags({ kind, phase, version, priorLatest: prior, priorNext: prior });
   if (expected.deprecate) {
     notes.push(`policy expects ${expected.deprecate} to be deprecated (deprecation state is not observed by this audit)`);
   }
-  return { expected, notes, violations };
+  // Transition tolerance: the tag flips (promotion, rollback restore) cannot land atomically with
+  // the reviewed phase-file commit, so any phase of the DECLARED transaction is accepted; red only
+  // when the observed tags match NO transaction state (kind + candidate + priors fixed).
+  const accepted = [];
+  for (const p of [phase, "staged", "approved", "promoted", "failed"]) {
+    const t = resolveTags({ kind, phase: p, version, priorLatest: prior, priorNext: prior });
+    if (!candidatePublished && (t.latest === version || t.next === version)) continue;
+    if (!accepted.some((a) => a.tags.latest === t.latest && a.tags.next === t.next)) {
+      accepted.push({ phase: p, tags: { latest: t.latest, next: t.next } });
+    }
+  }
+  return { expected, accepted, notes, violations };
 }
 
 /** Sane successors of the newest published version (source may be prepping the next release). */
@@ -293,16 +309,28 @@ export function auditRegistryState({ declaration, sourceVersion, registry }) {
   violations.push(...tagState.violations);
   notes.push(...tagState.notes);
   if (tagState.expected) {
-    for (const tag of ["latest", "next"]) {
-      const expected = tagState.expected[tag];
-      const observed = distTags?.[tag];
-      if (observed !== expected) {
-        violations.push(
-          violation(
-            `${tag}_off_policy`,
-            `dist-tag ${tag} is ${observed ?? "(unset)"} but policy for phase ${declaration.phase} expects ${expected}`,
-          ),
+    const accepted = tagState.accepted ?? [
+      { phase: declaration.phase, tags: { latest: tagState.expected.latest, next: tagState.expected.next } },
+    ];
+    const match = accepted.find((a) => a.tags.latest === distTags?.latest && a.tags.next === distTags?.next);
+    if (match) {
+      if (match.tags.latest !== tagState.expected.latest || match.tags.next !== tagState.expected.next) {
+        notes.push(
+          `observed tags match transaction phase ${match.phase} (tolerated transition window while declared phase is ${declaration.phase})`,
         );
+      }
+    } else {
+      for (const tag of ["latest", "next"]) {
+        const expected = tagState.expected[tag];
+        const observed = distTags?.[tag];
+        if (observed !== expected) {
+          violations.push(
+            violation(
+              `${tag}_off_policy`,
+              `dist-tag ${tag} is ${observed ?? "(unset)"} but policy for phase ${declaration.phase} expects ${expected}`,
+            ),
+          );
+        }
       }
     }
   }

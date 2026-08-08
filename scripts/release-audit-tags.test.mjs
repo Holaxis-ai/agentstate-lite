@@ -90,10 +90,60 @@ test("staged phase, candidate published: latest stays prior, next floats to cand
   assert.deepEqual(result.violations, []);
 });
 
-test("staged phase, candidate published: latest prematurely moved to candidate is a violation", () => {
-  const declaration = { phase: "staged", kind: "prerelease", version: "0.1.0-pre.4" };
+// Transition windows: the tag flip cannot land atomically with the phase-file commit, so any
+// phase of the DECLARED transaction is tolerated (with a note), never a red.
+
+test("window A: tags already promoted while phase still approved is tolerated", () => {
+  const declaration = { phase: "approved", kind: "prerelease", version: "0.1.0-pre.4" };
   const registry = registryFixture({
     distTags: { latest: "0.1.0-pre.4", next: "0.1.0-pre.4" },
+    versions: ["0.1.0-pre.1", "0.1.0-pre.2", "0.1.0-pre.3", "0.1.0-pre.4"],
+    time: { ...registryFixture().time, "0.1.0-pre.4": "2026-08-08T00:00:00.000Z" },
+  });
+  const result = auditRegistryState({ declaration, sourceVersion: "0.1.0-pre.4", registry });
+  assert.deepEqual(result.violations, []);
+  assert.match(result.notes.join("\n"), /transaction phase promoted .*transition window.*declared phase is approved/);
+});
+
+test("window B: phase promoted while tags not yet moved is tolerated", () => {
+  const declaration = { phase: "promoted", kind: "prerelease", version: "0.1.0-pre.4" };
+  const registry = registryFixture({
+    distTags: { latest: "0.1.0-pre.3", next: "0.1.0-pre.4" },
+    versions: ["0.1.0-pre.1", "0.1.0-pre.2", "0.1.0-pre.3", "0.1.0-pre.4"],
+    time: { ...registryFixture().time, "0.1.0-pre.4": "2026-08-08T00:00:00.000Z" },
+  });
+  const result = auditRegistryState({ declaration, sourceVersion: "0.1.0-pre.4", registry });
+  assert.deepEqual(result.violations, []);
+  assert.match(result.notes.join("\n"), /transition window.*declared phase is promoted/);
+});
+
+test("window C: registry restored during rollback while phase still approved is tolerated", () => {
+  const declaration = { phase: "approved", kind: "prerelease", version: "0.1.0-pre.4" };
+  const registry = registryFixture({
+    distTags: { latest: "0.1.0-pre.3", next: "0.1.0-pre.3" },
+    versions: ["0.1.0-pre.1", "0.1.0-pre.2", "0.1.0-pre.3", "0.1.0-pre.4"],
+    time: { ...registryFixture().time, "0.1.0-pre.4": "2026-08-08T00:00:00.000Z" },
+  });
+  const result = auditRegistryState({ declaration, sourceVersion: "0.1.0-pre.4", registry });
+  assert.deepEqual(result.violations, []);
+  assert.match(result.notes.join("\n"), /transition window.*declared phase is approved/);
+});
+
+test("counter: tags matching NO phase of the declared transaction still red", () => {
+  const declaration = { phase: "staged", kind: "prerelease", version: "0.1.0-pre.4" };
+  const registry = registryFixture({
+    distTags: { latest: "0.1.0-pre.4", next: "0.1.0-pre.3" },
+    versions: ["0.1.0-pre.1", "0.1.0-pre.2", "0.1.0-pre.3", "0.1.0-pre.4"],
+    time: { ...registryFixture().time, "0.1.0-pre.4": "2026-08-08T00:00:00.000Z" },
+  });
+  const result = auditRegistryState({ declaration, sourceVersion: "0.1.0-pre.4", registry });
+  assert.deepEqual(codes(result), ["latest_off_policy", "next_off_policy"]);
+});
+
+test("counter: tags pointing outside the transaction entirely (stale pre.1) still red", () => {
+  const declaration = { phase: "approved", kind: "prerelease", version: "0.1.0-pre.4" };
+  const registry = registryFixture({
+    distTags: { latest: "0.1.0-pre.1", next: "0.1.0-pre.4" },
     versions: ["0.1.0-pre.1", "0.1.0-pre.2", "0.1.0-pre.3", "0.1.0-pre.4"],
     time: { ...registryFixture().time, "0.1.0-pre.4": "2026-08-08T00:00:00.000Z" },
   });
@@ -118,17 +168,6 @@ test("approved phase behaves like staged for tags (candidate published)", () => 
   assert.deepEqual(auditRegistryState({ declaration, sourceVersion: "0.1.0-pre.4", registry }).violations, []);
 });
 
-test("promoted phase: latest == next == candidate required", () => {
-  const declaration = { phase: "promoted", kind: "prerelease", version: "0.1.0-pre.4" };
-  const registry = registryFixture({
-    distTags: { latest: "0.1.0-pre.3", next: "0.1.0-pre.4" },
-    versions: ["0.1.0-pre.1", "0.1.0-pre.2", "0.1.0-pre.3", "0.1.0-pre.4"],
-    time: { ...registryFixture().time, "0.1.0-pre.4": "2026-08-08T00:00:00.000Z" },
-  });
-  const result = auditRegistryState({ declaration, sourceVersion: "0.1.0-pre.4", registry });
-  assert.deepEqual(codes(result), ["latest_off_policy"]);
-});
-
 test("promoted phase with an unpublished candidate is a violation", () => {
   const declaration = { phase: "promoted", kind: "prerelease", version: "0.1.0-pre.4" };
   const result = auditRegistryState({ declaration, sourceVersion: "0.1.0-pre.4", registry: registryFixture() });
@@ -146,15 +185,15 @@ test("failed phase: tags restored to prior known-good pass, and the deprecate ex
   assert.match(result.notes.join("\n"), /deprecated/);
 });
 
-test("failed phase: next left on the failed candidate is a violation", () => {
+test("failed phase: tags matching no transaction state (latest on the failed candidate) still red", () => {
   const declaration = { phase: "failed", kind: "prerelease", version: "0.1.0-pre.4" };
   const registry = registryFixture({
-    distTags: { latest: "0.1.0-pre.3", next: "0.1.0-pre.4" },
+    distTags: { latest: "0.1.0-pre.4", next: "0.1.0-pre.3" },
     versions: ["0.1.0-pre.1", "0.1.0-pre.2", "0.1.0-pre.3", "0.1.0-pre.4"],
     time: { ...registryFixture().time, "0.1.0-pre.4": "2026-08-08T00:00:00.000Z" },
   });
   const result = auditRegistryState({ declaration, sourceVersion: "0.1.0-pre.4", registry });
-  assert.deepEqual(codes(result), ["next_off_policy"]);
+  assert.deepEqual(codes(result), ["latest_off_policy"]);
 });
 
 test("post-stable at rest: latest on newest stable with next collapsed passes", () => {
