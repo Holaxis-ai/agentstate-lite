@@ -4,7 +4,7 @@ title: >-
   Release-conventions program: recorded + enforced conventions, cadence
   decision, first-stable path (orchestrated)
 actor: anthropic/claude
-timestamp: '2026-08-08T00:59:55.956Z'
+timestamp: '2026-08-08T01:16:03.289Z'
 ---
 # Goal
 
@@ -100,3 +100,9 @@ trustworthy primary distribution channel.
   PR #219 awaiting Brian's merge. Program state: item 4 done pending merge; awaiting Mike on both
   RRs (records reconciliation + cadence ratification); then implementation plan -> p5a -> P5B ->
   P5S (schedule Brian/Mike ~30min) -> enable continuous staging.
+- 2026-08-08: EXTERNAL-TEAM review on PR #219 (head f44143d): REQUEST CHANGES, two blocking
+  findings BOTH missed by the internal ladder — (1) phase declaration not cross-validated against
+  source/kind (fabricated staged candidates pass green via unpublished-candidate collapse);
+  (2) valid-JSON-malformed packuments escape the structural classification (null -> exit 2,
+  {} -> exit 1; both should be exit 20). Fixes dispatched as appended commits; hold merge.
+  Pattern note: cross-team review again caught a disjoint failure class (playbook rule 9).
