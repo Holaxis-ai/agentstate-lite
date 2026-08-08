@@ -4,7 +4,7 @@ title: >-
   Release-conventions program: recorded + enforced conventions, cadence
   decision, first-stable path (orchestrated)
 actor: anthropic/claude
-timestamp: '2026-08-08T01:16:03.289Z'
+timestamp: '2026-08-08T01:28:54.911Z'
 ---
 # Goal
 
@@ -106,3 +106,7 @@ trustworthy primary distribution channel.
   (2) valid-JSON-malformed packuments escape the structural classification (null -> exit 2,
   {} -> exit 1; both should be exit 20). Fixes dispatched as appended commits; hold merge.
   Pattern note: cross-team review again caught a disjoint failure class (playbook rule 9).
+- 2026-08-08: External findings CLOSED at 9fef1e3 (declaration cross-validation + one owning
+  packument validator; their reproductions are now red tests; false-red timeline hunt clean;
+  internal delta review APPROVE). PR #219 response posted; awaiting external re-review to lift
+  REQUEST CHANGES. Merge held.
