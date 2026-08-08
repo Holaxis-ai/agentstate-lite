@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { existsSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
@@ -20,6 +20,7 @@ import {
 } from "../src/bundle.js";
 import { InvalidInputError } from "../src/errors.js";
 import { normalizeV01DocumentForWrite } from "../src/document-write-policy.js";
+import { mutateDocument } from "../src/document-mutation.js";
 import { parseMarkdown, stringifyDoc } from "../src/frontmatter.js";
 import { GENERATED_INDEX_MARKER } from "../src/index-marker.js";
 import { MemoryBackend } from "../src/memory-backend.js";
@@ -34,8 +35,10 @@ import type {
   Version,
   WriteOptions,
 } from "../src/types.js";
+import type { KindRegistry } from "../src/kinds.js";
 
 const T = "2026-07-18T00:00:00.000Z";
+const EMPTY_REGISTRY: KindRegistry = { kinds: new Map(), warnings: [] };
 
 function memoryBundle(root = "mem://bundle"): Bundle {
   return { root, backend: new MemoryBackend() };
@@ -188,6 +191,56 @@ test("v0.1 write policy deterministically owns timestamp fallback, key ordering,
     assert.equal(normalized.body, "");
     assert.equal(input.body, undefined, "normalization must not mutate the input body");
     assert.equal(input.frontmatter.timestamp, timestamp, "normalization must not mutate input frontmatter");
+  }
+});
+
+test("a filesystem document mutation preserves top-level and nested date-only scalar shapes", async () => {
+  const root = await mkdtemp(path.join(tmpdir(), "okf-date-shape-"));
+  const documentPath = path.join(root, "notes", "dated.md");
+  await mkdir(path.dirname(documentPath), { recursive: true });
+  await writeFile(documentPath, `---
+type: Note
+title: Before
+timestamp: 2026-07-16T00:00:00Z
+stale_after: 2026-12-31
+generated:
+  at: 2026-07-28T12:34:56Z
+sources:
+  - resource: https://example.test/source
+    last_modified: 2026-07-27
+---
+body
+`);
+
+  try {
+    const bundle: Bundle = { root };
+    const result = await mutateDocument({
+      bundle,
+      id: "notes/dated",
+      mode: "patch",
+      registry: EMPTY_REGISTRY,
+      strict: false,
+      buildCandidate: (existing) => ({
+        frontmatter: { ...existing!.frontmatter, title: "After" },
+        body: existing!.body,
+      }),
+    });
+
+    assert.equal(result.changed, true);
+    assert.equal(result.doc.frontmatter.stale_after, "2026-12-31");
+    assert.deepEqual(result.doc.frontmatter.sources, [{
+      resource: "https://example.test/source",
+      last_modified: "2026-07-27",
+    }]);
+
+    const persisted = await readFile(documentPath, "utf8");
+    assert.doesNotMatch(persisted, /(?:2026-12-31|2026-07-27)T/);
+    const reread = await readDocVersioned(bundle, "notes/dated");
+    assert.equal(reread.doc.frontmatter.stale_after, "2026-12-31");
+    assert.deepEqual(reread.doc.frontmatter.sources, result.doc.frontmatter.sources);
+    assert.deepEqual(reread.doc.frontmatter.generated, { at: "2026-07-28T12:34:56Z" });
+  } finally {
+    await rm(root, { recursive: true, force: true });
   }
 });
 

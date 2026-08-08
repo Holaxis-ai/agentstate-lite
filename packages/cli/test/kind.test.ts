@@ -165,7 +165,7 @@ test("kind field mutation keeps valid enum value descriptions coherent", async (
   }
 });
 
-test("kind field mutation preserves malformed outer and target-inner value-description maps", async () => {
+test("kind field mutation preserves malformed outer and target-inner value-description values", async () => {
   const { dir, cleanup } = await seeded();
   try {
     const bundle: Bundle = { root: dir };
@@ -181,9 +181,9 @@ test("kind field mutation preserves malformed outer and target-inner value-descr
       await runKind(["field", "Context Note", "add", "tags", "--values", "a", "--dir", dir]);
       let updated = await readDoc(bundle, "conventions/context-note");
       let raw = (updated.frontmatter.fields as Record<string, unknown>).value_descriptions;
-      if (shape === "outer") assert.ok(raw instanceof Date);
+      if (shape === "outer") assert.equal(raw, "2026-07-01T00:00:00.000Z");
       else {
-        assert.ok((raw as Record<string, unknown>).tags instanceof Date);
+        assert.equal((raw as Record<string, unknown>).tags, "2026-07-01T00:00:00.000Z");
         assert.deepEqual((raw as Record<string, unknown>).title, { short: "Unrelated sibling." });
       }
       const warningField = shape === "outer" ? "fields.value_descriptions" : "fields.value_descriptions.tags";
@@ -192,9 +192,9 @@ test("kind field mutation preserves malformed outer and target-inner value-descr
       await runKind(["field", "Context Note", "remove", "tags", "--dir", dir]);
       updated = await readDoc(bundle, "conventions/context-note");
       raw = (updated.frontmatter.fields as Record<string, unknown>).value_descriptions;
-      if (shape === "outer") assert.ok(raw instanceof Date);
+      if (shape === "outer") assert.equal(raw, "2026-07-01T00:00:00.000Z");
       else {
-        assert.ok((raw as Record<string, unknown>).tags instanceof Date);
+        assert.equal((raw as Record<string, unknown>).tags, "2026-07-01T00:00:00.000Z");
         assert.deepEqual((raw as Record<string, unknown>).title, { short: "Unrelated sibling." });
       }
       assert.ok((await loadKinds(bundle)).warnings.some((w) => w.code === "KIND_CONVENTION_BAD_SHAPE" && w.field === warningField));
