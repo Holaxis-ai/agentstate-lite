@@ -6,12 +6,12 @@ priority: '1'
 description: >-
   Execute E7A: protected first contract release and honest external-command
   migration from pre.2.
-actor: openai/codex
-timestamp: '2026-07-31T21:26:28.401Z'
+actor: anthropic/claude
+timestamp: '2026-08-08T15:06:13.868Z'
 ---
 # Goal
 
-Publish and prove the first protected contract release, including an honest external-command migration from public pre.2. This is E7A.
+Publish and prove the first protected contract release, including an honest external-command migration from the public bootstrap releases — pre.2 AND pre.3 (real test users may be on either; latest points at pre.3 — widened 2026-08-08 per review-requests/pre3-records-reconciliation). This is E7A.
 
 # Acceptance
 

@@ -6,12 +6,12 @@ priority: '1'
 description: >-
   Execute R6A source PR for the first compatible identity/update contract
   release.
-actor: openai/codex
-timestamp: '2026-07-31T21:26:28.180Z'
+actor: anthropic/claude
+timestamp: '2026-08-08T15:06:13.495Z'
 ---
 # Goal
 
-Prepare the first compatible contract-bearing prerelease in one reviewed source commit. This is R6A; expected version is `0.1.0-pre.3` unless implementation review finds a breaking contract.
+Prepare the first compatible contract-bearing prerelease in one reviewed source commit. This is R6A; expected version is `0.1.0-pre.4` (retargeted 2026-08-08: `0.1.0-pre.3` was consumed by the second manual bootstrap release — see review-requests/pre3-records-reconciliation) unless implementation review finds a breaking contract.
 
 # Acceptance
 

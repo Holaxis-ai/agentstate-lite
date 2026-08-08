@@ -4,7 +4,7 @@ title: >-
   Release-conventions program: recorded + enforced conventions, cadence
   decision, first-stable path (orchestrated)
 actor: anthropic/claude
-timestamp: '2026-08-08T14:38:57.119Z'
+timestamp: '2026-08-08T15:06:36.723Z'
 ---
 # Goal
 
@@ -127,3 +127,8 @@ trustworthy primary distribution channel.
 - 2026-08-08 (post harness upgrade): PR #226 MERGED — assertToken hardening on main. p5a trivial
   half DONE. Dispatching the substantive half: signed-receipt reconciler-as-finalize-gate,
   design-first (design report gate before build), high-risk ladder + external review at PR time.
+- 2026-08-08: Records reconciliation DONE — Brian approved as program co-owner ("it's ours";
+  routing-to-Mike assumption corrected). Contract + domain model name pre.3 canonical; R6A ->
+  pre.4; E7A covers pre.2 AND pre.3 starts. RR approved+closed, Mike informed. Item 2 complete.
+  Audit gate unaffected (records-only). Remaining program externality: reconciler-gate design
+  questions with Brian, then build; then P5B -> P5S.

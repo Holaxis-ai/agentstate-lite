@@ -3,14 +3,18 @@ type: Review Request
 title: >-
   Reconcile release records to pre.3 reality (contract canonical version,
   R6A->pre.4, E7A proof matrix)
-status: requested
+status: approved
 reviewer: mike
 requested_by: brian
 question: >-
   Approve the three record corrections aligning the ratified release docs with
   the published pre.3 registry state?
 actor: anthropic/claude
-timestamp: '2026-08-08T14:51:05.763Z'
+decision_summary: >-
+  Approved by Brian (program co-owner) 2026-08-08; three corrections applied
+  same day with attribution. Mike informed, not asked.
+decided_at: '2026-08-08T20:30:00Z'
+timestamp: '2026-08-08T15:06:36.535Z'
 ---
 # Context
 
@@ -75,6 +79,11 @@ purely "make the records true."
 
 # Reviewer response
 
-(awaiting reviewer)
+APPROVED by Brian, 2026-08-08, as co-owner of the release program ("it's ours" — the codex-npm
+program is jointly owned, so Brian's approval suffices; Mike is informed via this record rather
+than asked). All three corrections applied the same day with attribution and back-links:
+contract section 1 + domain-model invariant 4 now name pre.3 canonical (second bootstrap
+release); R6A retargeted to 0.1.0-pre.4; E7A widened to cover migration from pre.2 AND pre.3.
+The release:audit-tags gate remains green (records-only change).
 
 [reviews task](../tasks/first-contract-release-prep.md)

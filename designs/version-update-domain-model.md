@@ -1,8 +1,8 @@
 ---
 type: Design
 title: 'Domain model: release identity, update discovery, compatibility, and rollback'
-actor: openai/codex
-timestamp: '2026-07-31T21:13:41.191Z'
+actor: anthropic/claude
+timestamp: '2026-08-08T15:06:13.117Z'
 ---
 # Purpose
 
@@ -10,7 +10,7 @@ Provide one shared vocabulary for designing, implementing, reviewing, and provin
 
 # Terms
 
-- **Release version:** The SemVer published as `@holaxis/aslite` package metadata, currently `0.1.0-pre.2`.
+- **Release version:** The SemVer published as `@holaxis/aslite` package metadata, currently `0.1.0-pre.3` (corrected 2026-08-08 per review-requests/pre3-records-reconciliation).
 - **Supported release:** The exact package version selected by the default `latest` policy after required proof. Before stable, `latest` and `next` coincide at rest; during a bounded release transaction `next` may instead name an explicit preview candidate.
 - **Release track:** A mutable policy selector (`latest` or `next`). It is chosen by policy/user command and cannot be inferred from installed bytes. `latest` is the passive/default track; `next` is explicit.
 - **Build identity:** Immutable build facts about the executable: release version, source commit/cleanliness, artifact channel, and per-integration compatibility-contract versions.
@@ -36,7 +36,7 @@ Provide one shared vocabulary for designing, implementing, reviewing, and provin
 1. One owning build-identity primitive feeds every identity projection; projections format it but never reconstruct it independently.
 2. Different executable bytes cannot truthfully present the same complete runtime identity, even when release version matches.
 3. Artifact channel, launch evidence, and release track remain separate. Unknown evidence stays unknown.
-4. `0.1.0-pre.2` is canonical now. A stale local `dist` reporting `pre.1` is diagnosed, never allowed to borrow the adjacent manifest's newer version.
+4. `0.1.0-pre.3` is canonical now (second bootstrap release, no contract code; corrected 2026-08-08). A stale local `dist` reporting `pre.1` is diagnosed, never allowed to borrow the adjacent manifest's newer version.
 5. Ordinary bundle commands are offline-first and output-stable: no registry wait and no unsolicited text on structured/protocol stdout.
 6. Explicit and passive discovery are bounded and unable to mutate npm, skills, hooks, MCP host configuration, or bundles. Passive failure cannot fail/delay orientation; structured home JSON, ordinary commands, and protocol output never receive passive work or notice.
 7. Agent Skill compatibility compares manifested bytes/contract with running identity. One exact/tokenized hook ownership authority governs status and every mutator. Supported MCP configuration calls stable `aslite mcp`; the CLI proves the launch contract but does not claim arbitrary host-config inspection.

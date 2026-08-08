@@ -6,7 +6,7 @@ description: >-
   discovery, explicit upgrade journey, integration compatibility, human
   approval, and rollback boundary.
 actor: anthropic/claude
-timestamp: '2026-08-08T13:38:05.068Z'
+timestamp: '2026-08-08T15:06:12.743Z'
 ---
 # Decision
 
@@ -16,7 +16,7 @@ AgentState will treat `@holaxis/aslite` on npm as the single executable authorit
 
 # 1. Version and track policy
 
-- Canonical current public release is `0.1.0-pre.2`. It is a bootstrap release without the protected provenance workflow or complete identity defined here.
+- Canonical current public release is `0.1.0-pre.3` (corrected 2026-08-08 per review-requests/pre3-records-reconciliation, approved by Brian). It is a SECOND bootstrap release without the protected provenance workflow or complete identity defined here — published manually on 2026-08-03, before this machinery existed; pre.2 was the first.
 - Compatible fixes/additions before stable increment `0.1.0-pre.N`. An intentional breaking public/compatibility contract starts the next minor prerelease (for example `0.2.0-pre.1`) with migration guidance. After stable, ordinary SemVer applies.
 - At rest before `0.1.0`, `latest == next == newest proven supported prerelease`. This temporary exception to npm convention lets unqualified global installs receive the supported test release.
 - During a prerelease transaction, `latest` stays on the supported default while `next` may temporarily name the explicit preview candidate under proof. Passive discovery never advertises `next`. Equality is restored only after proof/promotion.

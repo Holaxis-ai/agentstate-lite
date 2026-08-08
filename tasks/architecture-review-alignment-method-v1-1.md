@@ -1,11 +1,11 @@
 ---
 type: Task
 title: Implement the open-world Review convention and template v1.1
-status: in_progress
+status: done
 priority: '2'
 assignee: review-method-builder
 actor: codex-orchestrator
-timestamp: '2026-08-08T14:49:55.805Z'
+timestamp: '2026-08-08T15:04:40.776Z'
 ---
 # Objective
 
@@ -42,3 +42,28 @@ The method remains `in_progress`. No approval Review, wrapper, View, migration, 
 [depends on](architecture-review-template-v1-1-testing-review.md)
 
 [depends on](architecture-review-template-v1-1-design-skeptic-review.md)
+
+# Builder repair
+
+Repaired exact artifacts after security, testing/portability, and design/skeptic review:
+
+- `conventions/review` at `sha256:583f7e7caa4e011d9de3f7ee1b27660256ec0022e0e12011ab7b05a8c63d19e5`
+- `reviews/architecture-review-template-v1.1` at `sha256:70ad04233c07b5cd5440339465849004b6bc96c2c02527a6ebf270fb28213ec5`
+- frozen v1.0 remains `sha256:02e263f4e78d8fd9e9c6d63a634e82d8ce968b5c54f5e8bb01d224a2279abd09`
+
+The repair keeps the generic Kind title-only and open-valued, removes generic family/currentness
+authority, and makes architecture succession, wrapper projection, verdict subject, advisory
+identity, private-by-default disclosure, coverage closure, cap/partial-failure behavior, and
+unknown-field authoring semantics explicit in the versioned template. Project-local migration and
+method-task links were deliberately removed from the reusable template.
+
+Final live health: ten kinds; `malformed: 0`; `kind_warnings: 9`; `unresolved_links: 6`;
+`registry_warnings: 0`; `link_type_violations: 18`; `missing_expected_links: 35`. Scratch bundle
+`/private/tmp/aslite-review-method-repair.zHEFp0/bundle` created the minimal
+`reviews/repaired-minimal` Review at
+`sha256:20375897c8680a5ea8158885da307736a68160e9d248734150a10bc976ae76f5` with no new Kind warning.
+
+The method remains `in_progress` for exact-version re-review and independent QA. No approval,
+wrapper, View, migration, or sync was created.
+
+[approved by](../reviews/architecture-review-template-v1.1-approval.md)

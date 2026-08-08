@@ -21,7 +21,7 @@ fields:
     - template_version
     - owner
 actor: review-method-builder
-timestamp: '2026-08-08T14:47:00.000Z'
+timestamp: '2026-08-08T15:00:13.922Z'
 ---
 # Review
 
@@ -38,7 +38,8 @@ No body heading is required.
 
 Optional fields are open-valued interoperability hints:
 
-- `status` describes the record lifecycle, not the judgment;
+- `status` describes only the record lifecycle (for example `draft`, `in_review`, or `final`), not
+  judgment, authorization, remediation, or currentness;
 - `role` describes synthesis, specialist, approval, addendum, rereview, or another author-defined
   role;
 - `verdict` records the judgment and `verdict_subject` names what was judged;
@@ -48,8 +49,16 @@ Optional fields are open-valued interoperability hints:
 - `owner` identifies the record/family steward, not an authenticated principal or authorization
   grant.
 
-The convention intentionally declares no enum values. Unknown fields and values remain ordinary OKF
-content and must be preserved by consumers.
+The convention intentionally declares no enum values. Imported or external values—including an
+unknown status such as `superseded`—remain visible and preserved but never establish approval or a
+current verdict. `actor`, `owner`, reviewer, assignee, and similar identity metadata are attribution
+or coordination hints only; they never authenticate a person or grant authority.
+
+Unknown imported fields are valid ordinary OKF content and consumers preserve them on unrelated
+updates. Kind-aware `doc update` accepts declared fields and rejects authoring an undeclared field
+name. To author a new structured field, evolve the local convention or use the raw-document
+promote/CAS import-edit path; permissive consumption does not imply that every kind-aware authoring
+command accepts arbitrary flags.
 
 ## Relationships and families
 
@@ -58,12 +67,14 @@ review`, `amends review`, `rereviews`, `approves report`, `has finding`, or `pro
 are guidance rather than a closed vocabulary. Unknown labels and target types remain first-class
 edges.
 
-For a multi-record family, one synthesis Review is the stable root. A supporting Review should link
-that root directly when one exists. Addenda and re-reviews form an immutable forward graph; frozen
-predecessors are not rewritten to say “superseded.” The effective conclusion is the unique
-applicable leaf for a named target/evidence line. Branches, cycles, conflicting `family` hints,
-multiple parents, and missing targets are surfaced as ambiguity or incompleteness rather than
-silently resolved from a title, filename, folder, or timestamp.
+The generic Review Kind defines no family topology or current-verdict algorithm. Arbitrary links,
+`family`, path, title, `status`, and timestamps never authorize an actor or establish membership,
+succession, approval, or the current verdict by themselves. Generic consumers display unfamiliar
+graphs without declaring them malformed and do not infer a winner from those hints.
+
+Architecture-review succession, stable-root, effective-terminus, and wrapper semantics belong to
+the versioned architecture-review template. Other Review methods may legitimately use peer panels,
+quorum decisions, multiple scoped roots, or no synthesis record.
 
 A standalone Review needs no `family`. A `Review Request` remains a separate named-human decision
 workflow and does not become a Review merely because its title says “review.”

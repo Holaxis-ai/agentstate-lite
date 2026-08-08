@@ -2,7 +2,7 @@
 type: Doc
 title: Reusable architecture review template v1.1
 actor: review-method-builder
-timestamp: '2026-08-08T14:48:10.607Z'
+timestamp: '2026-08-08T15:00:41.223Z'
 ---
 # Reusable architecture review template v1.1
 
@@ -11,12 +11,36 @@ Approval is version-specific and recorded in a separate Review that names this d
 Derived from frozen template v1.0 at `sha256:02e263f4e78d8fd9e9c6d63a634e82d8ce968b5c54f5e8bb01d224a2279abd09`; v1.0 remains unchanged and approved for its historical uses.  
 Domain model: `research/architecture-review-domain-model`
 
+## Method card (read first)
+
+- **Purpose:** produce an evidence-bound architecture verdict whose scope, subject, limits, and
+  resulting work remain durable and independently reviewable.
+- **Use:** select an applicability profile, freeze the target and evidence cutoff, model the system
+  and threat/requirement universe, investigate applicable modules, synthesize findings, and pass
+  specialist, skeptic, and QA gates.
+- **Report-first rule:** every filled review report begins with its completed **Decision card** as
+  the first body section, before record-topology or method detail, so a reader can orient in 30–60
+  seconds.
+- **Record model:** ordinary open-world OKF documents and links; the Review Kind requires only a
+  title. Optional metadata aids interoperability but is not identity, authorization, or currentness
+  authority.
+- **Stopping authority:** one review-authored coverage ledger with stable local IDs; mechanical
+  closure proves only disposition of that declared ledger, while universe completeness remains a
+  reasoned claim challenged by specialist and skeptic review.
+- **Safe degradation:** missing applicability, classified succession, complete pagination, or query
+  results suppresses completeness and effective-verdict claims; ambiguity is shown, never guessed.
+- **Version gate:** approval is exact-version-specific and follows builder, specialist/security,
+  testing/testability, architecture/reliability, skeptic, and independent QA review.
+
 ## 0. Reviewed artifact graph and open-world record contract
 
 An architecture review is a graph of ordinary OKF records, not a mandatory monolithic document or
 closed registry:
 
-`Review Request? -> canonical Review -> {specialist evidence, Findings, approvals/addenda/rereviews} -> Tasks/Decisions`
+Semantically, a synthesis Review is reachable from its request, supporting evidence, findings,
+later conclusions, and resulting work. Stored links need not point in that visual direction: a
+later successor is immutable and therefore points **outbound to its exact immediate predecessor**;
+the predecessor discovers later records through derived backlinks.
 
 | Artifact | Role |
 |---|---|
@@ -28,13 +52,13 @@ closed registry:
 | `Task` / `Decision` / `Claim` | Work, adopted choice, or lifecycle assertion produced by the review. |
 | external report/PR | Source evidence named by URL plus commit/blob/digest; never silently treated as the bundle's canonical record. |
 
-### 0.1 Optional metadata and verdict subject
+### 0.1 Optional metadata, identity, and verdict subject
 
 The Review Kind requires only `title`; all other metadata is open-valued and optional so sparse,
 legacy, and externally authored OKF records remain valid. New Reviews should use the following when
 applicable, without treating the suggested values as an enum:
 
-- record lifecycle `status` (for example `draft`, `in_review`, `final`, `superseded`);
+- record lifecycle `status` (for example `draft`, `in_review`, or `final`);
 - record `role` (for example `synthesis`, `specialist`, `approval`, `addendum`, `rereview`);
 - `verdict` plus mandatory-in-v1.1 prose/frontmatter `verdict_subject`, explicitly distinguishing a
   judgment about the target, Review artifact, repair, plan, or other named subject;
@@ -46,18 +70,49 @@ Artifact approval never implies approval of the reviewed target. A conditional v
 blocking or non-blocking language based on its actual conditions; `approved_with_caveats` carries no
 mandatory pre-acceptance repair.
 
-### 0.2 Family links, stable root, and effective leaf
+Imported or external lifecycle values, including `superseded`, remain visible but are never
+currentness or approval authority. `approved` belongs in `verdict` with a named subject; `applied`
+belongs in linked remediation/work evidence. `actor`, `owner`, reviewer, assignee, and similar
+identity metadata are attribution or coordination hints unless a separate authenticated system
+proves identity and authority; the OKF fields themselves never grant it.
+
+A method-authored Review with a verdict but no `verdict_subject` cannot be `final` and is reported
+as incomplete. Sparse, legacy, and externally authored Reviews remain valid OKF content. Unknown
+imported fields and values are preserved on unrelated updates. Kind-aware `doc update` rejects
+authoring undeclared field names: evolve the local convention or use raw-document promote/CAS for a
+new structured field rather than assuming arbitrary flags are portable.
+
+### 0.2 Classified succession, stable root, and effective terminus
 
 Plain relative Markdown links are the relationship authority. A `family` value is only a routing
-hint. A standalone Review needs neither a family hint nor a family root beyond itself. A supporting
-Review should directly link the canonical synthesis when one exists, using a readable label such as
-`part of review`, `amends review`, `rereviews`, or `approves report`; labels remain open-world.
+hint. A standalone Review needs neither a family hint nor a family root beyond itself. Supporting
+Reviews may link the synthesis for navigation, but only an **explicitly classified succession
+edge** participates in target-verdict currentness.
 
-The canonical synthesis is the stable root, not a mutable “latest” record. Addenda and re-reviews form
-an immutable forward graph. The currently effective conclusion is the unique applicable leaf for a
-named target/evidence line. Do not rewrite frozen predecessors merely to set `superseded`. If the
-graph branches, cycles, has multiple parents, conflicts with a family hint, or lacks a target, report
-ambiguity/incompleteness rather than choosing by filename or timestamp.
+For this method, a conforming successor:
+
+1. points outbound to its exact immediate predecessor with the recommended explicit link label
+   `succeeds review` and targets that predecessor's exact Review document;
+2. repeats the applicable target/evidence line—target identity and version/digest, evidence cutoff
+   or evidence class, and any applicable multi-target row ID; and
+3. carries a target-level `verdict_subject` and explicit verdict when it enters or changes that
+   target-verdict chain.
+
+A project may use another succession label only when the successor or filled report explicitly maps
+that exact label to the succession role and declares the same successor-to-predecessor direction.
+This author-declared relationship profile is ordinary OKF content, not a closed Kind enum. Unknown
+relations remain visible but unclassified. `part of review`, approval, support/evidence, navigation,
+and unknown relations never enter the classified target-verdict succession subgraph; a record using
+one of them enters only through a separate classified succession edge meeting all three rules.
+
+Within one exact target/evidence line, the **stable root** is the classified node with no outbound
+succession edge to a predecessor. Because stored edges run successor to predecessor, the
+**effective terminus** is the unique applicable node with no inbound classified successor backlink.
+Do not rewrite frozen predecessors or use `status: superseded`. A node with multiple classified
+predecessors, a predecessor with multiple applicable successors, a cycle/self-edge, missing or
+conflicting target/evidence applicability, conflicting label mappings, or more than one possible
+root/terminus makes currentness `unknown`, `ambiguous`, or `incomplete`. Never choose by arbitrary
+links, `family`, type, role, path, title, status, timestamp, or link direction alone.
 
 ### 0.3 Multi-target and cross-revision provenance
 
@@ -78,25 +133,41 @@ Create a thin canonical Review wrapper only when all five are true:
 5. a wrapper improves discovery without copying findings, inventing authority, or creating work.
 
 A wrapper contains decision/provenance/navigation only. It links exact source bytes and preserves
-chronology; substantive findings stay in the frozen source. Title, prefix, and filename never decide
-classification.
+chronology; substantive findings stay in the frozen source. It is a deterministic projection, not a
+new interpretation: name every exact source revision/digest, copy the source verdict and
+`verdict_subject`, record any structure-preserving categorical mapping, and state explicit source
+precedence. Source bytes prevail on disagreement. Multiple source verdicts must agree under the
+declared mapping; conflict or a mapping that needs substantive judgment yields `incomplete` and
+requires a newly reviewed synthesis rather than a thin wrapper. Title, prefix, and filename never
+decide classification.
 
 ### 0.5 Runtime non-authority and unfamiliar OKF content
 
-A migration inventory is disclosure-screened audit evidence, not a family registry. Runtime Views
-must work if it is absent or deleted and must query live Reviews, Review Requests, and graph edges.
+An optional migration or classification inventory is disclosure-screened audit evidence, not a
+family registry. Runtime portfolio Views must derive classification, family grouping, Review and
+Review Request rows, and rendered verdict/navigation from live documents and graph edges, with the
+same portfolio results if an inventory is absent or deleted. Deleting an ordinary inventory may
+still change generic whole-bundle queries and link resolution; that is outside this scoped oracle.
 They preserve unknown fields, values, relation labels, and target types. Minimal Reviews, Reviews
 outside the preferred prefix, dangling targets, partial queries, and capped results remain visible
 with honest unknown/ambiguous/incomplete markers. No project id, package name, known family, title
 keyword, filename stem, or timestamp may become hidden runtime authority.
 
+Caps use pagination until eventual visibility, or disclose `shown`, `total` (or unknown), and
+`truncated`/`incomplete` plus a next action. Rows omitted by a cap are not mislabeled unresolved;
+`unresolved` is reserved for present graph references whose target cannot be resolved. A partial
+query preserves bounded returned data but suppresses portfolio-completeness and effective-verdict
+claims.
+
 ## 1. Decision card
 
-This top section must let a new reader answer within 30–60 seconds:
+Every filled review report puts this completed card first. It must let a new reader answer within
+30–60 seconds:
 
 - **Target:** component/package/project, exact source revision, branch/tag, clean-state provenance, runtime/platform, built/distributed artifact identity.
 - **Purpose and scope authority:** why the target exists; authoritative goal/spec; explicit non-goals and frozen work.
-- **Review status and owner:** draft/in review/approved/applied; reviewers and dates; evidence cutoff; target drift since cutoff.
+- **Review lifecycle and coordination:** `draft`, `in_review`, or `final`; owner/reviewers and dates
+  as advisory attribution; evidence cutoff; target drift since cutoff.
 - **Record identity:** synthesis/supporting role, optional family hint, canonical link when applicable, and template version.
 - **Applicability profile:** library, CLI/process, stateful, concurrent/distributed, security-sensitive, published package/plugin, UI/server, or other.
 - **Verdict and subject:** approved, approved with caveats, changes recommended, changes required, incomplete, or another explicit value—plus whether it judges the target, report bytes, repair, plan, or another named subject.
@@ -114,9 +185,25 @@ State:
 - time/evidence budget and safe-probe constraints;
 - confidentiality/disclosure lane;
 - amendment rule: after template freeze, discovered rubric defects are recorded separately and do not silently change evaluation rules. A nonmaterial improvement is deferred to the next version. A material defect blocks the affected review area, creates a new template version, and requires affected applicability/evidence to be rerun or explicitly reported under the old version; preserve both versions and an impact map;
-- stopping rule: freeze the material capability/risk universe from the purpose, system, threat, and requirement models before implementation review. The review ends when every in-scope material item in that frozen universe has a disposition and claims meet evidence thresholds. Newly discovered material risks amend the inventory visibly and are dispositioned before completion. Finding count is never a completion metric.
+- one review-authored coverage ledger, inline or linked, as the stopping authority. Give every item a
+  stable local ID, source/rationale, applicability, disposition, evidence reference, and open
+  blocker/residual risk; other matrices project or reference these IDs rather than becoming
+  competing coverage authorities; and
+- stopping rule: freeze the material capability/risk universe from the purpose, system, threat, and
+  requirement models before implementation review. Mechanical closure means every row in the
+  declared ledger is dispositioned and every applicable material gap is reflected in the verdict.
+  This proves internal closure only; completeness of the declared universe is a reasoned claim
+  challenged by independent specialist and skeptic review. Newly discovered material risks amend
+  the ledger visibly and are dispositioned before completion. Finding count is never a completion
+  metric.
 
-Before public persistence—including inventories, wrappers, Findings, and View projections—triage any security issue: if exploitable by someone other than the victim and present on a publicly released revision (including `main` where `main` is the release channel), route technical detail privately and keep only a redacted routing note in public records. A wrapper never republishes source mechanics merely to improve navigation.
+Before **any** public persistence—including Context Notes, Tasks, artifacts/blobs, inventories,
+wrappers, Findings, Reviews, and View projections—triage each security issue. If exploitable by
+someone other than the victim and present on a publicly released revision (including `main` where
+`main` is the release channel), route technical detail privately and keep only a redacted routing
+note in public records. If exploitability or public-release applicability is unresolved, default to
+the private lane until triage resolves it. A wrapper never republishes source mechanics merely to
+improve navigation.
 
 ## 3. Applicability and risk profile
 
@@ -398,14 +485,27 @@ Changing this reusable method is its own reviewed unit:
 4. independent QA exercises the candidate and convention in a disposable bundle; and
 5. an approval Review names the exact candidate, source template, reviewer evidence, and QA evidence.
 
-Scratch QA runs with and without the Review convention and with and without any migration inventory.
-Its fixture matrix includes a minimal `{type: Review, title}` outside the preferred prefix, unknown
-fields/values/relations, unfamiliar target types, multiple parents, cycles/self-edges, dangling
-targets, HTML-like metadata, caps, partial query failure, and live add/update/delete. Assert that
-every record and edge remains visible or explicitly unresolved, ambiguity is surfaced, no
-title/timestamp/folder inference occurs, deleting the inventory changes no runtime result, and
-`new "Review"` creates a minimal Review under the preferred `reviews/` path when the convention is
-present.
+Scratch QA runs with and without the Review convention and with and without an optional migration
+inventory. Its fixture matrix includes a minimal `{type: Review, title}` outside the preferred
+prefix; unknown imported fields, values, statuses, and relations; unfamiliar target types; an
+explicit succession mapping and successor-to-predecessor link; approval/support leaves; competing
+successors; multiple predecessors; cycles/self-edges; missing target/evidence applicability;
+dangling targets; HTML-like metadata; caps; partial query failure; and live add/update/delete.
+
+Assert that present records and edges remain visible or explicitly unresolved/ambiguous; no
+title/timestamp/folder/status/family inference occurs; inventory deletion leaves Review-portfolio
+classification, family grouping, Review/Review Request rows, and rendered verdict/navigation
+unchanged; and `new "Review"` creates a minimal Review under `reviews/` when the convention is
+present. Without the convention, generic OKF import/promotion remains supported even though
+kind-aware `new "Review"` is unavailable. A known-field update preserves an imported unknown field,
+while authoring a new undeclared field through kind-aware update is expected to fail until the
+convention evolves or raw-document promote/CAS is used.
+
+For caps, exhaust pagination and assert eventual visibility, or require honest `shown`,
+`total`/unknown, `truncated`/`incomplete`, and a next action; omitted rows are not called unresolved.
+Injected partial failure preserves returned bounded data but suppresses completeness and
+effective-verdict claims. Succession assertions operate only on explicitly classified edges and
+fail closed for ambiguity, cycles, competing successors/predecessors, or missing applicability.
 
 ## 10. Approval gate for the template
 
@@ -418,7 +518,7 @@ A reusable template version is approved only when:
 - no blocking reviewer finding remains. Approval is version-specific;
 - the open-world convention requires only title, declares no closed enums/links/headings, and does
   not invalidate sparse or unfamiliar OKF records;
-- the five-part wrapper test, stable-root/effective-leaf semantics, verdict subject, multi-target
+- the five-part wrapper test, stable-root/effective-terminus semantics, verdict subject, multi-target
   provenance, disclosure preflight, and inventory non-authority rules survive specialist review; and
 - the scratch portability matrix passes with exact commands and residual limitations recorded.
 
@@ -431,7 +531,3 @@ After each substantial use, record review cost, fields that changed a decision, 
 [derived from frozen v1.0](architecture-review-template.md)
 
 [governed by alignment plan](../plans/architecture-review-record-alignment.md)
-
-[uses migration inventory](../research/architecture-review-artifact-inventory.md)
-
-[supports method task](../tasks/architecture-review-alignment-method-v1-1.md)
