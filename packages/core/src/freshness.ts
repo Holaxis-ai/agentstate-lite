@@ -14,6 +14,7 @@
  */
 
 import type { FreshnessOptions, FreshnessResult, OkfDocument } from "./types.js";
+import { meaningfulChangeTimeValue } from "./meaningful-change-time.js";
 
 /**
  * Parse a timestamp to epoch ms, or `null`. Accepts an ISO-8601 (or any
@@ -42,7 +43,7 @@ export function parseTimestamp(ts: unknown): number | null {
  *                ISO timestamps of upstream `dependsOn` artifacts.
  */
 export function freshness(doc: OkfDocument, options: FreshnessOptions = {}): FreshnessResult {
-  const tsMs = parseTimestamp(doc.frontmatter?.timestamp);
+  const tsMs = parseTimestamp(meaningfulChangeTimeValue(doc.frontmatter));
   if (tsMs === null) {
     return { verdict: "empty", reason: "no usable `timestamp` frontmatter" };
   }

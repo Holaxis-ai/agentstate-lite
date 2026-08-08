@@ -21,6 +21,10 @@
       "types": "./dist/links.d.ts",
       "default": "./dist/links.js"
     },
+    "./meaningful-change-time": {
+      "types": "./dist/meaningful-change-time.d.ts",
+      "default": "./dist/meaningful-change-time.js"
+    },
     "./page": {
       "types": "./dist/page.d.ts",
       "default": "./dist/page.js"

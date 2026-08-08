@@ -78,6 +78,28 @@ test("unknown presentation is advisory and does not invalidate a View", async ()
   assert.equal(catalog.entries[0].presentation, undefined);
 });
 
+test("View catalog preserves its existing timestamp projection around the shared lookup", async () => {
+  const catalog = await projectViewCatalog([
+    {
+      id: "views-registry/dated",
+      version: "v1",
+      frontmatter: {
+        type: "View",
+        title: "Dated",
+        entry: "views/dated.html",
+        timestamp: " 2026-07-01T12:00:00Z ",
+      },
+    },
+    {
+      id: "views-registry/undated",
+      version: "v2",
+      frontmatter: { type: "View", title: "Undated", entry: "views/undated.html" },
+    },
+  ], { admitEntry: async () => true });
+  assert.equal(catalog.entries[0].timestamp, "2026-07-01T12:00:00Z");
+  assert.equal("timestamp" in catalog.entries[1], false);
+});
+
 test("catalog admission keeps shared-entry registrations distinct by optional version pin", async () => {
   const backend = new CountingMemoryBackend();
   const bundle = { root: "mem://pinned-view-catalog", backend };

@@ -4,6 +4,7 @@ import {
   type Bundle,
   type HeadResult,
 } from "@agentstate-lite/core";
+import { meaningfulChangeTimeValue } from "@agentstate-lite/core/meaningful-change-time";
 import {
   parseRegistration,
   resolveDeclaredAccess,
@@ -87,7 +88,7 @@ function projectCandidates(heads: readonly HeadResult[]): {
     const declaredPresentation = presentation(head.frontmatter.presentation);
     const description = optionalString(head.frontmatter.description);
     const actor = optionalString(head.frontmatter.actor);
-    const timestamp = optionalString(head.frontmatter.timestamp);
+    const timestamp = optionalString(meaningfulChangeTimeValue(head.frontmatter));
     candidates.push({
       entry: registration.entry,
       ...(registration.entryVersion ? { entryVersion: registration.entryVersion } : {}),

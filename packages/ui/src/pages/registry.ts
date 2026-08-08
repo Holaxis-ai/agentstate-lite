@@ -6,6 +6,7 @@ import {
   type BridgeCapability,
   type PageTypeName,
 } from "@agentstate-lite/core/page";
+import { meaningfulChangeTimeValue } from "@agentstate-lite/core/meaningful-change-time";
 
 export {
   declaredAccessValue,
@@ -56,6 +57,6 @@ export function parseRegisteredPage(
     title: stringValue(frontmatter.title) ?? registration.id,
     description: stringValue(frontmatter.description),
     actor: stringValue(frontmatter.actor),
-    timestamp: stringValue(frontmatter.timestamp),
+    timestamp: stringValue(meaningfulChangeTimeValue(frontmatter)),
   };
 }
