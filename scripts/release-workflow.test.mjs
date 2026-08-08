@@ -72,11 +72,37 @@ test("staged workflow: each job carries exactly its minimal permissions", () => 
   );
 });
 
-test("finalize workflow: registry-verify is read-only, finalize gets contents:write only", () => {
+test("finalize workflow: ordering gate + registry-verify are read-only, finalize gets contents:write only", () => {
   const jobs = extractJobs(finalize);
-  assert.deepEqual(Object.keys(jobs).sort(), ["finalize", "registry-verify"]);
+  assert.deepEqual(Object.keys(jobs).sort(), ["finalize", "ordering-verified", "registry-verify"]);
+  assert.deepEqual(permissionsOf(jobs["ordering-verified"]), { actions: "read", contents: "read" });
   assert.deepEqual(permissionsOf(jobs["registry-verify"]), { actions: "read", contents: "read" });
   assert.deepEqual(permissionsOf(jobs.finalize), { actions: "read", contents: "write" });
+});
+
+test("the ordering gate runs BEFORE registry mutation and again before publication", () => {
+  const jobs = extractJobs(finalize);
+  // Job chain: ordering-verified -> registry-verify -> finalize.
+  assert.match(jobs["registry-verify"], /needs: ordering-verified/);
+  assert.match(jobs.finalize, /needs: registry-verify/);
+  // The gate replays the state machine over signed receipts in the gate job AND pre-publish.
+  for (const name of ["ordering-verified", "finalize"]) {
+    assert.match(jobs[name], /release-verify-ordering\.mjs assets/, `${name} lists receipt assets via the one naming authority`);
+    assert.match(jobs[name], /release-verify-ordering\.mjs verify/, `${name} verifies signed receipt ordering`);
+    assert.match(jobs[name], /--allowed-signers \.github\/release-allowed-signers/, `${name} pins the committed signer file`);
+  }
+  // In the finalize job the ordering re-verify precedes stamping, which precedes the publish op.
+  const body = jobs.finalize;
+  const verifyAt = body.indexOf("release-verify-ordering.mjs verify");
+  const stampAt = body.indexOf("release-verify-ordering.mjs stamp");
+  const publishAt = body.indexOf("release-run-operations.mjs --op immutable-release");
+  assert.ok(verifyAt !== -1 && stampAt !== -1 && publishAt !== -1);
+  assert.ok(verifyAt < stampAt && stampAt < publishAt, "verify -> stamp -> publish, in that order");
+  // The stamp is workflow-emitted, public, and lands BEFORE the draft is published.
+  assert.match(body, /gh release upload "v\$VERSION" "stamp-out\/\$ASSET_NAME"/);
+  assert.match(body, /-F "body=@stamp-out\/body\.txt"/);
+  // The environment gate also binds the ordering job.
+  assert.match(jobs["ordering-verified"], /environment: release/);
 });
 
 test("denylist scan (NOT a proof): no KNOWN build/pack token appears outside the candidate job", () => {
@@ -180,7 +206,7 @@ test("the finalizer is separately dispatched and consumes every immutable ID", (
   assert.match(finalize, /run-id: \$\{\{ inputs\.run_id \}\}/);
   assert.match(finalize, /artifact-ids: \$\{\{ inputs\.artifact_id \}\}/);
   assert.match(finalize, /artifact-ids: \$\{\{ inputs\.stage_receipt_artifact_id \}\}/);
-  assert.ok((finalize.match(/release-verify-chain\.mjs verify-finalizer/g) ?? []).length === 2);
+  assert.ok((finalize.match(/release-verify-chain\.mjs verify-finalizer/g) ?? []).length === 3);
 });
 
 test("the staged workflow triggers on v* tags and on dry-run dispatch", () => {

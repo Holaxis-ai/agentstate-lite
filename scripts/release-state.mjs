@@ -2,12 +2,16 @@
 // for which transition is legal, which immutable identifiers each state must carry, and whether a
 // proposed receipt CONTRADICTS the identifiers already fixed earlier in the transaction.
 //
-// SCOPE (QA finding #3): this is a VALIDATION / DESIGN artifact and an OPERATOR TOOL (via
-// scripts/release-reconcile.mjs) — it is NOT (yet) wired as the runtime ordering gate inside the
-// release workflows. The workflows enforce BYTE identity mechanically (retained-tarball SHA
-// re-verify) but trust the operator that inspection+approval preceded finalize; wiring THIS graph
-// as the mechanical ordering gate needs persisted operator-signed inspection/approval receipts (a
-// separate trust/storage design, tracked as a follow-up). Nothing here rebuilds or repacks.
+// SCOPE: this graph IS wired as the runtime ordering gate — release-finalize.yml's
+// ordering-verified job (and the finalize job's pre-publish re-check) replays it over signed
+// operator inspection/approval receipts via scripts/release-verify-ordering.mjs, alongside the
+// byte-identity chain (verify-finalizer) and the registry publication proof (which already forces
+// a 2FA stage approval of the exact bytes before live finalize can succeed). Receipts add what
+// those cannot prove: that inspection happened, by which operator, before approval and dispatch.
+// Enforcement is tiered (see release-ordering.mjs): stable candidates require both receipts;
+// prerelease tolerates absence with a permanent public stamp; present-but-invalid evidence is
+// always red. scripts/release-reconcile.mjs stays the operator CLI over the same reconcile().
+// Nothing here rebuilds or repacks.
 //
 // Normative source: .agentstate-lite/designs/version-update-protocols.md §5 (states/owners table
 // and transient tag/failure rules). The `rolled_back` state is derived from §5's transient-tag

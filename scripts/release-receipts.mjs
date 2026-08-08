@@ -1,6 +1,7 @@
 // Pure parsers and validators for the immutable staged-release receipt chain. Workflows pass
 // untrusted API/input JSON into these functions; every identifier and digest is checked before it
 // can authorize registry or GitHub mutation.
+import { isAuxiliaryReleaseAssetName } from "./release-ordering.mjs";
 
 const TOKEN = /^[A-Za-z0-9._-]+$/;
 const SEMVER = /^\d+\.\d+\.\d+(?:-[0-9A-Za-z][0-9A-Za-z.-]*)?(?:\+[0-9A-Za-z][0-9A-Za-z.-]*)?$/;
@@ -187,7 +188,12 @@ export function verifyFinalizerChain({
   equal("draft release id", release?.id, receipt.draft?.release_id);
   if (release?.draft !== true) fail("GitHub release is not an unpublished draft");
   equal("draft tag", release?.tag_name, prepared.tag);
-  const observedAssets = normalizedAssets(release?.assets);
+  // Operator receipt/status assets (the ordering gate's evidence) are the ONLY extras tolerated
+  // beyond the two recorded core assets; any other extra still fails the exactly-two check.
+  const coreAssets = (Array.isArray(release?.assets) ? release.assets : []).filter(
+    (asset) => !isAuxiliaryReleaseAssetName(asset?.name),
+  );
+  const observedAssets = normalizedAssets(coreAssets);
   const recordedAssets = normalizedAssets(receipt.draft?.assets);
   if (JSON.stringify(observedAssets) !== JSON.stringify(recordedAssets)) fail("draft release assets differ from stage receipt");
 

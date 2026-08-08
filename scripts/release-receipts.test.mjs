@@ -154,6 +154,22 @@ test("stage summary carries the bounded stable MCP launch migration guidance", (
   assert.ok(!Object.hasOwn(built.receipt, "guidance"), "immutable receipt schema remains unchanged");
 });
 
+test("finalizer tolerates ONLY receipt/status-named extra draft assets; rogue extras stay red", () => {
+  // Operator receipts and the workflow stamp ride the same draft; the core two assets stay exact.
+  const withReceipts = fixture();
+  withReceipts.release.assets = [
+    ...withReceipts.release.assets,
+    { id: "401", name: `receipt-inspected-${STAGE_ID}.json`, digest: "sha256:" + "1".repeat(64) },
+    { id: "402", name: `receipt-approved-${STAGE_ID}.json`, digest: "sha256:" + "2".repeat(64) },
+    { id: "403", name: `receipt-status-${STAGE_ID}.json`, digest: "sha256:" + "3".repeat(64) },
+  ];
+  assert.equal(verifyFinalizerChain(withReceipts).stage_id, STAGE_ID);
+
+  const withRogue = fixture();
+  withRogue.release.assets = [...withRogue.release.assets, { id: "404", name: "extra.tgz", digest: "sha256:" + "4".repeat(64) }];
+  assert.throws(() => verifyFinalizerChain(withRogue), /release receipt verification failed/);
+});
+
 test("finalizer rejects ignored/swapped immutable identifiers and assets", () => {
   for (const mutate of [
     (f) => (f.dispatch.artifactId = "999"),
