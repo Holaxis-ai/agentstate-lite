@@ -12,6 +12,7 @@
 import type { DocHead } from "../api/types.js";
 import { isFeedHead } from "./ActivityFeed.js";
 import { formatWhen } from "./format.js";
+import { meaningfulChangeTimeValue } from "@agentstate-lite/core/meaningful-change-time";
 
 export interface BrowseRow {
   id: string;
@@ -35,12 +36,13 @@ function stringField(value: unknown): string | undefined {
 
 /** A display row plus the raw timestamp used only for sorting (stripped from the public shape). */
 function toSortableRow(head: DocHead): BrowseRow & { timestamp: string } {
+  const timestamp = stringField(meaningfulChangeTimeValue(head.frontmatter));
   return {
     id: head.id,
     kind: String(head.frontmatter.type ?? "Doc"),
     title: stringField(head.frontmatter.title) ?? head.id,
-    when: formatWhen(stringField(head.frontmatter.timestamp)),
-    timestamp: stringField(head.frontmatter.timestamp) ?? "",
+    when: formatWhen(timestamp),
+    timestamp: timestamp ?? "",
   };
 }
 

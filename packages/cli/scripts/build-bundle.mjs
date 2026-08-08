@@ -110,6 +110,7 @@ export async function buildCliBundle(outfile, options) {
       // subpath to `index.ts` (which would resolve as the impossible `index.ts/page`).
       "@agentstate-lite/core/page": r("../core/src/page.ts"),
       "@agentstate-lite/core/links": r("../core/src/links.ts"),
+      "@agentstate-lite/core/meaningful-change-time": r("../core/src/meaningful-change-time.ts"),
       "@agentstate-lite/core": r("../core/src/index.ts"),
       // The git tier lives in its own workspace package (board-git A1); alias to source so the
       // npm artifact stays ONE self-contained file with no dist pre-build.

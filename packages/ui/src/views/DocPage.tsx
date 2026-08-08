@@ -21,6 +21,7 @@ import { subscribeToChanges, subscribeToResync } from "../pages/pageEvents.js";
 import { navigate } from "../routing.js";
 import { formatWhen } from "./format.js";
 import { renderMarkdown } from "@agentstate-lite/markdown-renderer";
+import { meaningfulChangeTimeValue } from "@agentstate-lite/core/meaningful-change-time";
 
 function stringField(value: unknown): string | undefined {
   return typeof value === "string" && value.trim() ? value : undefined;
@@ -109,7 +110,7 @@ export function DocPage({ docId }: { docId: string }) {
   const kind = String(fm.type ?? "Doc");
   const title = stringField(fm.title) ?? doc.id;
   const actor = stringField(fm.actor);
-  const when = formatWhen(stringField(fm.timestamp));
+  const when = formatWhen(stringField(meaningfulChangeTimeValue(fm)));
   // Chips show the KIND-DECLARED fields present on this doc (required first, then optional) —
   // mechanism in the shell, meaning from the bundle's own conventions. An ungoverned doc shows
   // no chips (its identity fields are already on the card).

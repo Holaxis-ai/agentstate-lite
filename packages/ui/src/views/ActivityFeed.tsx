@@ -26,6 +26,7 @@ import { subscribeToChanges, subscribeToResync } from "../pages/pageEvents.js";
 import { PAGE_TYPE_NAMES } from "../pages/registry.js";
 import { navigate } from "../routing.js";
 import { formatWhen } from "./format.js";
+import { meaningfulChangeTimeValue } from "@agentstate-lite/core/meaningful-change-time";
 
 /** How many rows the feed shows — recent pulse, not a history browser. */
 export const FEED_LIMIT = 8;
@@ -75,19 +76,22 @@ export function isFeedHead(head: DocHead): boolean {
 export function feedRows(heads: DocHead[]): FeedRow[] {
   return heads
     .filter(isFeedHead)
-    .map((h) => ({
-      id: h.id,
-      version: h.version,
-      kind: String(h.frontmatter.type ?? "Doc"),
-      title: stringField(h.frontmatter.title) ?? h.id,
-      actor: stringField(h.frontmatter.actor),
-      // Read GENERICALLY off frontmatter — any kind that declares these gets them; no Task
-      // special-casing, and a bundle whose kinds declare neither renders exactly as before.
-      status: stringField(h.frontmatter.status),
-      assignee: stringField(h.frontmatter.assignee),
-      when: formatWhen(stringField(h.frontmatter.timestamp)),
-      timestamp: stringField(h.frontmatter.timestamp) ?? "",
-    }))
+    .map((h) => {
+      const timestamp = stringField(meaningfulChangeTimeValue(h.frontmatter));
+      return {
+        id: h.id,
+        version: h.version,
+        kind: String(h.frontmatter.type ?? "Doc"),
+        title: stringField(h.frontmatter.title) ?? h.id,
+        actor: stringField(h.frontmatter.actor),
+        // Read GENERICALLY off frontmatter — any kind that declares these gets them; no Task
+        // special-casing, and a bundle whose kinds declare neither renders exactly as before.
+        status: stringField(h.frontmatter.status),
+        assignee: stringField(h.frontmatter.assignee),
+        when: formatWhen(timestamp),
+        timestamp: timestamp ?? "",
+      };
+    })
     .sort((a, b) => b.timestamp.localeCompare(a.timestamp) || a.title.localeCompare(b.title))
     .slice(0, FEED_LIMIT)
     .map(({ timestamp: _timestamp, ...row }) => row);

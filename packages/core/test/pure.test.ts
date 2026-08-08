@@ -24,6 +24,7 @@ import {
   isExternalHref,
 } from "../src/links.js";
 import { freshness, parseTimestamp } from "../src/freshness.js";
+import { meaningfulChangeTimeValue } from "../src/meaningful-change-time.js";
 import {
   extensionOfDocKey,
   inferContentTypeFromDocKey,
@@ -186,6 +187,18 @@ test("freshness: empty / fresh / stale-by-age / stale-by-dependency", () => {
   });
   assert.equal(dep.verdict, "stale");
   assert.match(dep.reason ?? "", /dependency/);
+});
+
+test("meaningful change time lookup returns the exact v0.1 timestamp value", () => {
+  const cases: Array<{ label: string; frontmatter: Record<string, unknown>; expected: unknown }> = [
+    { label: "missing", frontmatter: { type: "T" }, expected: undefined },
+    { label: "blank", frontmatter: { type: "T", timestamp: "   " }, expected: "   " },
+    { label: "malformed", frontmatter: { type: "T", timestamp: "not-a-date" }, expected: "not-a-date" },
+    { label: "valid", frontmatter: { type: "T", timestamp: "2026-07-01T12:00:00Z" }, expected: "2026-07-01T12:00:00Z" },
+  ];
+  for (const row of cases) {
+    assert.equal(meaningfulChangeTimeValue(row.frontmatter), row.expected, row.label);
+  }
 });
 
 test("content-type: extension inference + warning policy", () => {

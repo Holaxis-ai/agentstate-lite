@@ -64,6 +64,7 @@ import {
   type BundleNameSource,
 } from "../bundle-name.js";
 import { queryHeads, type OkfDocument } from "@agentstate-lite/core";
+import { meaningfulChangeTimeValue } from "@agentstate-lite/core/meaningful-change-time";
 import { parseArgs } from "node:util";
 import path from "node:path";
 import {
@@ -264,12 +265,15 @@ export function summarizeDocs(docs: Array<Pick<OkfDocument, "id" | "frontmatter"
     Object.entries(byType).sort(([ta, ca], [tb, cb]) => cb - ca || ta.localeCompare(tb)),
   );
 
-  const rows: HomeRow[] = docs.map((d) => ({
-    id: d.id,
-    type: typeof d.frontmatter.type === "string" ? d.frontmatter.type : "",
-    title: rowTitle(d.id, d.frontmatter.title),
-    timestamp: typeof d.frontmatter.timestamp === "string" ? d.frontmatter.timestamp : "",
-  }));
+  const rows: HomeRow[] = docs.map((d) => {
+    const timestamp = meaningfulChangeTimeValue(d.frontmatter);
+    return {
+      id: d.id,
+      type: typeof d.frontmatter.type === "string" ? d.frontmatter.type : "",
+      title: rowTitle(d.id, d.frontmatter.title),
+      timestamp: typeof timestamp === "string" ? timestamp : "",
+    };
+  });
   // Timestamp desc; missing/empty timestamp sorts LAST; id asc as a deterministic tiebreak.
   rows.sort((a, b) => {
     if (a.timestamp && b.timestamp) {
