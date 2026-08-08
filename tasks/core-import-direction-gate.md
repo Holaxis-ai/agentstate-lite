@@ -1,14 +1,14 @@
 ---
 type: Task
 title: Enforce core production import direction
-status: in_progress
+status: done
 priority: '3'
 description: >-
   Add one production-only AST import gate for core's bottom-layer contract; no
   production refactor and no change to server-backed test fixtures.
 actor: openai/codex
 assignee: openai/codex
-timestamp: '2026-08-08T15:19:21.368Z'
+timestamp: '2026-08-08T15:32:05.794Z'
 ---
 # Objective
 
@@ -42,6 +42,17 @@ test, without changing production code or expanding the rule to test fixtures.
 
 Low-risk test-only invariant contract. Author validation plus relevant automated checks is
 sufficient unless implementation expands package policy or extracts shared machinery.
+
+# Outcome
+
+Shipped in [PR #228](https://github.com/Holaxis-ai/agentstate-lite/pull/228), merge commit
+`56b5693d9aa205d9d65d8513ca07642fcbf596dc`. The added production-only TypeScript-AST gate pins
+core's allowed source imports and manifest dependency posture. Its adversarial fixture covers
+workspace imports, relative escapes, non-literal dynamic imports, import-equals, `require`, and
+`createRequire`. No production code or runtime behavior changed.
+
+Author validation passed: focused gate 3/3, core suite 412/412, core typecheck, local repository
+gate, and exact-SHA GitHub gates on Node 20, 22, and 26 plus the release-policy audit.
 
 # Evidence
 
