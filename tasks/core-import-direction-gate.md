@@ -1,13 +1,14 @@
 ---
 type: Task
 title: Enforce core production import direction
-status: todo
+status: in_progress
 priority: '3'
 description: >-
   Add one production-only AST import gate for core's bottom-layer contract; no
   production refactor and no change to server-backed test fixtures.
 actor: openai/codex
-timestamp: '2026-08-08T13:43:02.254Z'
+assignee: openai/codex
+timestamp: '2026-08-08T15:19:21.368Z'
 ---
 # Objective
 
