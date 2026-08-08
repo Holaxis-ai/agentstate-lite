@@ -8,7 +8,7 @@ description: >-
   path and route web plus MCP through one view-runtime authority while
   preserving exact local/remote behavior.
 actor: openai/codex
-timestamp: '2026-08-08T14:05:46.385Z'
+timestamp: '2026-08-08T14:24:36.838Z'
 ---
 # Objective
 
@@ -38,12 +38,15 @@ parallel implementation without changing user-visible behavior.
 
 # Proof
 
-- Pre-change local and RemoteBackend route fixtures pin success and failure taxonomy for missing or
-  invalid registration, missing/pinned/inadmissible entry, mid-mint drift, upstream failure, and
+- Treat the shipped `RemoteBackend` plus semantic `Bundle` as the remote baseline. Tests of the
+  private no-`Bundle` fallback are removed rather than preserved as compatibility behavior.
+- Local and RemoteBackend route fixtures pin the observable success and failure taxonomy for
+  missing or invalid registration, missing/pinned/inadmissible entry, upstream failure, and
   authorized/unapproved success.
-- A local/remote web-versus-MCP agreement table proves identical registry identity/version, entry,
-  capability, normalized content type, and host-computed byte hash.
-- Perturbing runtime admission/hash/currentness makes both host proofs fail.
+- Host agreement is proven through observable launch fields, exact-byte authorization/currentness,
+  and direct static ownership. Internal registry versions are intentionally not added to HTTP/MCP
+  payloads merely to make an implementation-detail comparison possible.
+- Perturbing runtime admission, byte identity, or currentness makes the retained host proofs fail.
 - Static ownership proves no production source outside `view-runtime` mints
   `sourceKind: registered` or reconstructs its identity.
 - Focused View/UI-server suites and the full repository gate pass.
