@@ -14,11 +14,11 @@ description: >-
   CLI type-only cycles. Existing sync/porcelain/home/kinds/recipes/test-split
   candidates retain their documented feature/defect/conflict triggers;
   committed-folder establishment deletion remains rejected.
-actor: openai/codex
+actor: codex-orchestrator
 sequence: >-
   Registered-View launch authority consolidation → core import-direction gate;
   all other candidates remain trigger-gated
-timestamp: '2026-08-08T13:43:25.460Z'
+timestamp: '2026-08-08T13:47:49.640Z'
 ---
 [contains](../tasks/sync-establish-phase-carve.md)
 
@@ -43,3 +43,5 @@ timestamp: '2026-08-08T13:43:25.460Z'
 [contains](../tasks/registered-view-launch-authority-consolidation.md)
 
 [contains](../tasks/core-import-direction-gate.md)
+
+[contains](../tasks/cli-review-pr224-reconciliation.md)
