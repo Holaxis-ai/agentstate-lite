@@ -4,7 +4,7 @@ title: >-
   Release-conventions program: recorded + enforced conventions, cadence
   decision, first-stable path (orchestrated)
 actor: anthropic/claude
-timestamp: '2026-08-08T00:21:32.603Z'
+timestamp: '2026-08-08T00:46:11.438Z'
 ---
 # Goal
 
@@ -86,3 +86,7 @@ trustworthy primary distribution channel.
   wiring resolveTags to the live registry, version-scheme validator, source-drift gate, committed
   phase declaration; network-vs-violation distinction structural; NOT in the offline check chain.
   Item 2 (records reconciliation) next: drafting the pre.3 amendment as a Review Request to Mike.
+- 2026-08-08: Q1/Q2 ANSWERED (Brian): model (c) continuous staging + batched finalize; joint
+  Brian+Mike ratification. Proposal recorded (decisions/release-cadence-continuous-staging,
+  PENDING) with exact four-clause amendment language; ratification RR filed to Mike
+  (review-requests/cadence-continuous-staging). PR #219 (audit gate) open, review in flight.
