@@ -4,7 +4,7 @@ title: >-
   Release-conventions program: recorded + enforced conventions, cadence
   decision, first-stable path (orchestrated)
 actor: anthropic/claude
-timestamp: '2026-08-07T17:59:43.505Z'
+timestamp: '2026-08-08T00:21:32.603Z'
 ---
 # Goal
 
@@ -80,3 +80,9 @@ trustworthy primary distribution channel.
   future value-imported devDep could escape; harden by scanning both maps. Operational note for
   merge: the bot's FIRST green run will emit one larger catch-up commit (12 runs of artifact
   backlog incl. 1.0.147->1.0.148) — expected, not a malfunction. READY FOR BRIAN'S MERGE.
+- 2026-08-08: Item 1 DONE — PR #214 merged; first green ci-version-bundle run in 13 pushes; bot
+  catch-up commit 6c07070 (1.0.148) landed as forecast. Rollback channel alive again.
+  Item 4 (enforcement gate) DISPATCHED: builder on feat/release-tag-audit — release:audit-tags
+  wiring resolveTags to the live registry, version-scheme validator, source-drift gate, committed
+  phase declaration; network-vs-violation distinction structural; NOT in the offline check chain.
+  Item 2 (records reconciliation) next: drafting the pre.3 amendment as a Review Request to Mike.
