@@ -1,13 +1,13 @@
 ---
 type: Task
 title: Design runtime-neutral compaction checkpoint lifecycle v1
-status: todo
+status: done
 priority: '1'
 description: >-
-  Select the shared checkpoint architecture, support tiers, state model, and
-  adapter exceptions from the completed research.
-actor: codex-compaction-orchestrator
-timestamp: '2026-08-08T17:30:04.441Z'
+  Completed runtime-neutral v1 design; ready for independent design review
+  before implementation planning.
+actor: codex-checkpoint-design-architect
+timestamp: '2026-08-08T17:43:54.259Z'
 ---
 # Goal
 
@@ -74,3 +74,20 @@ Write `designs/compaction-context-checkpoint-lifecycle-v1` with:
 [depends on](compaction-checkpoint-codex-research.md)
 [depends on](compaction-checkpoint-claude-research.md)
 [depends on](compaction-checkpoint-opencode-research.md)
+
+# Outcome
+
+Completed 2026-08-08. The implementation-ready, code-free shared design is
+[compaction-context-checkpoint-lifecycle-v1](../designs/compaction-context-checkpoint-lifecycle-v1.md)
+at version `sha256:c042dda8878d96ed93bfb58827395e49400d330f449e91a2bca51f24d15c4f9b`.
+The phase result is
+[compaction-checkpoint-design-v1-result](../context-notes/compaction-checkpoint-design-v1-result.md)
+at version `sha256:362297e2a0af8fae675d310fa92fd8e6fadabcce30302251698fec869473f474`.
+
+Selected: one mutable exact-subject selector, immutable same-bearer semantic generations, material
+receipts, proactive Turn Ticket fast path when proven, exactly-one Stop enforcement otherwise,
+bounded PreCompact guard, and exact fail-closed restore. Unchanged turns perform one small selector
+CAS and no generation/receipt document; lifecycle hooks never sync or push. Codex/Claude remain
+conditional pending named probes. OpenCode is restore-only/manual and cannot claim semantic capture
+without a same-original-bearer primitive. No one-way-door decision requires Brian. Ready for an
+independent design critic; implementation planning remains a later phase.

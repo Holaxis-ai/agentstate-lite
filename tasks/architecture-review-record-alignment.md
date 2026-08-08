@@ -1,14 +1,14 @@
 ---
 type: Task
 title: Align architecture-review records and discovery
-status: blocked
+status: in_progress
 priority: '2'
 description: >-
   Introduce one canonical Review-family model, wrap misfiled verdicts without
   rewriting history, and make completed Reviews discoverable alongside Review
   Requests.
 actor: codex-orchestrator
-timestamp: '2026-08-08T16:07:30.505Z'
+timestamp: '2026-08-08T17:31:41.707Z'
 ---
 # Objective
 Once the proposed architecture-review record-alignment plan is accepted, implement it so every review initiative has one canonical Review synthesis, supporting Findings and context remain correctly typed, and humans can discover requests and completed reports from the review surface.
@@ -32,6 +32,8 @@ The linked plan’s acceptance criteria are the contract. Existing approved/froz
 
 [depends on](architecture-review-alignment-qa.md)
 
-# Current blocker
+# Authorized source expansion
 
-Implementation reached exact View `sha256:70ee30c9a5842ba8e1bb2192ede66c002ef1d5f78efe5e8d52ababc5612788ea`; portability and provenance approve, but the independent security gate found a 32-selector bridge bound and an owning-parser identity-normalization defect. The robust fix requires both View batching and a source-code change that preserves exact nonblank selector IDs. That expansion is not implicit in the approved bundle-only plan, so independent approval and QA remain blocked pending user direction. See [the whole-system boundary note](../context-notes/architecture-review-alignment-view-command-system-model.md).
+Implementation reached exact View `sha256:70ee30c9a5842ba8e1bb2192ede66c002ef1d5f78efe5e8d52ababc5612788ea`; portability and provenance approve, but the independent security gate found a 32-selector bridge bound and an owning-parser identity-normalization defect. On 2026-08-08 the user explicitly authorized the robust source expansion: bounded View batching plus exact nonblank selector-ID preservation in `packages/view-runtime`, with source tests, independent code review, and QA. Work is tracked by [Repair Review portfolio bridge identity and scale boundaries](review-portfolio-bridge-identity-repair.md). See [the whole-system boundary note](../context-notes/architecture-review-alignment-view-command-system-model.md).
+
+[depends on](review-portfolio-bridge-identity-repair.md)
