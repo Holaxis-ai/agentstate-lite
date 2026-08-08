@@ -44,7 +44,7 @@
 // `Authorization` header entirely (no auth enforced there), so an ungated local bundle works
 // exactly as before with no key configured.
 import { BUNDLE_DIR } from "@agentstate-lite/board-git";
-import { promises as fs, type Stats } from "node:fs";
+import { constants, promises as fs, type Stats } from "node:fs";
 import path from "node:path";
 import {
   FilesystemMutationLockError,
@@ -212,6 +212,41 @@ function parseProjectBinding(file: string, raw: string): ProjectBinding {
   return { file, target: path.resolve(path.dirname(file), value) };
 }
 
+async function readProjectBindingFile(file: string): Promise<string> {
+  let handle: Awaited<ReturnType<typeof fs.open>>;
+  try {
+    // Symlinked binding files are supported, so follow the link; O_NONBLOCK plus fstat prevents a
+    // FIFO/socket/device target from hanging discovery while still validating the opened object.
+    handle = await fs.open(file, constants.O_RDONLY | (constants.O_NONBLOCK ?? 0));
+  } catch (err) {
+    throw new CliError(
+      "USAGE",
+      `could not read project binding ${file}: ${err instanceof Error ? err.message : String(err)}`,
+      { help: `fix or remove ${file}` },
+    );
+  }
+  try {
+    const stats = await handle.stat();
+    if (!stats.isFile()) {
+      throw new CliError(
+        "USAGE",
+        `project binding ${file} must be a regular file`,
+        { help: `fix or remove ${file}` },
+      );
+    }
+    return await handle.readFile("utf8");
+  } catch (err) {
+    if (err instanceof CliError) throw err;
+    throw new CliError(
+      "USAGE",
+      `could not read project binding ${file}: ${err instanceof Error ? err.message : String(err)}`,
+      { help: `fix or remove ${file}` },
+    );
+  } finally {
+    await handle.close().catch(() => {});
+  }
+}
+
 /**
  * Discover + parse + validate the nearest `.agentstate.json` walking up from `startDir` (default
  * cwd) — nearest ancestor wins. Returns `null` when none exists anywhere up-tree (the common case;
@@ -227,17 +262,7 @@ export async function resolveProjectBinding(startDir: string = process.cwd()): P
   if (!dir) return null;
   const file = path.join(dir, PROJECT_BINDING_FILE_NAME);
 
-  let raw: string;
-  try {
-    raw = await fs.readFile(file, "utf8");
-  } catch (err) {
-    throw new CliError(
-      "USAGE",
-      `could not read project binding ${file}: ${err instanceof Error ? err.message : String(err)}`,
-      { help: `fix or remove ${file}` },
-    );
-  }
-  return parseProjectBinding(file, raw);
+  return parseProjectBinding(file, await readProjectBindingFile(file));
 }
 
 /**

@@ -23,9 +23,15 @@ interface RunResult {
   code: number;
   stdout: string;
   stderr: string;
+  timedOut: boolean;
 }
 
-function run(args: string[], cwd: string, legacyRemote: string | null = "http://legacy.example"): Promise<RunResult> {
+function run(
+  args: string[],
+  cwd: string,
+  legacyRemote: string | null = "http://legacy.example",
+  timeout?: number,
+): Promise<RunResult> {
   const env: NodeJS.ProcessEnv = {
     ...process.env,
     AGENTSTATE_LITE_NO_AUTOPULL: "1",
@@ -40,10 +46,11 @@ function run(args: string[], cwd: string, legacyRemote: string | null = "http://
         cwd,
         encoding: "utf8",
         env,
+        timeout,
       },
       (error, stdout, stderr) => {
         const code = typeof error?.code === "number" ? error.code : 0;
-        resolve({ code, stdout, stderr });
+        resolve({ code, stdout, stderr, timedOut: error?.killed === true });
       },
     );
   });
@@ -107,6 +114,21 @@ test("built CLI: a reached URL binding errors actionably, while a local binding 
     const localBinding = await run(["list", "--json"], cwd, null);
     assert.equal(localBinding.code, 0, localBinding.stderr || localBinding.stdout);
     assert.equal((JSON.parse(localBinding.stdout) as { count: number }).count, 4);
+  } finally {
+    await rm(cwd, { recursive: true, force: true });
+  }
+});
+
+test("built CLI: a FIFO project binding is rejected promptly instead of blocking discovery", async () => {
+  const cwd = await mkdtemp(path.join(tmpdir(), "aslite-local-only-binding-fifo-"));
+  const binding = path.join(cwd, ".agentstate.json");
+  try {
+    execFileSync("mkfifo", [binding]);
+    const result = await run(["list", "--json"], cwd, null, 3_000);
+    assert.equal(result.timedOut, false, "binding discovery must not block on the FIFO");
+    assert.equal(result.code, 2);
+    assert.match(result.stdout, /project binding .* must be a regular file/);
+    assert.ok(result.stdout.includes(binding));
   } finally {
     await rm(cwd, { recursive: true, force: true });
   }
