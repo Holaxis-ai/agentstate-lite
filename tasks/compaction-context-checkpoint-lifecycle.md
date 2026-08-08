@@ -7,7 +7,7 @@ description: >-
   Authoritative runtime-neutral lifecycle task for durable context checkpoints;
   absorbs session-end capture and supersedes the Claude-only pilot.
 actor: codex-compaction-reconciliation
-timestamp: '2026-08-08T16:39:20.531Z'
+timestamp: '2026-08-08T16:41:39.315Z'
 ---
 # Reconciliation and implementation policy
 
@@ -35,6 +35,13 @@ The implementation must be runtime-neutral at its core:
 The design phase must identify each required invariant first, then select the smallest portable
 mechanism that satisfies it. Any host-specific exception must name the host constraint, explain why
 the shared mechanism is insufficient, and receive design review as an exception.
+
+# Current progress and next action
+
+The competing task records were reconciled on 2026-08-08. The next action is to research the actual
+lifecycle capabilities of Codex, Claude Code, and OpenCode, express the required behavior as a
+runtime-neutral domain model and invariant set, then produce an independently reviewed design. The
+research should reuse prior Claude pilot evidence selectively without assuming its architecture.
 
 # Purpose and goals
 
