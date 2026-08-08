@@ -13,8 +13,9 @@ const PKG = "@holaxis/aslite";
 
 // Strict SemVer (optional prerelease/build metadata), no leading v.
 const SEMVER = /^\d+\.\d+\.\d+(?:-[0-9A-Za-z][0-9A-Za-z.-]*)?(?:\+[0-9A-Za-z][0-9A-Za-z.-]*)?$/;
-// A safe token for ids/tags/filenames: alphanumerics and . _ - only. No spaces, no shell metachars.
-const TOKEN = /^[A-Za-z0-9._-]+$/;
+// A safe token for ids/tags/filenames: alphanumerics and . _ - only, and NOT dash-leading — a
+// flag-shaped value (`-v`, `--registry=…`) must never enter an execFile argv as an option-lookalike.
+const TOKEN = /^[A-Za-z0-9._][A-Za-z0-9._-]*$/;
 // A digest is `sha256:` + 64 lowercase hex (or bare 64 hex).
 const SHA256 = /^(?:sha256:)?[a-f0-9]{64}$/;
 
@@ -26,7 +27,7 @@ export function assertVersion(value) {
 }
 export function assertToken(name, value) {
   if (typeof value !== "string" || !TOKEN.test(value)) {
-    throw new Error(`invalid ${name} (must match [A-Za-z0-9._-]): ${JSON.stringify(value)}`);
+    throw new Error(`invalid ${name} (must match [A-Za-z0-9._-], no leading dash): ${JSON.stringify(value)}`);
   }
   return value;
 }
