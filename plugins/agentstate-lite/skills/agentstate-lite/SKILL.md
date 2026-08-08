@@ -20,6 +20,14 @@ plain `node >= 20` — there is **no install step, no `npm install`, and no `nod
 is a SEPARATE distribution channel from the published npm package (`npx -y @holaxis/aslite`);
 both wrap the identical CLI source, so behavior and output are identical.
 
+## Stable MCP launch
+
+For a persistent MCP integration, install the supported CLI with
+`npm install -g @holaxis/aslite`. Configure the host command `aslite` with first argument `mcp`;
+do not bind the host to an absolute, version-keyed legacy marketplace or cache executable. Replace
+such a legacy path manually, then verify the selected bytes with `aslite version --json`. The MCP
+initialize response reports the same running release. AgentState Lite does not scan or rewrite host MCP configuration.
+
 ## Invocation — it is NOT on PATH
 
 The bundle is **not** on your `PATH`, and it does **not** live at a fixed path — the bundle may
@@ -84,8 +92,8 @@ the rest of the line unchanged.
   — Resolve the exact canonical local bundle path and report why it won selection
 - `"$ASLITE" catalog (add <label> [--dir <path>] | list | resolve <label-or-id> [--field path])`
   — Register and deterministically resolve this user's explicitly named local workspaces
-- `"$ASLITE" init [--dir <path>] [--okf-version <v>] [--recipe <name-or-path>]`
-  — Create (or open) an OKF knowledge bundle in a directory — greenfield setup; a project that already shares a board is set up by sync, not init
+- `"$ASLITE" init [--dir <path>] [--okf-version <v>] [--recipe <name-or-path>] [--create-only]`
+  — Create (or open) an OKF knowledge bundle in a directory — greenfield setup; a project that already shares a board is set up by sync, not init. --create-only requires a genuinely NEW target and refuses existing, non-empty, symlinked, enclosing, bound, or concurrent targets before publication; runtime failures retain and report any empty directories they created instead of deleting them — 'recipe add' modifies a verified existing bundle
 - `"$ASLITE" index generate [--dir <path>] [--check] [--force] [--actor <name>]`
   — Generate complete portable Markdown navigation explicitly; refuses curated indexes unless --force adopts them
 - `"$ASLITE" status [--limit <n>] [--remote <url>]`
@@ -129,8 +137,8 @@ the rest of the line unchanged.
   — List the kind conventions this bundle declares (purpose, described fields, exact required body headings, typed-link vocabulary, horizon)
 - `"$ASLITE" kind field "<Kind>" (add <name> [--required] [--values <a,b,c>] | remove <name>) [--remote <url>]`
   — Edit a kind's schema — add/remove a declared field or enum value on its convention (idempotent)
-- `"$ASLITE" recipes [--remote <url>]`
-  — List built-in recipes and whether each is already applied to this bundle
+- `"$ASLITE" recipes [--dir <path>] [--remote <url>]`
+  — Browse built-in recipes before or after init; with a bundle, also show whether each is already applied
 - `"$ASLITE" recipe add <name-or-path> [--remote <url>]`
   — Apply a recipe's content-free definitions — Kinds plus optional declared References and Views — idempotently
 
@@ -141,7 +149,7 @@ the rest of the line unchanged.
 - `"$ASLITE" ui [--dir <path> | --remote <url>] [--port <p>] [--open]`
   — Boot the local web UI over the bundle (same origin, loopback-only): READ the bundle's docs as rendered pages (frontmatter, cross-links you can follow, derived backlinks), LAUNCH its registered Views (type: View docs framed in sandboxed iframes with live updates; legacy Page-typed docs no longer register — see status's legacy_naming finding), and see a live activity feed, the bundle's sharing status, and your registered workspaces. The header shows the bundle's display name — derived from the project folder unless set explicitly: doc write docs/bundle --type "Bundle Name" --title "<name>"
 - `"$ASLITE" mcp [--dir <path>] [--actor <name>]`
-  — Run the experimental local MCP Apps adapter over a bundle (stdio): launch an existing registered View, launch agent-authored active HTML transiently and save its approved exact bytes as a registered View, or render script-free HTML/CSS over exact IDs or one bounded query; bundle access and generated-view scalar actions stay behind local human approval
+  — Run the experimental local MCP Apps adapter over a bundle (stdio): launch an existing registered View unchanged, or launch standard active View HTML transiently and save its approved exact bytes as a registered View; bundle data and governed actions stay behind local human approval
 - `"$ASLITE" view list [--limit <n>] [--dir <path> | --remote <url>]`
   — List the bundle's registered durable Views from the same catalog used by the web launcher and MCP list_views
 - `"$ASLITE" sync [--establish [--yes] | --pull-only | --show-incoming <id> [--out <file>]] [--dir <path>] [--limit <n>]`
@@ -149,13 +157,13 @@ the rest of the line unchanged.
 
 ### Session
 
-- `"$ASLITE" version [--json]`
-  — Show the complete local build/runtime identity, including artifact bytes and adjacent-manifest drift; never contacts npm
-- `"$ASLITE" session-start [--dir <path>]`
-  — The SessionStart hook payload: a time-boxed best-effort board pull, then the home view — every pull failure falls through to the render (exit 0)
-- `"$ASLITE" hook install|status|uninstall [--scope project|global]`
+- `"$ASLITE" version [--check] [--tag latest|next] [--json]`
+  — Show the complete local build/runtime identity, or perform one bounded read-only comparison against npm's exact latest/next release policy
+- `"$ASLITE" session-start [--dir <path>] [--no-update-check]`
+  — The SessionStart hook payload: pull then render; default TOON uses a nonblocking 24-hour cached latest check, while --no-update-check or ASLITE_NO_UPDATE_CHECK/NO_UPDATE_NOTIFIER/CI presence disables both display and refresh; npm receives only the public package request and ordinary network metadata, never installed version, cwd, bundle, actor, or usage data
+- `"$ASLITE" hook install|status|uninstall [--scope project|user]`
   — Install the SessionStart hook (runs session-start: pull the board, then render) for Claude Code, Codex, OpenCode
-- `"$ASLITE" skill install|status|uninstall [--scope project|global]`
+- `"$ASLITE" skill install|status|uninstall [--scope project|user]`
   — Install this package's Agent Skill (SKILL.md + references/) into Claude Code and Codex skill folders (OpenCode has no skill surface — its integration is `hook install`); manifest-tracked, idempotent, refuses folders it does not manage
 
 ## Workspaces — the project's bundle lives at `.agentstate-lite/` in the project root
@@ -447,8 +455,9 @@ cat "$REFS/views/references/view-authoring-v0.md"
 - `hook install` registers a SessionStart hook (Claude Code, Codex, OpenCode) that runs
   `session-start`: a quick best-effort pull of the shared board, then the home view — so a new
   session starts with the bundle's state AND any teammate changes already in context. Offline is
-  fine: the render always appears, labeled with the last known state. If you installed the hook
-  before `session-start` existed, re-run `hook install` once to upgrade it.
+  fine: the render always appears, labeled with the last known state. A global npm install binds
+  absolute Node and CLI paths, so GUI sessions do not depend on their inherited PATH. If you
+  installed the hook before `session-start` existed, re-run `hook install` once to upgrade it.
 - Edit a doc's body through `doc update --body-file` (or `--body`), never by pulling the raw file
   with `--out`, editing it with text tools, and re-promoting it — that risks corrupting the
   frontmatter (the engine rejects it, but the right tool avoids the dance entirely).
