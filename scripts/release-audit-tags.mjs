@@ -114,6 +114,36 @@ export function parsePhaseDeclaration(raw) {
   return { phase, kind, version };
 }
 
+/**
+ * A transaction declaration must name the SOURCE candidate: the contract's release-preparation
+ * PR puts the candidate version into packages/cli, so during staged/approved/promoted the two
+ * must agree, and `kind` must agree with the candidate's form. `failed` is exempt from the
+ * source-equality rule only — source may legitimately advance to the replacement while the
+ * declaration still identifies the failed candidate.
+ */
+export function checkDeclarationConsistency(declaration, sourceVersion) {
+  const violations = [];
+  if (declaration.phase === "at_rest") return violations;
+  const formKind = declaration.version.includes("-") ? "prerelease" : "stable";
+  if (declaration.kind !== formKind) {
+    violations.push(
+      violation(
+        "declaration_kind_mismatch",
+        `declared kind ${declaration.kind} disagrees with candidate ${declaration.version}, which has ${formKind} form`,
+      ),
+    );
+  }
+  if (declaration.phase !== "failed" && declaration.version !== sourceVersion) {
+    violations.push(
+      violation(
+        "declaration_source_mismatch",
+        `declared candidate ${declaration.version} != packages/cli version ${sourceVersion}; during a ${declaration.phase} transaction the release-preparation source must carry the candidate version`,
+      ),
+    );
+  }
+  return violations;
+}
+
 /** Contract §1 numbering: pre-stable publishes are A.B.0-pre.N, N contiguous from 1, times monotone. */
 export function checkVersionScheme(versions, time) {
   const violations = [];
@@ -304,6 +334,7 @@ export function auditRegistryState({ declaration, sourceVersion, registry }) {
   const notes = [];
 
   violations.push(...checkVersionScheme(versions, time));
+  violations.push(...checkDeclarationConsistency(declaration, sourceVersion));
 
   const tagState = expectedTagState({ declaration, versions, observedTags: distTags });
   violations.push(...tagState.violations);
@@ -393,11 +424,27 @@ export async function fetchRegistryState({ url = REGISTRY_URL, timeoutMs = FETCH
   } catch {
     throw new NetworkUnavailableError("registry response was not JSON");
   }
-  const { created, modified, ...versionTimes } = body.time ?? {};
+  return parsePackument(body);
+}
+
+/**
+ * Validate a 200 packument body (or a captured replay of it). A malformed-but-200 body is a
+ * registry-health condition — NetworkUnavailableError, never a crash or a policy violation.
+ * Accepts `versions` as the packument's manifest map or a captured `npm view` string array.
+ */
+export function parsePackument(body) {
+  const isRecord = (v) => v !== null && typeof v === "object" && !Array.isArray(v);
+  const versionsOk =
+    isRecord(body?.versions) ||
+    (Array.isArray(body?.versions) && body.versions.every((v) => typeof v === "string"));
+  if (!isRecord(body) || !isRecord(body["dist-tags"]) || !versionsOk || !isRecord(body.time)) {
+    throw new NetworkUnavailableError("registry returned 200 with a malformed packument body");
+  }
+  const { created, modified, ...versionTimes } = body.time;
   return {
     missing: false,
-    distTags: body["dist-tags"] ?? {},
-    versions: Object.keys(body.versions ?? {}),
+    distTags: body["dist-tags"],
+    versions: Array.isArray(body.versions) ? body.versions : Object.keys(body.versions),
     time: versionTimes,
   };
 }
@@ -443,14 +490,7 @@ export async function main(argv = process.argv.slice(2)) {
 
   let registry;
   if (registryJson) {
-    const body = JSON.parse(await readFile(registryJson, "utf8"));
-    const { created, modified, ...versionTimes } = body.time ?? {};
-    registry = {
-      missing: false,
-      distTags: body["dist-tags"] ?? {},
-      versions: Array.isArray(body.versions) ? body.versions : Object.keys(body.versions ?? {}),
-      time: versionTimes,
-    };
+    registry = parsePackument(JSON.parse(await readFile(registryJson, "utf8")));
   } else {
     registry = await fetchRegistryState({ url: registryUrl });
   }

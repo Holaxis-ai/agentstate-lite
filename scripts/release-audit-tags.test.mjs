@@ -346,6 +346,47 @@ test("at_rest with an unpublished package is a violation", () => {
   assert.deepEqual(state.violations.map((v) => v.code), ["package_unpublished"]);
 });
 
+// --- declaration cross-validation (external review: green-but-nonsense declarations) ---
+
+test("staged declaration naming a candidate that is not the source version is red", () => {
+  const declaration = { phase: "staged", kind: "prerelease", version: "0.1.0-pre.99" };
+  const result = auditRegistryState({ declaration, sourceVersion: "0.1.0-pre.3", registry: registryFixture() });
+  assert.deepEqual(codes(result), ["declaration_source_mismatch"]);
+});
+
+test("staged declaration with kind stable for a prerelease-form candidate is red", () => {
+  const declaration = { phase: "staged", kind: "stable", version: "0.1.0-pre.4" };
+  const result = auditRegistryState({ declaration, sourceVersion: "0.1.0-pre.3", registry: registryFixture() });
+  assert.deepEqual(codes(result), ["declaration_kind_mismatch", "declaration_source_mismatch"]);
+});
+
+test("staged declaration with kind prerelease for a stable-form candidate is red", () => {
+  const declaration = { phase: "staged", kind: "prerelease", version: "0.1.0" };
+  const result = auditRegistryState({ declaration, sourceVersion: "0.1.0-pre.3", registry: registryFixture() });
+  assert.deepEqual(codes(result), ["declaration_kind_mismatch", "declaration_source_mismatch"]);
+});
+
+test("failed phase: source advanced to the replacement while declaring the failed candidate passes", () => {
+  const declaration = { phase: "failed", kind: "prerelease", version: "0.1.0-pre.4" };
+  const registry = registryFixture({
+    versions: ["0.1.0-pre.1", "0.1.0-pre.2", "0.1.0-pre.3", "0.1.0-pre.4"],
+    time: { ...registryFixture().time, "0.1.0-pre.4": "2026-08-08T00:00:00.000Z" },
+  });
+  const result = auditRegistryState({ declaration, sourceVersion: "0.1.0-pre.5", registry });
+  assert.deepEqual(result.violations, []);
+  assert.equal(result.facts.source_state, "staged-prep");
+});
+
+test("failed phase still enforces kind/form agreement on the declared candidate", () => {
+  const declaration = { phase: "failed", kind: "stable", version: "0.1.0-pre.4" };
+  const registry = registryFixture({
+    versions: ["0.1.0-pre.1", "0.1.0-pre.2", "0.1.0-pre.3", "0.1.0-pre.4"],
+    time: { ...registryFixture().time, "0.1.0-pre.4": "2026-08-08T00:00:00.000Z" },
+  });
+  const result = auditRegistryState({ declaration, sourceVersion: "0.1.0-pre.4", registry });
+  assert.ok(codes(result).includes("declaration_kind_mismatch"), codes(result).join(","));
+});
+
 // --- network-vs-violation classification (structural) ---
 
 test("HTTP status classes: 200 data, 404 violation-class, others network-class", () => {
@@ -370,6 +411,24 @@ test("5xx and non-JSON registry responses surface as NetworkUnavailableError", a
     fetchRegistryState({ fetchImpl: async () => new Response("<html>", { status: 200 }) }),
     NetworkUnavailableError,
   );
+});
+
+test("malformed 200 packument bodies classify as NetworkUnavailableError, never crash or red", async () => {
+  const malformed = [
+    null,
+    {},
+    { versions: {}, time: {} }, // missing dist-tags
+    { "dist-tags": {}, versions: {} }, // missing time
+    { "dist-tags": [], versions: {}, time: {} }, // wrong dist-tags shape
+    { "dist-tags": {}, versions: [1, 2], time: {} }, // wrong versions element shape
+  ];
+  for (const body of malformed) {
+    await assert.rejects(
+      fetchRegistryState({ fetchImpl: async () => Response.json(body) }),
+      NetworkUnavailableError,
+      JSON.stringify(body),
+    );
+  }
 });
 
 test("404 is NOT network-class: it reports the package as missing", async () => {
@@ -434,6 +493,23 @@ test("CLI exit codes: 0 on policy pass, 1 on violation, 20 on network failure", 
   const network = await runAudit(["--registry-url", "http://127.0.0.1:1/@holaxis%2faslite"]);
   assert.equal(network.code, 20, network.stderr);
   assert.match(network.stderr, /release-audit: NETWORK/);
+});
+
+test("CLI exit 20 on valid-JSON but malformed packument payloads", async () => {
+  const scratch = await mkdtemp(path.join(tmpdir(), "aslite-release-audit-malformed-"));
+  const payloads = {
+    "null-body.json": "null",
+    "empty-object.json": "{}",
+    "missing-dist-tags.json": JSON.stringify({ versions: {}, time: {} }),
+    "missing-time.json": JSON.stringify({ "dist-tags": {}, versions: {} }),
+  };
+  for (const [name, payload] of Object.entries(payloads)) {
+    const file = path.join(scratch, name);
+    await writeFile(file, payload);
+    const run = await runAudit(["--registry-json", file]);
+    assert.equal(run.code, 20, `${name}: ${run.stderr}`);
+    assert.match(run.stderr, /release-audit: NETWORK/, name);
+  }
 });
 
 // --- semver compare (the audit's ordering primitive) ---
