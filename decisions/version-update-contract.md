@@ -5,8 +5,8 @@ description: >-
   Defines the npm release source, complete build identity, supported-release
   discovery, explicit upgrade journey, integration compatibility, human
   approval, and rollback boundary.
-actor: codex-orientation-orchestrator
-timestamp: '2026-08-05T20:53:18.531Z'
+actor: anthropic/claude
+timestamp: '2026-08-08T13:38:05.068Z'
 ---
 # Decision
 
@@ -95,3 +95,16 @@ AgentState will treat `@holaxis/aslite` on npm as the single executable authorit
 [amends](npm-interim-package-name.md)
 
 [gates](../tasks/retire-marketplace-channel.md)
+
+# Amendment A1 (2026-08-08, ratified by Brian): continuous staging cadence
+
+Four clauses of this contract are amended by decisions/release-cadence-continuous-staging
+(model c: every merge to main auto-builds and STAGES a retained candidate; publication remains
+interactive human 2FA, performed in batches; stable cuts stay deliberate): (1) "releases are on
+demand" — staging becomes continuous, publication stays on demand; (2) "the workflow never
+invents a version" — CI mints candidate versions in the staging lane only; (3) tag-as-selector —
+the merge commit selects auto-staged candidates, human tags remain for stable; (4) the at-rest
+dist-tag invariant becomes latest <= next with equality restored at promotion. See the amendment
+doc for full language, delegated implementation questions, and gated prerequisites.
+
+[amended by](release-cadence-continuous-staging.md)

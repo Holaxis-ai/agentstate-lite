@@ -1,12 +1,12 @@
 ---
 type: Decision
 title: >-
-  PROPOSED: continuous per-merge staging, batched human finalization (amends the
-  version-update contract)
+  RATIFIED (Brian, 2026-08-08): continuous per-merge staging, batched human
+  finalization (amends the version-update contract)
 actor: anthropic/claude
-timestamp: '2026-08-08T00:45:45.278Z'
+timestamp: '2026-08-08T13:37:45.546Z'
 ---
-# Proposal (PENDING RATIFICATION by Brian + Mike)
+# Decision (RATIFIED)
 
 Adopt **continuous staging with batched human finalization** ("model c"), amending
 `decisions/version-update-contract`:
@@ -65,9 +65,12 @@ protections — irreducibly Brian/Mike, ~30 min, to be scheduled) -> enable cont
 
 # Ratification
 
-Proposed by Brian (cadence intent) and drafted/orchestrated by anthropic/claude, 2026-08-08.
-Ratifiers: Brian + Mike. Mike's review rides review-requests/cadence-continuous-staging; this
-doc's title drops PENDING on approval. If Mike requests changes, amendments return here.
+Proposed by Brian (cadence intent), drafted/orchestrated by anthropic/claude. RATIFIED by Brian
+alone, 2026-08-08 (superseding the earlier joint Brian+Mike routing — Brian's explicit call).
+Mike is INFORMED rather than asked: review-requests/cadence-continuous-staging converts to an
+informational notice; his feedback remains welcome and would return here as an amendment.
+Implementation remains gated on its prerequisites (see above) and proceeds via
+plans/continuous-staging-implementation.
 
 [amends](../decisions/version-update-contract.md)
 

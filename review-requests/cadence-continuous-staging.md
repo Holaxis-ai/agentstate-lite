@@ -3,14 +3,20 @@ type: Review Request
 title: >-
   Ratify: continuous per-merge staging with batched human finalization (contract
   amendment)
-status: requested
+status: canceled
 reviewer: mike
 requested_by: brian
 question: >-
   Do you ratify the model-c cadence amendment as written in
   decisions/release-cadence-continuous-staging?
 actor: anthropic/claude
-timestamp: '2026-08-08T00:46:11.248Z'
+decision_summary: >-
+  Ratified solo by Brian 2026-08-08 (his explicit call, superseding joint
+  routing). This request converts to an informational notice: no approval
+  needed; feedback welcome on decisions/release-cadence-continuous-staging and
+  returns as an amendment.
+decided_at: '2026-08-08T18:00:00Z'
+timestamp: '2026-08-08T13:37:46.041Z'
 ---
 # Context
 
