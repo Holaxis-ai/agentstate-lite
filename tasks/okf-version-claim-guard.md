@@ -1,13 +1,14 @@
 ---
 type: Task
 title: Guard unsupported OKF authoring-version claims
-status: todo
+status: in_progress
 priority: '1'
 description: >-
   Prevent init and other write entry points from declaring OKF versions the
   current writer cannot honestly produce.
 actor: openai/codex
-timestamp: '2026-08-05T02:15:43.984Z'
+assignee: openai/codex
+timestamp: '2026-08-08T00:48:24.828Z'
 ---
 # Problem
 
