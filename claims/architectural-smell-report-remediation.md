@@ -13,7 +13,7 @@ evidence_command: >-
   packages/cli/src
 evidence_commit: 31921ce
 actor: openai/codex
-timestamp: '2026-08-08T13:19:16.091Z'
+timestamp: '2026-08-08T13:33:35.275Z'
 ---
 # Claim under challenge
 
@@ -75,3 +75,7 @@ Create a task only when current-main investigation demonstrates at least one of:
 invariant gap, recurring defect, repeated merge/change friction, measurable operability cost, or a
 feature whose implementation becomes materially safer through the proposed decomposition. Metrics
 alone do not promote a claim into work.
+
+[investigated by](../findings/core-import-direction-gate-investigation.md)
+
+[investigated by](../findings/core-server-test-dependency-investigation.md)
