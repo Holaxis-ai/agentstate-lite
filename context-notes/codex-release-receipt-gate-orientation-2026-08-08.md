@@ -2,7 +2,7 @@
 type: Context Note
 title: Codex accepted npm release-receipt handoff; awaiting Brian rulings
 actor: openai/codex
-timestamp: '2026-08-08T16:30:18.096Z'
+timestamp: '2026-08-08T16:31:07.409Z'
 ---
 # Summary
 
@@ -18,7 +18,7 @@ Close the p5a receipt-gate findings and produce a reviewed, PR-ready feature bra
 
 # Current state
 
-Read the authoritative handoff at context-notes/receipt-gate-codex-handoff and the program authority at plans/release-conventions-program. The feature branch feat/release-receipt-gate exists locally and on origin at 4b905b3f. Build and independent review completed; adversarial QA completed pass-with-findings. The current checkout main is six commits behind origin/main, so integration onto current main is required before exact-SHA review.
+Read the authoritative handoff at context-notes/receipt-gate-codex-handoff and the program authority at plans/release-conventions-program. The feature branch feat/release-receipt-gate exists locally and on origin at 4b905b3f. Build and independent review completed; adversarial QA completed pass-with-findings. Brian updated main to current origin/main at 56b5693d. Relative to current main, the feature branch has one feature commit and lacks two main commits, so it requires integration before exact-SHA review.
 
 # Awaiting Brian rulings
 
