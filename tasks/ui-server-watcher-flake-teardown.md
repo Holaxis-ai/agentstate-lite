@@ -1,35 +1,15 @@
 ---
 type: Task
 title: 'Flaky gate: ui-server watcher fetch rejects after tests pass, exits non-zero'
-status: todo
-actor: claude-main-watcher-flake
+status: done
+actor: openai/codex
 description: >-
-  UNCLAIMED 2026-07-23 — my earlier claim on this task was a MISDIAGNOSIS,
-  corrected here so the next reader is not misled.
-
-
-  WHAT HAPPENED: PR #151's red gate (run 29967569606, node 22, head c1fa959) was
-  attributed to this task because the log shows '# [ui watcher] fetch failed'
-  shortly before the failure, and the ui-server suite reported 32/32 pass.
-  Reading the FULL attempt-1 log disproves that: the failing step is the
-  packages/ui vitest run (npm error workspace @agentstate-lite/ui, command
-  'vitest run'), specifically src/views/markdown.test.tsx timing out at 5000ms.
-  The ui-server suite passed and did NOT set the exit code.
-
-
-  USEFUL RESIDUE FOR THIS TASK: '[ui watcher] fetch failed' on stderr is real
-  but is NOT by itself a gate failure — it is bootWatcher's onError logging a
-  best-effort watcher error, and the process exits 0 on it. So whoever picks
-  this task up should FIRST establish that a failing exit code has ever actually
-  been caused by the watcher, rather than assuming this line means what the
-  title claims. The title's premise ('exits non-zero') is currently UNEVIDENCED;
-  the one run cited for it was a different defect. Possible outcomes: reproduce
-  it properly, or close this as a misfiled observation.
-
-
-  The real PR #151 flake is tracked separately (markdown render-bounds tests
-  against vitest's 5s default).
-timestamp: '2026-07-23T00:41:04.759Z'
+  Closed as misfiled on 2026-08-07. The cited run's non-zero exit came from the
+  UI Markdown render-bounds timing timeout, not the ui-server watcher; the
+  watcher message was best-effort stderr and the ui-server suite passed. No
+  evidence remains that watcher teardown itself causes a failing exit, so no
+  speculative code change is warranted.
+timestamp: '2026-08-08T00:20:38.870Z'
 ---
 # Flaky gate: ui-server watcher rejects after tests pass
 

@@ -1,10 +1,11 @@
 ---
 type: Task
 title: A FIFO .agentstate.json hangs every binding-reading command indefinitely
-status: todo
+status: in_progress
 priority: '2'
-actor: claude/brian-claude
-timestamp: '2026-08-06T00:32:13.383Z'
+actor: openai/codex
+assignee: openai/codex
+timestamp: '2026-08-08T00:20:39.043Z'
 ---
 # Problem
 
