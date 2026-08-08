@@ -17,7 +17,7 @@ description: >-
   via automation today (dispatch inputs are SemVer/embedded), but close it
   before live.
 actor: openai/codex
-timestamp: '2026-08-08T16:33:23.195Z'
+timestamp: '2026-08-08T17:48:33.583Z'
 ---
 [hardens](npm-staged-release-automation.md)
 
@@ -43,3 +43,22 @@ Full design: the designer report logged on plans/release-conventions-program. Br
    tarball_sha256 + draft_release_id so a valid receipt survives finalize redispatch.
 7. **Prerelease approval without inspection is valid**: publish the verified approval receipt plus
    the permanent public missing-inspection stamp. Stable still requires inspection.
+
+# Implementation status (Codex, 2026-08-08)
+
+- Fix delta is committed and pushed on `feat/release-receipt-gate` at exact SHA
+  `25a33930ca978e400cc19f6bc53cccb3de436e91`, rebased onto main `56b5693d`.
+- Independent exact-SHA Review: APPROVE, high confidence. See
+  [review receipt](../context-notes/release-receipt-gate-fix-delta-exact-sha-review-25a33930.md).
+- Targeted adversarial QA: PASS WITH FINDINGS, high confidence; no high or medium issue remains.
+  See [QA receipt](../context-notes/release-receipt-gate-fix-delta-targeted-qa-25a33930.md).
+- Repository gate: `npm run check` exit 0 on the exact SHA. The first sandboxed attempt failed
+  because the harness denied required `127.0.0.1` listeners (`listen EPERM`); the same unmodified
+  SHA passed outside that listener restriction.
+- Remaining low defense-in-depth observation: a job-local attacker with filesystem and token
+  control could tamper with a shape-valid publication plan before the final proof rejects
+  publication. That prerequisite already amounts to controlling the `contents:write` job. A
+  future hardening pass may pass the dispatch draft id separately and recheck delete membership.
+- This task remains `in_progress` until Brian's PR/merge gate completes. Human PR review must
+  verify `.github/release-allowed-signers` contains exactly the intended Brian and Mike key lines.
+  P5B remains the next dependent task; P5S and continuous staging follow it.

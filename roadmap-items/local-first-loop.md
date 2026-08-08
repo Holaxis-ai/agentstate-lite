@@ -5,7 +5,7 @@ title: >-
   hooks
 status: active
 actor: codex-compaction-orchestrator
-timestamp: '2026-08-08T17:30:08.686Z'
+timestamp: '2026-08-08T17:45:39.414Z'
 ---
 [contains](../tasks/project-binding.md)
 
@@ -82,3 +82,5 @@ timestamp: '2026-08-08T17:30:08.686Z'
 [contains](../tasks/compaction-checkpoint-opencode-research.md)
 
 [contains](../tasks/compaction-checkpoint-design-v1.md)
+
+[contains](../tasks/compaction-checkpoint-design-review-v1.md)

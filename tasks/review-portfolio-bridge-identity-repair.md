@@ -5,7 +5,7 @@ status: in_progress
 priority: '1'
 assignee: codex-orchestrator
 actor: codex-orchestrator
-timestamp: '2026-08-08T17:31:17.250Z'
+timestamp: '2026-08-08T17:46:15.989Z'
 ---
 # Ultimate and proximate goals
 
@@ -34,3 +34,5 @@ Research and acceptance criteria → team-reviewed implementation plan → Build
 [diagnosed by](../context-notes/architecture-review-alignment-view-command-system-model.md)
 
 [security evidence](../context-notes/architecture-review-alignment-view-source-security-review.md)
+
+[governed by](../plans/review-portfolio-bridge-identity-repair.md)

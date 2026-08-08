@@ -3,8 +3,8 @@ type: Plan
 title: >-
   Release-conventions program: recorded + enforced conventions, cadence
   decision, first-stable path (orchestrated)
-actor: anthropic/claude
-timestamp: '2026-08-08T16:27:02.557Z'
+actor: openai/codex
+timestamp: '2026-08-08T17:48:33.805Z'
 ---
 - 2026-08-08: Receipt gate (p5a substantive half) BUILT (feat/release-receipt-gate @ 4b905b3f) +
   independent review APPROVE-WITH-FINDINGS. HANDED OFF to a Codex team
@@ -19,3 +19,8 @@ timestamp: '2026-08-08T16:27:02.557Z'
   L2 stamp upload missing --clobber; plus one Brian-confirm on the approval-without-inspection
   prerelease shape. Codex team: apply fixes in one reviewed unit + re-verify, do NOT re-run the
   full QA matrix.
+- 2026-08-08: Codex fix delta COMPLETED and pushed at exact SHA
+  `25a33930ca978e400cc19f6bc53cccb3de436e91` on `feat/release-receipt-gate` after independent
+  exact-SHA Review APPROVE, targeted adversarial QA PASS WITH FINDINGS (no high/medium), and
+  root `npm run check` exit 0. P5A remains open only for Brian's PR/merge gate and explicit
+  allowed-signer review; then the encoded critical path continues P5B -> P5S -> continuous staging.
