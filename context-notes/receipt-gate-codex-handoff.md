@@ -4,7 +4,7 @@ title: >-
   HANDOFF to Codex: release-receipt-gate (p5a) — built + reviewed, needs QA +
   Brian's rulings + merge
 actor: anthropic/claude
-timestamp: '2026-08-08T16:22:41.201Z'
+timestamp: '2026-08-08T16:27:02.385Z'
 ---
 # Summary
 
@@ -89,19 +89,65 @@ receipt/stamp uploads target release by TAG while body PATCH targets draft by ID
 tag divert risk — upload by release ID closes it); a failed live finalize leaves a name-colliding
 stamp asset the operator must delete. Decide: fix in-unit vs. follow-up task.
 
-# QA status
+# QA status — DONE, pass-with-findings (adversarial QA already ran)
 
-An adversarial-QA pass was IN FLIGHT when this handoff was written (agent `qa-receipt-gate`,
-general-purpose, on branch 4b905b3f) — its result may or may not have landed; check
-`plans/release-conventions-program` status log and the session for a QA report before re-running.
-The QA coverage matrix (offline, fixture-based, throwaway keys) it was to run: the tier matrix end
-to end through the adapter; invalid-evidence cases (unlisted key, wrong namespace, altered payload,
-mismatched stage_id/version/checksum/draft, uploader != named actor, receipt uploaded after run
-start, approval-without-inspection); stale-evidence on a reused draft; checksum-disagreement ->
-inspection_mismatch; empirically characterising the finding above; the OPERATOR TOOL plumbing
-(`release-inspect.mjs` — untested: emit-only-on-match, mismatch prints reject command, batch mode,
-no half-written receipt on interruption); idempotence + stamp-fails-after-write + dry-run tolerance.
-The full neutral-worded QA contract is saved at
+The adversarial QA pass COMPLETED (agent qa-receipt-gate, branch 4b905b3f, offline, real
+ssh-keygen signatures from throwaway keys against a fixture allowed-signers file; committed
+`.github` untouched). Baseline suite 203/203 green after `npm ci`. VERDICT: pass-with-findings —
+every documented policy row behaves as specified end to end through the real adapter subprocess
+(`release-verify-ordering.mjs`) and the operator tool (`release-inspect.mjs` with stub gh/npm).
+Evidence JSON was preserved in that worktree's scratchpad `qa/` (adapter-report.json,
+inspect-report.json, logs); the worktree is
+`/Users/brian/GitHub/agentstate-lite/.claude/worktrees/agent-a199ec4215e0c8a17` — copy the
+evidence out before it is reaped if you want it. So the Codex team does NOT need to re-run the
+full adversarial matrix; it needs to CLOSE the findings below and re-verify the fixes.
+
+Rows verified MATCH: tier behaviour (pre both/missing-inspection/missing-both stamp correctly;
+stable missing-either reds); all invalid-evidence cases red in both live and dry-run with no result
+file (unlisted key, wrong namespace, altered payload, each binding-field mismatch, uploader !=
+signed actor incl. github-actions[bot], upload-after-run-start, approval-before-inspection,
+cross-actor); stale sibling-stage receipts ignored not consumed, and renaming one to the current
+name still reds on binding; checksum disagreement -> `inspection_mismatch` (refused, not tolerated);
+operator tool emits only on match, prints reject command + uploads nothing on mismatch, batch mode
+works, no half-written receipt; idempotence byte-identical; dry-run tolerates absence but still reds
+present-but-invalid.
+
+QA findings (fold into the "next steps" work):
+
+- **M1 (medium) = the review's asset-tolerance finding, now EMPIRICALLY CONFIRMED.** A draft
+  carrying a forged `receipt-status-<currentStageId>.json` (falsely "published without inspected
+  receipt"), plus arbitrary binary under `receipt-inspected-<token>.json` and a sibling
+  `receipt-status-0000.json`, passes every gate: chain accepts (AUX regex filters them; a control
+  `evil.tgz` still reds on exactly-two), verify exits 0 approved_public, the result never mentions
+  them, and they ride onto the immutable published release. Forged stamp is BYTE-INDISTINGUISHABLE
+  from a genuine one (genuine stamps are UNSIGNED JSON, same schema/name; provenance is only the
+  asset's GitHub uploader/timestamp, not in the file) — so a release that truly had both receipts
+  verified can carry an authoritative-looking machine record saying it published unreceipted.
+  Boundary: only `receipt-<inspected|approved|status>-<token>.json` names qualify; garbage under the
+  CURRENT stage's inspected/approved name IS consumed and reds ("not valid JSON"). Precondition:
+  `contents:write` on the draft — integrity-of-record inside the trust boundary, NOT an approval
+  bypass. Fix options: (a) in-unit — verify reds (or warns) when a current-stage `receipt-status`
+  asset exists that the workflow did not emit, and/or restrict tolerated extras to KNOWN sibling
+  stage ids; (b) follow-up — record that stamps are unsigned-by-design, provenance is uploader
+  metadata. RECOMMEND (a): the whole point of this unit is a trustworthy published record.
+- **L1 (low, empirical).** `release-inspect.mjs` mismatch path leaks its scratch TMPDIR
+  (`aslite-release-inspect-*`) containing the downloaded MISMATCHING tarball, because
+  `process.exit(1)` inside the try skips the `finally` rmSync. No half-written receipt (contract
+  holds); it is temp hygiene + untracked suspect bytes left on the operator's machine. One-line fix
+  (throw / set exitCode instead of `process.exit`, or clean before exit).
+- **L2 (low-medium, reasoned — gh not exercised offline).** The finalize stamp upload runs
+  `gh release upload "v$VERSION" ...` WITHOUT `--clobber`; a live run that uploads the stamp then
+  fails before completing cannot be retried (asset-name collision), and this is the same mechanism
+  that turns M1's pre-planted forged `receipt-status` into a finalize-blocker. Add `--clobber` (or
+  skip-if-present) to that one upload.
+
+- **MATRIX-EXPECTATION DIVERGENCE for Brian to confirm (not a bug).** "Approval receipt present with
+  NO inspection receipt" does NOT stop a PRERELEASE run — it publishes with a `verified [approved]`
+  receipt AND a stamp saying "published without inspected receipt" (coherent, matches ratified
+  policy; stable still reds). QA flagged it only because it is a slightly odd published shape worth a
+  conscious yes. Fold into Brian's ruling list.
+
+The neutral-worded QA contract (for reference / re-run) is saved at
 `/private/tmp/claude-501/-Users-brian-GitHub-agentstate-lite/5a44a08f-aebe-49f8-981f-258f2dd3406e/scratchpad/qa-contract-neutral.md`
 (session-local; reproduce from this note if gone).
 
@@ -116,12 +162,17 @@ reviewer confirmed they byte-match those endpoints. Brian's PR review IS the ver
 
 # Next steps for the Codex team (order)
 
-1. Get Brian's ruling on the same-actor rule (item 1) + ack on run_id (item 2).
-2. Close/relax same-actor per his call; close the asset-tolerance finding (fix or follow-up task).
-3. Run the adversarial QA (if the in-flight one didn't land or was degraded). This is release
-   machinery on a security boundary — high-risk tier: builder -> independent review -> adversarial
-   QA, and INVITE external-team review on the PR (external review has caught disjoint failure
-   classes twice in this program — PR #219 findings 1 & 2).
+1. Get Brian's ruling on: same-actor rule (open item 1) + run_id ack (open item 2) + the
+   approval-without-inspection prerelease shape (QA divergence, above).
+2. Apply fixes in ONE reviewed unit: same-actor per his call; M1 asset-tolerance (recommend fix
+   in-unit); L1 inspect-scratch leak (one line); L2 stamp-upload `--clobber`. A risky mechanic and
+   the test that pins it ship in the SAME unit — add red-testable fixtures for M1 (forged status
+   asset reds) and L1 (mismatch path leaves no scratch).
+3. Adversarial QA ALREADY RAN (pass-with-findings — see QA status). Do NOT re-run the full matrix;
+   after applying the fixes, re-verify the fixed rows red/green and get ONE independent review of
+   the fix delta on the exact SHA. This is a security boundary — still INVITE external-team review
+   on the PR (external review has caught disjoint failure classes twice in this program — PR #219
+   findings 1 & 2).
 4. Open the PR in Brian's format (## Summary / ## Safety and compatibility / ## Validation, plain
    ASCII), call out the allowed_signers list for his verification. Brian opens/merges his PRs; do
    not merge for him. Fix rounds on an open PR are APPENDED commits, never amends.
