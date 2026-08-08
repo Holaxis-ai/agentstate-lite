@@ -6,8 +6,8 @@ priority: '1'
 description: >-
   Implement P5B: replace direct-main marketplace bot updates with an inspectable
   PR flow.
-actor: openai/codex
-timestamp: '2026-07-31T21:26:27.726Z'
+actor: openai/codex-plan-receipt-gate
+timestamp: '2026-08-08T16:52:13.819Z'
 ---
 # Goal
 
@@ -26,3 +26,5 @@ Builder → independent exact-SHA security Review → adversarial workflow loop/
 [unit contract](../plans/version-string-channel-identity.md)
 
 [depends on](version-build-identity.md)
+
+[depends on](p5a-pre-live-hardening.md)

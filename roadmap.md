@@ -1,8 +1,8 @@
 ---
 type: Roadmap
 title: agentstate-lite — Roadmap (near-term spine)
-actor: openai/codex
-timestamp: '2026-08-05T02:00:50.112Z'
+actor: openai/codex-plan-receipt-gate
+timestamp: '2026-08-08T16:51:46.090Z'
 ---
 # agentstate-lite — Roadmap (near-term spine)
 
@@ -12,7 +12,7 @@ task backlog. The EVENTUAL form is roadmap-items-as-docs under a `Roadmap` kind 
 [the recipe/cookbook design](designs/recipes.md)); this single doc is the spine until that kind
 exists.
 
-# CURRENT FOCUS — protected npm lifecycle and test-user learning (updated 2026-07-31)
+# CURRENT FOCUS — protected npm lifecycle and test-user learning (updated 2026-08-08)
 
 The 2026-07-20 release push remains the scope gate, updated by the 2026-07-21 founder decision in
 `decisions/defer-builtin-recipes`: productized recipes should be learned from real workflows rather
@@ -20,12 +20,15 @@ than guessed before test users.
 
 1. **Identity — done.** `tasks/npm-package-identity` chose the interim coordinate
    `@holaxis/aslite`; the prerelease is published.
-2. **Ship the reviewed version/update contract.** `tasks/version-string-channel-identity` is the
-   umbrella; its approved Decision/protocol/Plan decompose identity, compatibility, explicit and
-   passive discovery, retained-artifact staged publishing, protection, and two honest releases.
-   Current build unit: `tasks/version-build-identity`. The first public transition bootstraps
-   pre.2 with an external exact command; a second transition proves self-discovery before npm docs
-   become primary or marketplace retirement begins.
+2. **Execute the protected distribution critical path.** `tasks/version-string-channel-identity`
+   remains the umbrella; its approved Decision/protocol/Plan decompose identity, compatibility,
+   explicit/passive discovery, retained-artifact staged publishing, protection, and two honest
+   releases. The current explicit spine is `tasks/p5a-pre-live-hardening` (active) ->
+   `tasks/release-protection-bot-bridge` (P5B) -> `tasks/release-protection-setup` (P5S) ->
+   `tasks/continuous-staging-implementation` (implement, dry-run, deliberately enable). P5S is the
+   irreducible Brian/Mike protection/trusted-publisher setup; publication remains interactive npm
+   2FA. Only after this spine clears do the first contract release/bootstrap and second
+   self-discovered transition advance toward npm-primary docs and marketplace retirement.
 3. **Finish first-use onboarding without duplicating release ownership.**
    `tasks/npm-cli-skill-prerelease` retains the singular founder/unfamiliar-bundle acceptance;
    `tasks/bootstrap-pre2-upgrade-proof` supplies that human evidence while owning release mechanics.

@@ -2,7 +2,7 @@
 type: Context Note
 title: Release receipt gate fix-delta domain model
 actor: openai/codex-plan-receipt-gate
-timestamp: '2026-08-08T16:39:57.831Z'
+timestamp: '2026-08-08T16:51:45.705Z'
 ---
 # Summary
 
@@ -36,24 +36,33 @@ The governing distinction is: mutable-draft tolerance is not publication authori
 
 # Release-state identity model
 
-The reconciler's immutable identifier map must retain actor identity per lifecycle step, not under one global `actor` key. Use state-specific ledger fields such as `inspected_by`, `approved_by`, `rejected_by`, `promoted_by`, and `rolled_back_by` (or one equivalently explicit per-state mapping). The external signed receipt remains `actor`; the ordering adapter maps it into the state-specific ledger field.
+The reconciler's public receipt contract continues to require an input field named `actor` for every actor-bearing state. `release-reconcile.mjs`, the signed-receipt ordering adapter, the normative protocol, and hand-authored receipt fixtures therefore keep one input vocabulary. Inside the one `reconcile()` authority, an explicit map namespaces only the ledger key: `inspected -> inspected_by`, `approved_public -> approved_by`, `rejected -> rejected_by`, `promoted -> promoted_by`, and `rolled_back -> rolled_back_by`. Required-field validation remains on `actor`; no caller must invent state-specific receipt fields and no second adapter-specific reconciler contract is created.
 
 This preserves two invariants simultaneously:
 
-1. Replaying the same state with a different actor is an identifier mismatch.
-2. Different legal states may name different allowed operators without contradiction.
+1. Replaying the same state with the same `actor` is idempotent, while replaying it with a different `actor` contradicts that state's namespaced ledger identity.
+2. Different legal states may name different allowed operators without contradiction, including every reachable rejected, approved, promoted, and rolled-back branch.
 
 `evaluateOrdering` must remove only the inspection-actor-equals-approval-actor rule. It must retain signer allowlisting, signed actor equals uploader, upload-before-finalize-dispatch, and inspection-upload-before-approval-upload when both receipts exist. Its proof must expose per-decision actor identity (`actors.inspected` and `actors.approved`, with null for missing evidence) instead of collapsing identity to one actor.
 
 For a prerelease with approval but no inspection, Brian's ruling permits publication with the verified approval receipt plus the missing-inspection stamp. The lifecycle ledger remains at `staged` because no `inspected` transition can be replayed; the ordering proof separately records `verified: [approved]`, `actors.approved`, `missing: [inspected]`, and `stamp_required: true`. `state` is therefore the last reconciled lifecycle state, not the full policy verdict. Stable policy still rejects the same evidence shape.
 
-# Asset inventory state machine
+# Asset grammar and inventory state machine
+
+One pure parser owns the complete auxiliary filename grammar. It recognizes only `receipt-(inspected|approved|status)-<liveStageId>.json`, where `<liveStageId>` satisfies the same UUID-shaped npm stage-ID grammar as the live receipt chain. Names classify assets; they never authorize retention or deletion.
+
+The parser has two explicit consumption modes:
+
+- **Pre-stage capture mode**: a new stage ID does not exist yet. Every grammar-valid auxiliary is classified only as residual so the exact core-two check can isolate the retained tarball and `candidate.json`. It cannot classify current versus sibling. The synthetic dry-run stage token never grants auxiliary status.
+- **Finalize mode**: receives the chain-verified current stage ID and divides grammar-valid extras into current decision receipts, current status, and sibling residue. Malformed lookalikes remain ordinary unexpected extras in both modes and fail closed.
+
+No second regular expression or permissive token rule may reproduce this grammar in `release-receipts`, `release-verify-chain`, or the workflow adapter.
 
 ## Draft verification phase (read-only)
 
-1. Verify the exact two core assets against the retained stage receipt.
-2. Classify every extra asset relative to the verified current stage.
-3. Current inspected/approved assets are selected uniquely and must pass the full receipt verification path.
+1. Verify the exact two core assets against the retained stage receipt and persist their sorted exact `{id,name,digest}` triples in the chain proof.
+2. Classify every extra asset in finalize mode relative to the verified current stage.
+3. Current inspected/approved assets are selected uniquely and must pass the full receipt verification path. For each, hash the exact downloaded bytes locally, require that SHA-256 to equal the selected GitHub asset metadata digest, and persist the exact `{id,name,digest}` triple in the ordering proof.
 4. Current status and valid sibling auxiliary assets are recorded as untrusted/residual inventory, never consumed as current evidence.
 5. Malformed receipt lookalikes and ordinary extras fail closed.
 
@@ -61,14 +70,26 @@ This phase may tolerate recognized sibling residue so a reused mutable draft rem
 
 ## Publication-normalization phase (write-capable finalizer)
 
-1. From the ordering result, establish the exact publication allowlist: core two; whichever current decision receipts were actually verified; and a current status stamp iff `stamp_required`.
-2. Remove/exclude every sibling auxiliary asset and every unverified current auxiliary asset before publication.
-3. If no stamp is required, ensure no current status asset remains.
-4. If a stamp is required, generate it from the current ordering result and upload with `--clobber`; a pre-existing same-name asset is replacement input, never accepted evidence.
-5. Re-query the draft immediately before publication and prove exact final inventory. Receipt IDs/digests must match the assets that were verified. A status asset must match the just-generated file's digest. No sibling or arbitrary auxiliary asset may remain.
-6. Only after that final proof may `immutable-release` publish the draft.
+1. From the chain and ordering proofs, establish the exact keep proof: sorted core `{id,name,digest}` triples; sorted current receipt `{id,name,digest}` triples that were actually downloaded and verified; and generated current status iff `stamp_required`.
+2. Emit a machine-readable cleanup manifest bound to the exact `draft_release_id`. Its delete list is sorted and unique by numeric asset ID and carries `{id,name,category}` for diagnosis; its keep section carries the exact proof above. Names/categories explain the plan, but only observed IDs authorize mutation.
+3. Dry-run emits/reports this same plan and stops. It never invokes the cleanup executor, asset upload, body patch, or release publication.
+4. The live executor deletes only the manifest's exact release-asset IDs through the ID-addressed endpoint. An already-absent ID on retry is tolerated only because the post-mutation re-query and exact-set proof remain authoritative.
+5. If no stamp is required, the current status asset belongs in cleanup and none may remain. If a stamp is required, generate the status file, compute its local digest, upload with `--clobber`, and require the final re-query to find one unique `{id,name,digest}` with that name/digest. The final proof records the newly observed status asset ID. A pre-existing same-name status is replacement input, never accepted evidence.
+6. Re-query the draft immediately before publication and prove exact final inventory. Core triples must equal the chain proof; current receipt triples must equal the ordering proof (same name with a changed ID or digest rejects); generated status name/digest plus its final observed ID must agree when required; no sibling, malformed, arbitrary, duplicate, or unverified auxiliary asset may remain.
+7. Only after the exact inventory and owned-body proofs pass may `immutable-release` publish the draft.
 
-This makes retries safe: a prior failed finalize may have left a same-name current status asset, but a required stamp replaces it; a clean/no-stamp path removes or rejects it. It also prevents a forged status from riding unchanged and prevents arbitrary tolerated sibling assets from becoming permanent published artifacts.
+This makes retries safe: a prior failed finalize may have left a same-name current status asset, but a required stamp replaces it; a clean/no-stamp path removes it. It also prevents a forged status from riding unchanged, prevents a same-name current receipt replacement from escaping its verified ID/digest binding, and prevents arbitrary tolerated sibling assets from becoming permanent published artifacts.
+
+# Workflow-owned release-body status
+
+The human-visible status claim is a workflow-owned block delimited by stable markers, for example `<!-- aslite-receipt-status:start -->` and `<!-- aslite-receipt-status:end -->`. One pure body normalizer accepts zero or one well-formed owned block, rejects duplicate/unbalanced/nested markers, and preserves every unrelated release-note byte outside the block.
+
+- Required stamp: replace the existing owned block or insert exactly one block containing the annotation derived from the current ordering result.
+- No required stamp: remove the owned block if present; never leave a stale missing-receipt claim.
+- Retry required -> required: one block remains and its content names the new current result/run, not an appended duplicate.
+- Retry required -> full receipts/no stamp: the old block is removed.
+
+After the PATCH, finalization re-queries the draft and verifies that the owned block is unique and exactly agrees with the final ordering result (or is absent when no stamp is required) while unrelated notes remain intact. Correct asset inventory with a stale, duplicate, malformed, or contradictory owned body block is still a publication failure.
 
 # Policy matrix
 
@@ -89,13 +110,20 @@ This makes retries safe: a prior failed finalize may have left a same-name curre
 
 - Candidate binding equality is checked before receipt evidence affects policy.
 - Each current decision receipt is unique by exact name.
+- Each downloaded current decision receipt's local SHA-256 equals its selected GitHub metadata digest, and its exact ID/name/digest survives into the final proof.
 - The signed actor is allowed and equals that asset's GitHub uploader.
 - Receipt assets were uploaded no later than the current finalize run's GitHub creation time; later evidence requires redispatch.
 - When both receipts exist, inspection upload precedes approval upload; their actors may differ.
 - Missing evidence is policy input; invalid evidence is always fatal.
 - `run_id` is intentionally absent from signed candidate binding; `finalize_run_id` appears only in a generated status stamp.
-- The final asset inventory is re-queried and verified after cleanup/clobber and immediately before publication.
-- Dry-run never mutates, stamps, cleans, or publishes; it reports what live policy would do and still rejects present-invalid evidence.
+- The cleanup manifest is draft-release-bound, sorted, unique, and executed by live asset ID only.
+- The generated status digest is fixed before upload; the final re-query supplies and records its observed asset ID.
+- The final asset inventory and workflow-owned release-body block are re-queried and verified after cleanup/clobber/PATCH and immediately before publication.
+- Dry-run invokes classification/planning but empirically makes zero DELETE/upload/PATCH/publish calls; it still rejects present-invalid evidence.
+
+# Highest-risk M1 red probe
+
+For an approval-only prerelease, bind approval `{id:501,name:receipt-approved-<stage>.json,digest:sha256:A}` and generated status digest `sha256:S`. A final draft with the same approval name but `{id:777,digest:sha256:B}` and the right status name but digest `sha256:F` must reject. Holding names constant, only restoring the exact approval triple and generated status digest may pass. Adding one valid sibling auxiliary must make final verification reject until normalization removes that exact ID. Temporarily weakening the final verifier to name-only must make this test fail red; otherwise the test does not probe M1.
 
 # Evidence and open human gate
 

@@ -8,25 +8,37 @@ description: >-
   HIGHEST PRIORITY: execute the approved npm identity/update/staged-release
   program through two real release proofs, frozen recovery, npm-primary docs,
   gate transfer, and marketplace deletion.
-actor: openai/codex
+actor: openai/codex-plan-receipt-gate
 sequence: >-
-  identity → compatibility/check/notice → protected staged release → pre.2
-  bootstrap → self-discovered release → frozen recovery → npm primary → gate
-  transfer → delete marketplace
-timestamp: '2026-08-06T13:12:11.296Z'
+  identity -> compatibility/check/notice -> protected staged release -> P5A
+  receipt gate -> P5B bot bridge -> P5S protection setup -> continuous staging
+  -> pre.2 bootstrap -> self-discovered release -> frozen recovery -> npm
+  primary -> gate transfer -> delete marketplace
+timestamp: '2026-08-08T16:52:14.001Z'
 ---
 # Remaining sequence
 
 The CLI is already self-contained, npm-packable, locally oriented without a skill, and verified as
 an installed tarball. The remaining work is distribution rather than engine architecture:
 
+## Current critical path (2026-08-08)
+
+`tasks/p5a-pre-live-hardening` (active receipt-gate hardening) ->
+`tasks/release-protection-bot-bridge` (P5B, explicitly depends on P5A) ->
+`tasks/release-protection-setup` (P5S, depends on P5B) ->
+`tasks/continuous-staging-implementation` (implement, dry-run, then deliberately enable the
+ratified continuous-staging lane). Publication remains human-controlled; Brian/Mike own the P5S
+external setup and npm 2FA finalization boundary.
+
 1. **Shipped:** scoped npm identity, self-contained CLI, optional generated skill, stable PATH hook,
    and public `0.1.0-pre.2` with both aliases proven from the registry.
 2. Implement one byte-distinguishing runtime/build identity, exact hook ownership, additive skill
    compatibility, and bounded MCP PATH/handshake proof.
 3. Add rollback-aware explicit release comparison plus cached, orientation-only awareness.
-4. Build retained-artifact stage-only publishing, bridge the temporary bot to protected main, and
-   record the external protection/trusted-publisher setup.
+4. Complete retained-artifact stage-only publishing through P5A signed-receipt/final-inventory
+   hardening, bridge the temporary bot to protected main in P5B, record and prove the external
+   protection/trusted-publisher setup in P5S, then implement and dry-run continuous per-merge
+   staging before any live enablement.
 5. Publish the first contract release and prove honest pre.2 bootstrap; publish a second compatible
    prerelease and prove the first real self-discovered upgrade and passive notice.
 6. Freeze and independently retrieve/run the final marketplace recovery release.
@@ -95,3 +107,7 @@ npm owns executable mechanics plus the optional bootstrap skill.
 [contains](../tasks/guidance-bundle-onboarding.md)
 
 [contains](../tasks/user-scope-install-vocabulary.md)
+
+[contains](../tasks/p5a-pre-live-hardening.md)
+
+[contains](../tasks/continuous-staging-implementation.md)
