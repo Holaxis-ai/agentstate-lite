@@ -8,7 +8,7 @@ description: >-
   rewriting history, and make completed Reviews discoverable alongside Review
   Requests.
 actor: codex-orchestrator
-timestamp: '2026-08-08T14:21:45.681Z'
+timestamp: '2026-08-08T14:22:28.777Z'
 ---
 # Objective
 Once the proposed architecture-review record-alignment plan is accepted, implement it so every review initiative has one canonical Review synthesis, supporting Findings and context remain correctly typed, and humans can discover requests and completed reports from the review surface.
@@ -23,3 +23,9 @@ Minimal Review convention; template v1.1 and approval; frozen inventory; CLI and
 
 # Acceptance criteria
 The linked plan’s acceptance criteria are the contract. Existing approved/frozen review bytes must remain unchanged, no private security detail may enter the public bundle, and no finding may create a duplicate remediation task.
+
+[depends on](architecture-review-alignment-taxonomy-audit.md)
+
+[depends on](architecture-review-alignment-provenance-audit.md)
+
+[depends on](architecture-review-alignment-portfolio-audit.md)
