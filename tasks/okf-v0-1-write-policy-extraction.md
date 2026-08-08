@@ -4,11 +4,13 @@ title: Extract the v0.1 document-write normalization policy
 status: in_progress
 priority: '2'
 description: >-
-  Behavior-preserving extraction: one pure v0.1 normalization function for
-  timestamp fallback, frontmatter ordering, unknown fields, and body defaulting;
-  no v0.2 behavior yet.
+  Implemented in draft PR #222 at 824f998. One 21-line pure internal v0.1 policy
+  now owns timestamp fallback, frontmatter ordering, unknown-field preservation,
+  and body defaulting; writeDocVersioned retains validation/CAS/storage. Focused
+  tests, build, typecheck, and full npm run check pass. Awaiting the required
+  independent parity review.
 actor: openai/codex
-timestamp: '2026-08-08T01:29:27.277Z'
+timestamp: '2026-08-08T01:36:58.435Z'
 ---
 # Objective
 
