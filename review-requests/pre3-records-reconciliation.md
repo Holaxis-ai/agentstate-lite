@@ -10,48 +10,65 @@ question: >-
   Approve the three record corrections aligning the ratified release docs with
   the published pre.3 registry state?
 actor: anthropic/claude
-timestamp: '2026-08-08T00:39:04.266Z'
+timestamp: '2026-08-08T14:50:36.717Z'
 ---
 # Context
 
-The release program's ratified records have drifted from registry reality, and the drift traces to
-a manual publish that predated the contract machinery: `0.1.0-pre.3` was published 2026-08-03
-(and `latest` interactively promoted to it), but it does NOT contain the contract code (U3
-`version --check`, N4) — it is a second bootstrap release, not the planned R6A "first
-contract-bearing release". Meanwhile:
+**In plain terms: our written records say the current published version is pre.2, but the
+registry says pre.3. This request asks you to approve three small corrections so the records
+match reality again.**
+
+How the drift happened: `0.1.0-pre.3` was published manually on 2026-08-03 — BEFORE the release
+contract and its machinery existed — and `latest` was interactively pointed at it. But pre.3 was
+built from code that predates the contract features (the `aslite version` identity command and
+the update check), so it is a second "bootstrap" release (a plain build that helps users get
+started, but not yet a release that carries the new version/update machinery). The program's
+records were written as if pre.2 were still current:
 
 - `decisions/version-update-contract` section 1 still names `0.1.0-pre.2` as the canonical
   current public release; `designs/version-update-domain-model` invariant 4 says the same.
-- `tasks/first-contract-release-prep` (R6A) still targets version `0.1.0-pre.3` — a number that
-  is now TAKEN by a non-contract build. R6A's release must be `0.1.0-pre.4`.
-- `tasks/bootstrap-pre2-upgrade-proof` (E7A) frames the upgrade proof as "bootstrap from pre.2";
-  real test users may now be on pre.3 (it is `latest`), so the proof matrix should include
-  pre.3 -> pre.4 (and arguably pre.2 -> pre.4).
+  (*Canonical* here just means "the one official answer to 'what version are users getting?'")
+- `tasks/first-contract-release-prep` (R6A — the task for shipping the FIRST release that
+  actually contains the contract machinery) still plans to publish under the number
+  `0.1.0-pre.3`. That number is now taken by the non-contract build, so the first contract
+  release must be `0.1.0-pre.4`.
+- `tasks/bootstrap-pre2-upgrade-proof` (E7A — the task that proves a real user can UPGRADE
+  cleanly from an old version to a new one) frames the proof as "upgrade from pre.2". Real test
+  users may now be on pre.3, since `latest` points there — so the proof should cover upgrading
+  from pre.3 too.
 
-Registry ground truth (2026-08-08): published = pre.1, pre.2, pre.3; latest == next == pre.3;
-source `packages/cli/package.json` == 0.1.0-pre.3. The new `release:audit-tags` gate (under
-review on feat/release-tag-audit) verifies this state PASSES the contract's at-rest policy — the
-drift is in the PROSE records, not the registry state.
+Registry ground truth as of 2026-08-08: published versions are pre.1, pre.2, pre.3; both install
+channels (`latest` and `next` — the npm labels that decide what a plain install vs an opt-in
+"give me the newest" install delivers) point at pre.3; the source tree also says pre.3. The new
+automated policy check (`release:audit-tags`, merged via PR #219) confirms this REGISTRY state is
+healthy and allowed — the mismatch is only in the PROSE of the records, not in anything running.
 
 # Requested decision
 
-Approve (or amend) the following record corrections, applied by your program's convention —
-either you/Codex apply them, or approve and we apply with attribution:
+**In plain terms: three record corrections — update two documents to say pre.3 is current,
+retarget one task to pre.4, and widen one proof to cover pre.3. Nothing about how releases work
+changes here.**
 
-1. Contract section 1 + domain-model invariant 4: canonical current public release -> `0.1.0-pre.3`,
-   with one sentence noting pre.3 is a second bootstrap release (no contract code) published
-   outside the staged machinery before it existed.
-2. R6A (`first-contract-release-prep`): target version -> `0.1.0-pre.4`; expected `next` staging
-   and promotion flow unchanged.
-3. E7A (`bootstrap-pre2-upgrade-proof`): widen the bootstrap-upgrade proof to cover pre.3 as a
-   starting point (title/scope update as you see fit).
+Approve (or amend) the following, applied by your program's convention — either you/Codex apply
+them, or approve and we apply with attribution:
+
+1. Contract section 1 + domain-model invariant 4: canonical current public release becomes
+   `0.1.0-pre.3`, with one added sentence noting pre.3 is a second bootstrap release (no
+   contract code) published manually before the staged release machinery existed.
+2. R6A (`first-contract-release-prep`): target version becomes `0.1.0-pre.4`; everything else
+   about how that release is staged and promoted is unchanged.
+3. E7A (`bootstrap-pre2-upgrade-proof`): widen the upgrade proof to also cover starting from
+   pre.3 (title/scope wording is your call).
+
+Note: a SEPARATE proposal about release cadence (how often we publish) is coming via its own
+review — deliberately not mixed into this one. This request is purely "make the records true."
 
 # Acceptance criteria
 
 - The three records above state the pre.3 reality and the pre.4 target; no other contract
-  semantics change under this request (cadence changes are a SEPARATE upcoming proposal).
-- `release:audit-tags`' source-drift check remains green after the edits (it reads code + registry,
-  not prose — this is a records-only change).
+  semantics change under this request.
+- The automated policy check stays green after the edits (it reads code and the registry, not
+  prose — this is a records-only change).
 - The edit is attributed and linked back to this Review Request.
 
 # Reviewer response
