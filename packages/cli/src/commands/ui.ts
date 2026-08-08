@@ -180,9 +180,9 @@ export async function ui(argv: string[], deps: Partial<UiCliDeps> = {}): Promise
     }
     const envKey = process.env[API_KEY_ENV_VAR]?.trim();
     const apiKey = envKey || (await getApiKeyForOrigin(origin));
-    // Kind-registry loads (`/__ui/kinds`) and the derived edge list (`/__ui/edges`) ride the SAME
-    // engine-level RemoteBackend plumbing every other kind/graph-aware command uses over --remote;
-    // the SPA's /v0 data path stays the raw proxy.
+    // Registered Views, kind/edge reads, and the trusted bridge share the SAME semantic
+    // RemoteBackend bundle every other engine-aware command uses over --remote; the SPA's /v0
+    // transport path stays the raw proxy.
     const bundle = await openBundle(undefined, remoteFlag);
     options = { mode: "remote", port, remoteBase: base, apiKey, bundle, actor };
     rootLabel = base;

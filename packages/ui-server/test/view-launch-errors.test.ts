@@ -1,7 +1,9 @@
 import test from "node:test";
 import assert from "node:assert/strict";
+import { createServer } from "node:http";
+import type { AddressInfo } from "node:net";
 
-import { MemoryBackend, writeBlob, writeDoc, type Bundle } from "@agentstate-lite/core";
+import { MemoryBackend, RemoteBackend, writeBlob, writeDoc, type Bundle } from "@agentstate-lite/core";
 import { createRouter } from "@agentstate-lite/server";
 import { bootUiServer, type UiServerHandle } from "../src/server.js";
 
@@ -94,5 +96,63 @@ test("the web adapter preserves the established registered-View failure contract
     );
   } finally {
     await server.close();
+  }
+});
+
+test("the web adapter preserves the retired remote helper's non-success-as-absent contract", async () => {
+  const upstream = createServer((req, res) => {
+    const url = new URL(req.url ?? "/", "http://127.0.0.1");
+    if (url.pathname.endsWith("/docs/views-registry/upstream-failure")) {
+      res.writeHead(200, { "content-type": "application/json", "x-version": "registry-v1" });
+      res.end(JSON.stringify({
+        id: "views-registry/upstream-failure",
+        frontmatter: { type: "View", title: "Failure", entry: "views/failure.html" },
+        body: "",
+      }));
+      return;
+    }
+    if (url.pathname.endsWith("/blobs/views/failure.html")) {
+      res.writeHead(503, { "content-type": "application/json" });
+      res.end(JSON.stringify({ error: { code: "RUNTIME", message: "upstream unavailable" } }));
+      return;
+    }
+    if (url.pathname.endsWith("/docs")) {
+      res.writeHead(200, { "content-type": "application/json" });
+      res.end(JSON.stringify({ docs: [], next_cursor: null }));
+      return;
+    }
+    res.writeHead(404, { "content-type": "application/json" });
+    res.end(JSON.stringify({ error: { code: "NOT_FOUND", message: "not found" } }));
+  });
+  const origin = await new Promise<string>((resolve) => {
+    upstream.listen(0, "127.0.0.1", () => {
+      resolve(`http://127.0.0.1:${(upstream.address() as AddressInfo).port}`);
+    });
+  });
+  const bundle: Bundle = {
+    root: origin,
+    backend: new RemoteBackend({ baseUrl: origin, bundle: "default", maxRetries: 0 }),
+  };
+  const server = await bootUiServer({
+    mode: "remote",
+    bundle,
+    remoteBase: origin,
+    sessionSecret: SECRET,
+    renderDocument: ({ body }) => ({ html: body, bounded: false }),
+    serveAsset: () => ({
+      status: 404,
+      headers: { "content-type": "text/plain; charset=utf-8" },
+      body: new Uint8Array(),
+    }),
+  });
+  try {
+    const failed = await mint(server, "views-registry/upstream-failure");
+    assert.deepEqual(
+      { status: failed.status, code: failed.error.code, message: failed.error.message },
+      { status: 404, code: "NOT_FOUND", message: "no View bytes found for 'views/failure.html'" },
+    );
+  } finally {
+    await server.close();
+    await new Promise<void>((resolve) => upstream.close(() => resolve()));
   }
 });

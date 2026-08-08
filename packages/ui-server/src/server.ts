@@ -208,7 +208,7 @@ async function servePageBytes(options: UiServerOptions, runtime: UiRuntime, nonc
  * Mint an immutable launch through view-runtime's registered-source authority. The host owns only
  * request parsing, legacy entry-key lookup, and translation into its HTTP response contract.
  */
-function mintFailureResponse(registryId: string, error: unknown): Response {
+function mintFailureResponse(options: UiServerOptions, registryId: string, error: unknown): Response {
   if (error instanceof ViewNotFoundError) {
     const detail = error.storageCause instanceof Error ? error.storageCause.message : error.message;
     return jsonError(404, "RUNTIME", detail);
@@ -219,8 +219,17 @@ function mintFailureResponse(registryId: string, error: unknown): Response {
         return jsonError(502, "RUNTIME", error.message);
       case "VIEW_INVALID_REGISTRATION":
         return jsonError(403, "FORBIDDEN", `'${registryId}' is not a valid type:View registration (the legacy type:Page name no longer registers — migrate legacy content with the repo's migrate-legacy-view-names script)`);
-      case "VIEW_ENTRY_READ_FAILED":
+      case "VIEW_ENTRY_READ_FAILED": {
+        const upstreamStatus = (error.storageCause as { status?: unknown } | undefined)?.status;
+        // Preserve the retired remote helper's public contract: an HTTP non-success while reading
+        // an entry was indistinguishable from absence. Transport failures had no status and remain
+        // runtime errors. This mode-specific translation belongs to the web adapter, not the
+        // shared launch authority; changing it should be a separate behavioral decision.
+        if (options.mode === "remote" && typeof upstreamStatus === "number") {
+          return jsonError(404, "NOT_FOUND", `no View bytes found for '${error.entryKey}'`);
+        }
         return jsonError(500, "RUNTIME", error.message);
+      }
       case "VIEW_ENTRY_NOT_FOUND":
         return jsonError(404, "NOT_FOUND", error.message);
       case "VIEW_ENTRY_VERSION_CONFLICT":
@@ -274,7 +283,7 @@ async function handleMint(req: Request, runtime: UiRuntime, options: UiServerOpt
   try {
     launch = await mintActiveViewLaunch(options.bundle, runtime.launches, registryId);
   } catch (error) {
-    return mintFailureResponse(registryId, error);
+    return mintFailureResponse(options, registryId, error);
   }
   const subject = pageLaunchAuthorizationSubject(launch);
   const required = launch.capability !== "none";
