@@ -12,6 +12,7 @@
 import path from "node:path";
 
 import { FilesystemBackend } from "./backend.js";
+import { normalizeV01DocumentForWrite } from "./document-write-policy.js";
 import { isUsableTimestamp, MalformedDocumentError, stringifyWithData } from "./frontmatter.js";
 import { GENERATED_INDEX_MARKER } from "./index-marker.js";
 import { parseLinksFromDoc } from "./links.js";
@@ -29,7 +30,6 @@ import type {
   ConceptId,
   DeleteOptions,
   EdgeFilter,
-  Frontmatter,
   HeadResult,
   InitBundleOptions,
   Link,
@@ -144,13 +144,11 @@ export async function writeDocVersioned(
     throw new InvalidInputError(`OKF §9.2: frontmatter.type is required and must be non-empty (concept '${doc.id}').`);
   }
 
-  const existingTs = doc.frontmatter.timestamp;
-  const timestamp = isUsableTimestamp(existingTs) ? existingTs : new Date().toISOString();
-
-  // Reorder so `type` leads and `timestamp` trails, matching OKF sample docs.
-  const { type: _t, timestamp: _ts, ...rest } = doc.frontmatter;
-  const frontmatter: Frontmatter = { type, ...rest, timestamp };
-  const saved: OkfDocument = { id: doc.id, frontmatter, body: doc.body ?? "" };
+  const existingTimestamp = doc.frontmatter.timestamp;
+  const timestamp = isUsableTimestamp(existingTimestamp)
+    ? { preserveExisting: true as const, existingTimestamp }
+    : { preserveExisting: false as const, fallbackTimestamp: new Date().toISOString() };
+  const saved = normalizeV01DocumentForWrite(doc, type, timestamp);
 
   const version = await backendFor(bundle).write(doc.id, saved, options);
   return { doc: saved, version };

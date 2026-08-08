@@ -19,10 +19,11 @@ import {
   writeDocVersioned,
 } from "../src/bundle.js";
 import { InvalidInputError } from "../src/errors.js";
-import { parseMarkdown } from "../src/frontmatter.js";
+import { normalizeV01DocumentForWrite } from "../src/document-write-policy.js";
+import { parseMarkdown, stringifyDoc } from "../src/frontmatter.js";
 import { GENERATED_INDEX_MARKER } from "../src/index-marker.js";
 import { MemoryBackend } from "../src/memory-backend.js";
-import { VersionConflict } from "../src/versioning.js";
+import { VersionConflict, versionOfBytes } from "../src/versioning.js";
 import type {
   Bundle,
   ConceptId,
@@ -152,6 +153,129 @@ test("writeDocVersioned rejects every empty or non-string type before storage", 
   assert.deepEqual(await bundle.backend!.list(), []);
 });
 
+test("v0.1 write policy deterministically owns timestamp fallback, key ordering, unknown fields, and body defaulting", () => {
+  const fallback = "2026-08-08T01:30:00.000Z";
+  const nested = { generated: { at: "2026-07-01T00:00:00Z" }, flags: [true, false] };
+  const cases: Array<{ name: string; timestamp: unknown; preserveExisting: boolean; expectedTimestamp: string }> = [
+    { name: "missing", timestamp: undefined, preserveExisting: false, expectedTimestamp: fallback },
+    { name: "blank", timestamp: " ", preserveExisting: false, expectedTimestamp: fallback },
+    { name: "number", timestamp: 0, preserveExisting: false, expectedTimestamp: fallback },
+    { name: "null", timestamp: null, preserveExisting: false, expectedTimestamp: fallback },
+    { name: "existing", timestamp: "  preserved  ", preserveExisting: true, expectedTimestamp: "  preserved  " },
+  ];
+
+  for (const { name, timestamp, preserveExisting, expectedTimestamp } of cases) {
+    const frontmatter = {
+      timestamp,
+      title: name,
+      type: "Note",
+      x_producer: nested,
+    } as unknown as OkfDocument["frontmatter"];
+    const input = { id: `notes/${name}`, frontmatter, body: undefined } as unknown as OkfDocument;
+    const timestampDecision = preserveExisting
+      ? { preserveExisting: true as const, existingTimestamp: timestamp as string }
+      : { preserveExisting: false as const, fallbackTimestamp: fallback };
+    const normalized = normalizeV01DocumentForWrite(input, "Note", timestampDecision);
+
+    assert.deepEqual(Object.keys(normalized.frontmatter), ["type", "title", "x_producer", "timestamp"]);
+    assert.deepEqual(normalized.frontmatter, {
+      type: "Note",
+      title: name,
+      x_producer: nested,
+      timestamp: expectedTimestamp,
+    });
+    assert.equal(normalized.frontmatter.x_producer, nested, "unknown nested metadata stays byte-shape preserving");
+    assert.equal(normalized.body, "");
+    assert.equal(input.body, undefined, "normalization must not mutate the input body");
+    assert.equal(input.frontmatter.timestamp, timestamp, "normalization must not mutate input frontmatter");
+  }
+});
+
+test("writeDocVersioned preserves first-read values and does not touch the clock for a usable timestamp", async () => {
+  let typeReads = 0;
+  let timestampReads = 0;
+  let clockReads = 0;
+  const frontmatter = { title: "Accessor input" } as OkfDocument["frontmatter"];
+  Object.defineProperties(frontmatter, {
+    type: {
+      enumerable: true,
+      get: () => (++typeReads === 1 ? "Note" : "Changed"),
+    },
+    timestamp: {
+      enumerable: true,
+      get: () => (++timestampReads === 1 ? T : "changed timestamp"),
+    },
+  });
+
+  class RecordingBackend extends MemoryBackend {
+    override async write(_id: ConceptId, value: OkfDocument): Promise<Version> {
+      return versionOfBytes(stringifyDoc(value.frontmatter, value.body));
+    }
+  }
+
+  const NativeDate = globalThis.Date;
+  class CountingDate extends NativeDate {
+    constructor(value?: string | number) {
+      clockReads++;
+      value === undefined ? super("2026-08-08T01:30:00.000Z") : super(value);
+    }
+  }
+
+  globalThis.Date = CountingDate as DateConstructor;
+  try {
+    const written = await writeDocVersioned(
+      { root: "mem://accessor-parity", backend: new RecordingBackend() },
+      { id: "notes/accessor", frontmatter, body: "body" },
+    );
+    assert.equal(written.doc.frontmatter.type, "Note", "persist the value that passed validation");
+    assert.equal(written.doc.frontmatter.timestamp, T, "persist the first timestamp read");
+    assert.equal(clockReads, 0, "a usable timestamp must not newly depend on the wall clock");
+
+    const defaulted = await writeDocVersioned(
+      { root: "mem://clock-parity", backend: new RecordingBackend() },
+      doc("notes/defaulted", { type: "Note" }),
+    );
+    assert.equal(defaulted.doc.frontmatter.timestamp, "2026-08-08T01:30:00.000Z");
+    assert.equal(clockReads, 1, "a missing timestamp reads the wall clock exactly once");
+  } finally {
+    globalThis.Date = NativeDate;
+  }
+});
+
+test("writeDocVersioned evaluates timestamp usability once before applying the policy", async () => {
+  const timestamp = "unstable timestamp";
+  const fallback = "2026-08-08T01:30:00.000Z";
+  const nativeTrim = String.prototype.trim;
+  const NativeDate = globalThis.Date;
+  let timestampTrimReads = 0;
+
+  String.prototype.trim = function (): string {
+    if (this.toString() === timestamp) {
+      timestampTrimReads++;
+      return timestampTrimReads === 1 ? "" : "usable on a second read";
+    }
+    return nativeTrim.call(this);
+  };
+  class FixedDate extends NativeDate {
+    constructor(value?: string | number) {
+      value === undefined ? super(fallback) : super(value);
+    }
+  }
+
+  globalThis.Date = FixedDate as DateConstructor;
+  try {
+    const written = await writeDocVersioned(
+      memoryBundle(),
+      doc("notes/single-timestamp-decision", { type: "Note", timestamp }),
+    );
+    assert.equal(timestampTrimReads, 1);
+    assert.equal(written.doc.frontmatter.timestamp, fallback);
+  } finally {
+    String.prototype.trim = nativeTrim;
+    globalThis.Date = NativeDate;
+  }
+});
+
 test("writeDocVersioned normalizes ordering, timestamp, and absent body without mutating the input", async () => {
   const bundle = memoryBundle();
   const input = {
@@ -160,7 +284,14 @@ test("writeDocVersioned normalizes ordering, timestamp, and absent body without 
     body: undefined,
   } as unknown as OkfDocument;
   const written = await writeDocVersioned(bundle, input);
+  const policyResult = normalizeV01DocumentForWrite(
+    input,
+    "Note",
+    { preserveExisting: true, existingTimestamp: input.frontmatter.timestamp as string },
+  );
 
+  assert.deepEqual(written.doc, policyResult);
+  assert.equal(written.version, versionOfBytes(stringifyDoc(policyResult.frontmatter, policyResult.body)));
   assert.deepEqual(Object.keys(written.doc.frontmatter), ["type", "title", "extra", "timestamp"]);
   assert.deepEqual(written.doc.frontmatter, {
     type: "Note",
