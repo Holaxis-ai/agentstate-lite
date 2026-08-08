@@ -115,6 +115,7 @@ test("remote mode derives hosted from remoteBase in the runtime — no injection
   const server = await bootUiServer({
     mode: "remote",
     remoteBase: "http://127.0.0.1:1", // never dialed by the config route
+    bundle: memoryBundle(),
     sessionSecret: SECRET,
     renderDocument,
     serveAsset: stubAsset,

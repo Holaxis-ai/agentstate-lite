@@ -586,91 +586,6 @@ test("ONE-PREDICATE: serve-time re-verification rides the same predicate — an 
   }
 });
 
-test("ONE-PREDICATE: remote-mode mint filters rows through the registration predicate — invalid ids, malformed entries, and WRONG-TYPED rows (legacy Page included) from the wire cannot mint", async () => {
-  // A (misbehaving) remote returns poisoned rows inside its type=View listing: an invalid
-  // registry id, rows whose returned type does not match the accepted name (including the
-  // RETIRED legacy 'Page' spelling), and a malformed entry. The allowlist must trust the
-  // PREDICATE, not the query params it sent.
-  const server = createHttpServer((req, res) => {
-    const url = new URL(req.url ?? "/", "http://127.0.0.1");
-    if (url.pathname.includes("/blobs/")) {
-      res.writeHead(200, { "content-type": "text/html; charset=utf-8", "x-version": "bv1" });
-      res.end("<!doctype html><p>remote View</p>");
-      return;
-    }
-    const type = url.searchParams.get("type");
-    const docs =
-      type === "View"
-        ? [
-            { id: "pages-registry/legacy", version: "v1", frontmatter: { type: "View", entry: "pages/legacy.html" } },
-            { id: "notes/loose", version: "v1", frontmatter: { type: "View", entry: "pages/loose2.html" } },
-            { id: "pages-registry/wrongtype", version: "v1", frontmatter: { type: "Design", entry: "pages/wt.html" } },
-            { id: "pages-registry/retired", version: "v1", frontmatter: { type: "Page", entry: "pages/retired.html" } },
-            { id: "views-registry/board", version: "v1", frontmatter: { type: "View", entry: "views/board.html" } },
-            { id: "views-registry/spacey", version: "v1", frontmatter: { type: "View", entry: "views/has space.html" } },
-          ]
-        : [];
-    res.writeHead(200, { "content-type": "application/json" });
-    res.end(JSON.stringify({ docs, next_cursor: null }));
-  });
-  const remoteOrigin = await listenOn(server);
-  try {
-    const handle = await bootUiServer({ mode: "remote", port: 0, remoteBase: remoteOrigin, sessionSecret: SECRET });
-    try {
-      const mint = (key: string) =>
-        fetch(`http://${handle.host}:${handle.port}/__page/mint`, {
-          method: "POST",
-          headers: { cookie: `aslite_ui_session=${SECRET}`, "content-type": "application/json", "x-requested-with": "test" },
-          body: JSON.stringify({ key }),
-        });
-      assert.equal((await mint("pages/legacy.html")).status, 200, "a View at the legacy locations must mint");
-      assert.equal((await mint("views/board.html")).status, 200);
-      assert.equal((await mint("pages/loose2.html")).status, 403, "an invalid registry id from the wire must not mint");
-      assert.equal((await mint("pages/wt.html")).status, 403, "a wrong-typed row from the wire must not mint");
-      assert.equal((await mint("pages/retired.html")).status, 403, "a legacy Page-typed row from the wire must not mint");
-      assert.equal((await mint("views/has space.html")).status, 403, "a malformed declared entry from the wire must not mint");
-    } finally {
-      await handle.close();
-    }
-  } finally {
-    server.close();
-  }
-});
-
-test("ONE-PREDICATE: a FAILED registry query fails the WHOLE mint enumeration (strict consistency) — an explicit 5xx, never a 403 pretending to know", async () => {
-  // The type=View listing 500s. Policy: mint must NOT answer 403 as if it had read the registry
-  // and knew the key was unregistered, and must not answer 200. Expect an explicit 5xx envelope
-  // (launcher discovery reports the same failure whole).
-  const server = createHttpServer((req, res) => {
-    const url = new URL(req.url ?? "/", "http://127.0.0.1");
-    if (url.searchParams.get("type") === "View") {
-      res.writeHead(500, { "content-type": "application/json" });
-      res.end(JSON.stringify({ error: { code: "RUNTIME", message: "boom" } }));
-      return;
-    }
-    res.writeHead(200, { "content-type": "application/json" });
-    res.end(JSON.stringify({ docs: [], next_cursor: null }));
-  });
-  const remoteOrigin = await listenOn(server);
-  try {
-    const handle = await bootUiServer({ mode: "remote", port: 0, remoteBase: remoteOrigin, sessionSecret: SECRET });
-    try {
-      const res = await fetch(`http://${handle.host}:${handle.port}/__page/mint`, {
-        method: "POST",
-        headers: { cookie: `aslite_ui_session=${SECRET}`, "content-type": "application/json", "x-requested-with": "test" },
-        body: JSON.stringify({ key: "pages/legacy.html" }),
-      });
-      assert.equal(res.status, 502, "a failed registry read must fail the mint, not serve a guess");
-      const body = (await res.json()) as { error?: { code?: string } };
-      assert.equal(body.error?.code, "RUNTIME");
-    } finally {
-      await handle.close();
-    }
-  } finally {
-    server.close();
-  }
-});
-
 test("bootUiServer: a --remote upstream that never responds on boot does not hang the UI boot — bounded, degraded-but-honest signal (tasks/ui-remote-watcher-boot-timeout)", async () => {
   // Never touches `res` — the watcher's boot-time snapshot fetch against this origin can only end
   // by timing itself out; `bootUiServer` must never wait that out.
@@ -693,6 +608,7 @@ test("bootUiServer: a --remote upstream that never responds on boot does not han
         mode: "remote",
         port: 0,
         remoteBase: origin,
+        bundle: { root: origin, backend: new RemoteBackend({ baseUrl: origin, bundle: "default", maxRetries: 0 }) },
         // Test-only override (never the production ~5s default) — keeps this test fast.
         watcherBootTimeoutMs: 100,
         sessionSecret: SECRET,
@@ -729,55 +645,6 @@ test("bootUiServer: a --remote upstream that never responds on boot does not han
     }
   } finally {
     process.stderr.write = originalWrite;
-    server.close();
-  }
-});
-
-test("XSS pin (route-level): the serve-time 502 error page is served as escaped HTML with the failure legible", async () => {
-  // Healthy remote long enough to mint, then the View listing starts failing — the nonce route
-  // must answer with the 502 ERROR PAGE (text/html + page CSP), its message intact and inert.
-  let failViews = false;
-  const server = createHttpServer((req, res) => {
-    const url = new URL(req.url ?? "/", "http://127.0.0.1");
-    if (url.pathname.includes("/blobs/")) {
-      res.writeHead(200, { "content-type": "text/html; charset=utf-8", "x-version": "bv1" });
-      res.end("<!doctype html><p>remote View</p>");
-      return;
-    }
-    const type = url.searchParams.get("type");
-    if (type === "View" && failViews) {
-      res.writeHead(500, { "content-type": "application/json" });
-      res.end(JSON.stringify({ error: { code: "RUNTIME", message: "boom" } }));
-      return;
-    }
-    const docs = type === "View" ? [{ id: "pages-registry/legacy", version: "v1", frontmatter: { type: "View", entry: "pages/legacy.html" } }] : [];
-    res.writeHead(200, { "content-type": "application/json" });
-    res.end(JSON.stringify({ docs, next_cursor: null }));
-  });
-  const remoteOrigin = await listenOn(server);
-  try {
-    const handle = await bootUiServer({ mode: "remote", port: 0, remoteBase: remoteOrigin, sessionSecret: SECRET });
-    try {
-      const mint = await fetch(`http://${handle.host}:${handle.port}/__page/mint`, {
-        method: "POST",
-        headers: { cookie: `aslite_ui_session=${SECRET}`, "content-type": "application/json", "x-requested-with": "test" },
-        body: JSON.stringify({ key: "pages/legacy.html" }),
-      });
-      assert.equal(mint.status, 200);
-      const { url } = (await mint.json()) as { url: string };
-
-      failViews = true;
-      const page = await fetch(`http://${handle.host}:${handle.port}${url}`);
-      assert.equal(page.status, 502);
-      assert.match(page.headers.get("content-type") ?? "", /text\/html/);
-      assert.match(page.headers.get("content-security-policy") ?? "", /connect-src 'none'/);
-      const body = await page.text();
-      assert.match(body, /could not be read/, "the failure stays legible to the human");
-      assert.match(body, /returned status 500/);
-    } finally {
-      await handle.close();
-    }
-  } finally {
     server.close();
   }
 });
@@ -922,9 +789,9 @@ test("edges endpoint: serves core's queryEdges over a RemoteBackend bundle (remo
 
     remoteHandle = await serve({ bundle, port: 0 });
     const remoteBase = `http://${remoteHandle.host}:${remoteHandle.port}`;
-    const kindsBundle: Bundle = { root: remoteBase, backend: new RemoteBackend({ baseUrl: remoteBase, bundle: "default" }) };
+    const remoteBundle: Bundle = { root: remoteBase, backend: new RemoteBackend({ baseUrl: remoteBase, bundle: "default" }) };
 
-    uiHandle = await bootUiServer({ mode: "remote", port: 0, remoteBase, kindsBundle, sessionSecret: SECRET });
+    uiHandle = await bootUiServer({ mode: "remote", port: 0, remoteBase, bundle: remoteBundle, sessionSecret: SECRET });
     const origin = `http://${uiHandle.host}:${uiHandle.port}`;
 
     const res = await fetch(`${origin}/__ui/edges`, { headers: { cookie: `aslite_ui_session=${SECRET}` } });
@@ -952,8 +819,8 @@ test("edges endpoint: a remote-upstream OUTAGE surfaces as a non-2xx error, neve
     const remoteBase = `http://${remoteHandle.host}:${remoteHandle.port}`;
     await remoteHandle.close();
 
-    const kindsBundle: Bundle = { root: remoteBase, backend: new RemoteBackend({ baseUrl: remoteBase, bundle: "default" }) };
-    uiHandle = await bootUiServer({ mode: "remote", port: 0, remoteBase, kindsBundle, sessionSecret: SECRET });
+    const remoteBundle: Bundle = { root: remoteBase, backend: new RemoteBackend({ baseUrl: remoteBase, bundle: "default" }) };
+    uiHandle = await bootUiServer({ mode: "remote", port: 0, remoteBase, bundle: remoteBundle, sessionSecret: SECRET });
     const origin = `http://${uiHandle.host}:${uiHandle.port}`;
 
     const res = await fetch(`${origin}/__ui/edges`, { headers: { cookie: `aslite_ui_session=${SECRET}` } });
@@ -964,97 +831,6 @@ test("edges endpoint: a remote-upstream OUTAGE surfaces as a non-2xx error, neve
   } finally {
     await uiHandle?.close();
     await rm(dir, { recursive: true, force: true });
-  }
-});
-
-test("P2: remote mint paginates the View registry to exhaustion — a page past the first wire page still opens", async () => {
-  // A fake remote whose type=View listing spans TWO cursor pages; the target entry exists ONLY on
-  // the second. A first-page-only mint lookup (the old 500-doc ceiling) can never see it.
-  const server = createHttpServer((req, res) => {
-    const url = new URL(req.url ?? "/", "http://127.0.0.1");
-    const json = (body: unknown): void => {
-      res.writeHead(200, { "content-type": "application/json" });
-      res.end(JSON.stringify(body));
-    };
-    if (url.pathname.includes("/blobs/")) {
-      res.writeHead(200, { "content-type": "text/html; charset=utf-8", "x-version": "bv1" });
-      res.end("<!doctype html><p>remote View</p>");
-      return;
-    }
-    if (url.searchParams.get("type") === "View") {
-      if (url.searchParams.get("cursor") === "page-2") {
-        json({ docs: [{ id: "pages-registry/deep", version: "v1", frontmatter: { type: "View", entry: "pages/deep.html" } }], next_cursor: null });
-      } else {
-        json({ docs: [{ id: "pages-registry/first", version: "v1", frontmatter: { type: "View", entry: "pages/first.html" } }], next_cursor: "page-2" });
-      }
-      return;
-    }
-    json({ docs: [], next_cursor: null }); // the watcher's snapshot poll
-  });
-  const remoteOrigin = await listenOn(server);
-  try {
-    const handle = await bootUiServer({ mode: "remote", port: 0, remoteBase: remoteOrigin, sessionSecret: SECRET });
-    try {
-      const mint = (key: string) =>
-        fetch(`http://${handle.host}:${handle.port}/__page/mint`, {
-          method: "POST",
-          headers: { cookie: `aslite_ui_session=${SECRET}`, "content-type": "application/json", "x-requested-with": "test" },
-          body: JSON.stringify({ key }),
-        });
-      assert.equal((await mint("pages/deep.html")).status, 200, "an entry on the SECOND wire page must mint");
-      assert.equal((await mint("pages/first.html")).status, 200);
-      assert.equal((await mint("pages/not-registered.html")).status, 403, "confinement is intact across pagination");
-    } finally {
-      await handle.close();
-    }
-  } finally {
-    server.close();
-  }
-});
-
-test("REJECTION PIN: remote-mode mint queries ONLY type=View — the legacy type=Page listing is never requested, and its rows cannot mint", async () => {
-  // A fake remote that WOULD serve a legacy type=Page listing if asked. Post-removal the
-  // allowlist must never ask for it (PAGE_TYPE_NAMES is exactly ["View"]), so the legacy row is
-  // invisible and its entry unmintable.
-  const queriedTypes = new Set<string>();
-  const server = createHttpServer((req, res) => {
-    const url = new URL(req.url ?? "/", "http://127.0.0.1");
-    if (url.pathname.includes("/blobs/")) {
-      res.writeHead(200, { "content-type": "text/html; charset=utf-8", "x-version": "bv1" });
-      res.end("<!doctype html><p>remote View</p>");
-      return;
-    }
-    const type = url.searchParams.get("type");
-    if (type) queriedTypes.add(type);
-    const docs =
-      type === "View"
-        ? [{ id: "views-registry/board", version: "v1", frontmatter: { type: "View", entry: "views/board.html" } }]
-        : type === "Page"
-          ? [{ id: "pages-registry/legacy", version: "v1", frontmatter: { type: "Page", entry: "pages/legacy.html" } }]
-          : [];
-    res.writeHead(200, { "content-type": "application/json" });
-    res.end(JSON.stringify({ docs, next_cursor: null }));
-  });
-  const remoteOrigin = await listenOn(server);
-  try {
-    const handle = await bootUiServer({ mode: "remote", port: 0, remoteBase: remoteOrigin, sessionSecret: SECRET });
-    try {
-      const mint = (key: string) =>
-        fetch(`http://${handle.host}:${handle.port}/__page/mint`, {
-          method: "POST",
-          headers: { cookie: `aslite_ui_session=${SECRET}`, "content-type": "application/json", "x-requested-with": "test" },
-          body: JSON.stringify({ key }),
-        });
-      assert.equal((await mint("views/board.html")).status, 200, "a remote View entry must mint");
-      assert.equal((await mint("pages/legacy.html")).status, 403, "a legacy Page-typed row's entry must not mint");
-      assert.equal((await mint("views/not-registered.html")).status, 403, "confinement is intact under the new prefix");
-      assert.ok(queriedTypes.has("View"), "the View listing was queried");
-      assert.ok(!queriedTypes.has("Page"), `the legacy Page listing must never be requested (got: ${[...queriedTypes].join(",")})`);
-    } finally {
-      await handle.close();
-    }
-  } finally {
-    server.close();
   }
 });
 

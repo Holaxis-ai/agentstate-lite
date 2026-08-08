@@ -107,11 +107,45 @@ type PageLaunchInput = PageLaunch extends infer Launch
 export class ViewNotFoundError extends Error {
   readonly code = "VIEW_NOT_FOUND";
   readonly viewId: string;
+  readonly storageCause?: unknown;
 
-  constructor(viewId: string) {
+  constructor(viewId: string, storageCause?: unknown) {
     super(`No registered View with ID '${viewId}'.`);
     this.name = "ViewNotFoundError";
     this.viewId = viewId;
+    this.storageCause = storageCause;
+  }
+}
+
+export type RegisteredViewLaunchErrorCode =
+  | "VIEW_REGISTRY_READ_FAILED"
+  | "VIEW_INVALID_REGISTRATION"
+  | "VIEW_ENTRY_READ_FAILED"
+  | "VIEW_ENTRY_NOT_FOUND"
+  | "VIEW_ENTRY_VERSION_CONFLICT"
+  | "VIEW_ADMISSION_REJECTED"
+  | "VIEW_CHANGED_DURING_PREPARATION";
+
+/** A registered View exists, but its current registration or entry cannot produce an active launch. */
+export class RegisteredViewLaunchError extends Error {
+  readonly code: RegisteredViewLaunchErrorCode;
+  readonly viewId: string;
+  readonly entryKey?: string;
+  readonly storageCause?: unknown;
+
+  constructor(
+    code: RegisteredViewLaunchErrorCode,
+    message: string,
+    viewId: string,
+    entryKey?: string,
+    storageCause?: unknown,
+  ) {
+    super(message);
+    this.name = "RegisteredViewLaunchError";
+    this.code = code;
+    this.viewId = viewId;
+    this.entryKey = entryKey;
+    this.storageCause = storageCause;
   }
 }
 
@@ -308,22 +342,63 @@ export async function mintActiveViewLaunch(
     registryRead = await readDocVersioned(bundle, registryId);
   } catch (error) {
     if ((error as NodeJS.ErrnoException)?.code === "ENOENT") {
-      throw new ViewNotFoundError(registryId);
+      throw new ViewNotFoundError(registryId, error);
     }
-    throw error;
+    throw new RegisteredViewLaunchError(
+      "VIEW_REGISTRY_READ_FAILED",
+      error instanceof Error ? error.message : String(error),
+      registryId,
+      undefined,
+      error,
+    );
   }
   const registration = parseRegistration(registryRead.doc.id, registryRead.doc.frontmatter);
   if (!registration) {
-    throw new Error(
+    throw new RegisteredViewLaunchError(
+      "VIEW_INVALID_REGISTRATION",
       `'${registryId}' is not a valid type:View registration (the legacy type:Page name no longer registers)`,
+      registryId,
     );
   }
-  const blob = await readBlob(bundle, registration.entry);
-  if (blob === null) throw new Error(`no View bytes found for '${registration.entry}'`);
-  if (registration.entryVersion && registration.entryVersion !== blob.version) {
-    throw new Error(`View entry '${registration.entry}' no longer matches its pinned entry_version`);
+  let blob: Awaited<ReturnType<typeof readBlob>>;
+  try {
+    blob = await readBlob(bundle, registration.entry);
+  } catch (error) {
+    throw new RegisteredViewLaunchError(
+      "VIEW_ENTRY_READ_FAILED",
+      error instanceof Error ? error.message : String(error),
+      registryId,
+      registration.entry,
+      error,
+    );
   }
-  const admitted = admitActiveView(blob.bytes, blob.contentType);
+  if (blob === null) {
+    throw new RegisteredViewLaunchError(
+      "VIEW_ENTRY_NOT_FOUND",
+      `no View bytes found for '${registration.entry}'`,
+      registryId,
+      registration.entry,
+    );
+  }
+  if (registration.entryVersion && registration.entryVersion !== blob.version) {
+    throw new RegisteredViewLaunchError(
+      "VIEW_ENTRY_VERSION_CONFLICT",
+      `View entry '${registration.entry}' no longer matches its pinned entry_version`,
+      registryId,
+      registration.entry,
+    );
+  }
+  let admitted: ReturnType<typeof admitActiveView>;
+  try {
+    admitted = admitActiveView(blob.bytes, blob.contentType);
+  } catch (error) {
+    throw new RegisteredViewLaunchError(
+      "VIEW_ADMISSION_REJECTED",
+      error instanceof Error ? error.message : String(error),
+      registryId,
+      registration.entry,
+    );
+  }
   const launch = launches.mint({
     sourceKind: "registered",
     registryId: registration.id,
@@ -341,7 +416,12 @@ export async function mintActiveViewLaunch(
   });
   if (!(await launchIsCurrent(bundle, launch))) {
     launches.revoke(launch.launchId);
-    throw new Error("the View changed while its launch was being prepared");
+    throw new RegisteredViewLaunchError(
+      "VIEW_CHANGED_DURING_PREPARATION",
+      "the View changed while its launch was being prepared",
+      registryId,
+      registration.entry,
+    );
   }
   return launch as RegisteredPageLaunch;
 }

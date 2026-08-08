@@ -10,7 +10,7 @@ import assert from "node:assert/strict";
 import { createServer, request } from "node:http";
 import type { AddressInfo } from "node:net";
 
-import { MemoryBackend, readDocVersioned, writeBlob, writeDoc, type Bundle } from "@agentstate-lite/core";
+import { MemoryBackend, RemoteBackend, readDocVersioned, writeBlob, writeDoc, type Bundle } from "@agentstate-lite/core";
 import { createRouter } from "@agentstate-lite/server";
 import { bootUiServer, type UiServerHandle } from "../src/server.js";
 
@@ -205,6 +205,15 @@ test("access-only registry doc (remote mode): the inline serve-time revalidation
       res.end(JSON.stringify({ docs, next_cursor: null }));
       return;
     }
+    if (url.pathname.endsWith("/docs/views-registry/board")) {
+      res.writeHead(200, { "content-type": "application/json", "x-version": "v1" });
+      res.end(JSON.stringify({
+        id: "views-registry/board",
+        frontmatter: { type: "View", title: "Board", entry: "views/board.html", access: "bundle-read" },
+        body: "",
+      }));
+      return;
+    }
     if (url.pathname.includes("/blobs/")) {
       res.writeHead(200, { "content-type": "text/html; charset=utf-8", "x-version": "bv1" });
       res.end(bytes);
@@ -220,6 +229,10 @@ test("access-only registry doc (remote mode): the inline serve-time revalidation
     const server = await bootUiServer({
       mode: "remote",
       remoteBase: remoteOrigin,
+      bundle: {
+        root: remoteOrigin,
+        backend: new RemoteBackend({ baseUrl: remoteOrigin, bundle: "default", maxRetries: 0 }),
+      },
       sessionSecret: SECRET,
       renderDocument,
       viewAuthorization: PREAUTHORIZED_VIEWS,

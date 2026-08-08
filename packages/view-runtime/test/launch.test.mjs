@@ -7,6 +7,7 @@ import test from "node:test";
 import { FilesystemBackend } from "@agentstate-lite/core";
 import {
   PageLaunchRegistry,
+  RegisteredViewLaunchError,
   ViewNotFoundError,
   mintActiveViewLaunch,
 } from "../dist/index.js";
@@ -25,6 +26,7 @@ test("an unknown registration becomes a typed View error without leaking its fil
       assert.equal(error.message, "No registered View with ID 'views-registry/unknown'.");
       assert.doesNotMatch(error.message, /ENOENT|views-registry\/unknown\.md/);
       assert.equal(error.message.includes(root), false);
+      assert.ok(error.storageCause instanceof Error);
       return true;
     },
   );
@@ -43,6 +45,12 @@ test("launch translation does not disguise a real storage failure as an unknown 
 
   await assert.rejects(
     mintActiveViewLaunch(bundle, new PageLaunchRegistry(), "views-registry/known"),
-    (error) => error === storageFailure,
+    (error) => {
+      assert.ok(error instanceof RegisteredViewLaunchError);
+      assert.equal(error.code, "VIEW_REGISTRY_READ_FAILED");
+      assert.equal(error.message, storageFailure.message);
+      assert.equal(error.storageCause, storageFailure);
+      return true;
+    },
   );
 });

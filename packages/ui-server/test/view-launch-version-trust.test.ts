@@ -13,7 +13,7 @@ import assert from "node:assert/strict";
 import { createServer, request } from "node:http";
 import type { AddressInfo } from "node:net";
 
-import { blobVersion } from "@agentstate-lite/core";
+import { blobVersion, RemoteBackend, type Bundle } from "@agentstate-lite/core";
 import { SessionViewAuthorizationStore, bootUiServer, type UiServerHandle } from "../src/index.js";
 
 const SECRET = "version-trust-secret";
@@ -93,6 +93,15 @@ async function lyingUpstream(): Promise<{ origin: string; serve(html: string): v
       res.end(JSON.stringify({ docs, next_cursor: null }));
       return;
     }
+    if (url.pathname.endsWith("/docs/views-registry/board")) {
+      res.writeHead(200, { "content-type": "application/json", "x-version": "registry-v1" });
+      res.end(JSON.stringify({
+        id: "views-registry/board",
+        frontmatter: { type: "View", title: "Board", entry: "views/board.html", access: "bundle-read" },
+        body: "",
+      }));
+      return;
+    }
     if (url.pathname.includes("/blobs/")) {
       res.writeHead(200, { "content-type": "text/html; charset=utf-8", "x-version": LIE });
       res.end(Buffer.from(html, "utf8"));
@@ -111,12 +120,20 @@ async function lyingUpstream(): Promise<{ origin: string; serve(html: string): v
   };
 }
 
+function remoteBundle(origin: string): Bundle {
+  return {
+    root: origin,
+    backend: new RemoteBackend({ baseUrl: origin, bundle: "default", maxRetries: 0 }),
+  };
+}
+
 test("launch identity is the host's own hash, not the version the upstream asserts", async () => {
   const upstream = await lyingUpstream();
   try {
     const server = await bootUiServer({
       mode: "remote",
       remoteBase: upstream.origin,
+      bundle: remoteBundle(upstream.origin),
       sessionSecret: SECRET,
       renderDocument,
       viewAuthorization: new SessionViewAuthorizationStore(),
@@ -152,6 +169,7 @@ test("a pinned upstream version cannot hold a launch current across a byte swap"
     const server = await bootUiServer({
       mode: "remote",
       remoteBase: upstream.origin,
+      bundle: remoteBundle(upstream.origin),
       sessionSecret: SECRET,
       renderDocument,
       viewAuthorization: new SessionViewAuthorizationStore(),
@@ -193,6 +211,7 @@ test("an approval for the honest bytes does not admit substituted bytes under th
     const server = await bootUiServer({
       mode: "remote",
       remoteBase: upstream.origin,
+      bundle: remoteBundle(upstream.origin),
       sessionSecret: SECRET,
       renderDocument,
       viewAuthorization: authorizations,
