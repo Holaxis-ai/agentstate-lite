@@ -4,7 +4,7 @@ title: >-
   Release-conventions program: recorded + enforced conventions, cadence
   decision, first-stable path (orchestrated)
 actor: anthropic/claude
-timestamp: '2026-08-08T13:46:59.974Z'
+timestamp: '2026-08-08T14:01:52.992Z'
 ---
 # Goal
 
@@ -120,3 +120,7 @@ trustworthy primary distribution channel.
   no activity since 08-03, no branches) -> claimed by anthropic/claude per convention; split per
   plan: (i) assertToken leading-dash ban dispatched now; (ii) signed-receipt reconciler-as-
   finalize-gate follows as its own reviewed unit.
+- 2026-08-08: assertToken hardening BUILT + REVIEWED (APPROVE, empirical: call sites re-verified,
+  no execFile bypass, red-probe killed both ways; closes the single-dash gap run-operations'
+  arg() missed). Branch fix/release-token-leading-dash @ ce7ee73, awaiting PR/merge. p5a
+  remaining half: signed-receipt reconciler-as-finalize-gate (own reviewed unit, next build).
