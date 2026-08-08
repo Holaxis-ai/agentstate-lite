@@ -1,14 +1,14 @@
 ---
 type: Task
 title: Consolidate registered-View launch authority into view-runtime
-status: todo
+status: in_progress
 priority: '2'
 description: >-
   Delete the web host's parallel registered-View preparation/currentness/catalog
   path and route web plus MCP through one view-runtime authority while
   preserving exact local/remote behavior.
 actor: openai/codex
-timestamp: '2026-08-08T13:43:02.090Z'
+timestamp: '2026-08-08T14:05:46.385Z'
 ---
 # Objective
 
