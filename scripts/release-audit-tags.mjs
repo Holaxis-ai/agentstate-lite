@@ -1,0 +1,461 @@
+// Registry-observing release-policy audit (`npm run release:audit-tags`). Fetches the live
+// packument for @holaxis/aslite (dist-tags + versions + publish times) and FAILS when the
+// registry contradicts the ratified release policy:
+//
+//   a. dist-tag state for the phase declared in release/phase.json, with the expected tags
+//      computed by scripts/release-state.mjs `resolveTags` — the one policy authority;
+//   b. version scheme: pre-stable publishes are `A.B.0-pre.N` with N contiguous from 1 and
+//      publish times monotone in N (decisions/version-update-contract §1);
+//   c. source-vs-registry drift: packages/cli/package.json must be the newest published
+//      version (pre-release-prep) or one sane increment ahead (staged-prep).
+//
+// NETWORK vs VIOLATION is structural, not textual: unreachable/unhealthy registry throws
+// NetworkUnavailableError -> exit 20 (CI turns that into a loud neutral skip); a policy
+// violation exits 1; usage errors exit 2. Deliberately NOT part of the offline `npm run check`
+// chain — ordinary gates run with the network off.
+
+import { readFile } from "node:fs/promises";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
+
+import { resolveTags } from "./release-state.mjs";
+
+const scriptPath = fileURLToPath(import.meta.url);
+const repoRoot = path.dirname(path.dirname(scriptPath));
+
+export const PACKAGE = "@holaxis/aslite";
+export const REGISTRY_URL = "https://registry.npmjs.org/@holaxis%2faslite";
+export const EXIT_PASS = 0;
+export const EXIT_VIOLATION = 1;
+export const EXIT_USAGE = 2;
+export const EXIT_NETWORK = 20;
+const FETCH_TIMEOUT_MS = 30_000;
+const MAX_BODY_BYTES = 20 * 1024 * 1024;
+
+export const PHASES = ["at_rest", "staged", "approved", "promoted", "failed"];
+
+/** Registry unreachable or unhealthy — the audit cannot evaluate policy. Never a red. */
+export class NetworkUnavailableError extends Error {
+  constructor(message) {
+    super(message);
+    this.name = "NetworkUnavailableError";
+  }
+}
+
+const PRERELEASE_SCHEME = /^(\d+)\.(\d+)\.(\d+)-pre\.([1-9]\d*)$/;
+const SEMVER =
+  /^(\d+)\.(\d+)\.(\d+)(?:-([0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*))?(?:\+[0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*)?$/;
+
+function parseSemver(version) {
+  const m = SEMVER.exec(version);
+  if (!m) return null;
+  return {
+    major: Number(m[1]),
+    minor: Number(m[2]),
+    patch: Number(m[3]),
+    prerelease: m[4] ? m[4].split(".") : [],
+  };
+}
+
+export function compareSemver(a, b) {
+  const pa = parseSemver(a);
+  const pb = parseSemver(b);
+  if (!pa || !pb) throw new Error(`not semver: ${!pa ? a : b}`);
+  for (const key of ["major", "minor", "patch"]) {
+    if (pa[key] !== pb[key]) return pa[key] < pb[key] ? -1 : 1;
+  }
+  if (pa.prerelease.length === 0 && pb.prerelease.length === 0) return 0;
+  if (pa.prerelease.length === 0) return 1; // release > prerelease
+  if (pb.prerelease.length === 0) return -1;
+  const len = Math.max(pa.prerelease.length, pb.prerelease.length);
+  for (let i = 0; i < len; i += 1) {
+    const ia = pa.prerelease[i];
+    const ib = pb.prerelease[i];
+    if (ia === undefined) return -1; // shorter set of identifiers sorts first
+    if (ib === undefined) return 1;
+    const na = /^\d+$/.test(ia);
+    const nb = /^\d+$/.test(ib);
+    if (na && nb) {
+      if (Number(ia) !== Number(ib)) return Number(ia) < Number(ib) ? -1 : 1;
+    } else if (na !== nb) {
+      return na ? -1 : 1; // numeric identifiers sort before alphanumeric
+    } else if (ia !== ib) {
+      return ia < ib ? -1 : 1;
+    }
+  }
+  return 0;
+}
+
+function violation(code, message) {
+  return { code, message };
+}
+
+/**
+ * Validate the committed phase declaration (release/phase.json). `raw` is the parsed JSON object,
+ * or null for an absent file (= at_rest). Throws Error on an invalid declaration — invalid
+ * committed policy input is violation-class, not network-class.
+ */
+export function parsePhaseDeclaration(raw) {
+  if (raw === null || raw === undefined) return { phase: "at_rest", kind: null, version: null };
+  if (typeof raw !== "object" || Array.isArray(raw)) throw new Error("phase declaration must be a JSON object");
+  const phase = raw.phase;
+  if (!PHASES.includes(phase)) {
+    throw new Error(`phase must be one of ${PHASES.join("|")}, got ${JSON.stringify(phase)}`);
+  }
+  if (phase === "at_rest") return { phase, kind: null, version: null };
+  const kind = raw.kind;
+  if (kind !== "prerelease" && kind !== "stable") {
+    throw new Error(`phase ${phase} requires kind prerelease|stable, got ${JSON.stringify(kind)}`);
+  }
+  const version = raw.version;
+  if (typeof version !== "string" || !parseSemver(version)) {
+    throw new Error(`phase ${phase} requires a strict-SemVer candidate version, got ${JSON.stringify(version)}`);
+  }
+  return { phase, kind, version };
+}
+
+/** Contract §1 numbering: pre-stable publishes are A.B.0-pre.N, N contiguous from 1, times monotone. */
+export function checkVersionScheme(versions, time) {
+  const violations = [];
+  const lines = new Map(); // "A.B" -> [{ n, version }]
+  for (const version of versions) {
+    const parsed = parseSemver(version);
+    if (!parsed) {
+      violations.push(violation("invalid_semver", `published version ${version} is not SemVer`));
+      continue;
+    }
+    if (parsed.prerelease.length === 0) continue; // post-stable ordinary SemVer
+    const m = PRERELEASE_SCHEME.exec(version);
+    if (!m || Number(m[3]) !== 0) {
+      violations.push(
+        violation("off_scheme_version", `published prerelease ${version} is off-scheme (contract allows only A.B.0-pre.N)`),
+      );
+      continue;
+    }
+    const line = `${m[1]}.${m[2]}`;
+    if (!lines.has(line)) lines.set(line, []);
+    lines.get(line).push({ n: Number(m[4]), version });
+  }
+  for (const [line, entries] of lines) {
+    entries.sort((a, b) => a.n - b.n);
+    const ns = entries.map((e) => e.n);
+    const expected = Array.from({ length: entries.length }, (_, i) => i + 1);
+    if (ns.join(",") !== expected.join(",")) {
+      violations.push(
+        violation("pre_n_gap", `prerelease line ${line}.0-pre.N is not contiguous from 1: published N = [${ns.join(", ")}]`),
+      );
+    }
+    for (let i = 1; i < entries.length; i += 1) {
+      const prev = time?.[entries[i - 1].version];
+      const curr = time?.[entries[i].version];
+      if (!prev || !curr) {
+        violations.push(violation("missing_publish_time", `registry time entry missing for ${entries[i - (prev ? 0 : 1)].version}`));
+        continue;
+      }
+      if (Date.parse(curr) <= Date.parse(prev)) {
+        violations.push(
+          violation("pre_n_order", `${entries[i].version} (${curr}) was not published after ${entries[i - 1].version} (${prev})`),
+        );
+      }
+    }
+  }
+  return violations;
+}
+
+function newestOf(versions) {
+  return versions.length === 0 ? null : versions.slice().sort(compareSemver)[versions.length - 1];
+}
+
+/**
+ * Expected dist-tag state for the declared phase, computed via `resolveTags`. The audit derives
+ * the priors (the at-rest known-good: newest published, excluding an in-flight candidate) and the
+ * policy state machine maps (kind, phase, candidate, priors) -> expected tags.
+ */
+export function expectedTagState({ declaration, versions, observedTags }) {
+  const notes = [];
+  const violations = [];
+  const stable = versions.filter((v) => parseSemver(v)?.prerelease.length === 0);
+  const stableReached = stable.length > 0;
+
+  if (declaration.phase === "at_rest") {
+    if (versions.length === 0) {
+      violations.push(violation("package_unpublished", `${PACKAGE} has no published versions`));
+      return { expected: null, notes, violations };
+    }
+    if (!stableReached) {
+      // Pre-stable at rest: latest == next == newest published prerelease (contract §1).
+      const rest = newestOf(versions);
+      return { expected: resolveTags({ kind: "prerelease", phase: "at_rest", priorLatest: rest, priorNext: rest }), notes, violations };
+    }
+    // Post-stable at rest: latest is the newest stable; next only for a genuine newer preview.
+    const newestStable = newestOf(stable);
+    const observedNext = observedTags?.next;
+    const genuinePreview =
+      observedNext && versions.includes(observedNext) && compareSemver(observedNext, newestStable) > 0
+        ? observedNext
+        : undefined;
+    if (genuinePreview) notes.push(`next=${genuinePreview} accepted as a genuine published preview newer than latest`);
+    return {
+      expected: resolveTags({ kind: "stable", phase: "promoted", version: newestStable, priorNext: genuinePreview }),
+      notes,
+      violations,
+    };
+  }
+
+  // Transaction phases: priors = newest published excluding the candidate.
+  const { phase, kind, version } = declaration;
+  const prior = newestOf(versions.filter((v) => v !== version));
+  if (!prior) {
+    violations.push(violation("no_prior_release", `phase ${phase} declared but no published prior release exists to hold latest`));
+    return { expected: null, notes, violations };
+  }
+  const candidatePublished = versions.includes(version);
+  if (phase === "promoted" && !candidatePublished) {
+    violations.push(violation("candidate_unpublished", `phase promoted declares ${version} but it is not published`));
+    return { expected: null, notes, violations };
+  }
+  if ((phase === "staged" || phase === "approved") && !candidatePublished) {
+    // npm cannot point a dist-tag at an unpublished version: expect the at-rest prior state.
+    notes.push(`candidate ${version} not yet published; expecting tags to still hold the prior known-good ${prior}`);
+    return { expected: resolveTags({ kind, phase: "at_rest", priorLatest: prior, priorNext: prior }), notes, violations };
+  }
+  const expected = resolveTags({ kind, phase, version, priorLatest: prior, priorNext: prior });
+  if (expected.deprecate) {
+    notes.push(`policy expects ${expected.deprecate} to be deprecated (deprecation state is not observed by this audit)`);
+  }
+  return { expected, notes, violations };
+}
+
+/** Sane successors of the newest published version (source may be prepping the next release). */
+export function saneSuccessors(newest) {
+  const pre = PRERELEASE_SCHEME.exec(newest);
+  if (pre) {
+    const [, major, minor, , n] = pre;
+    return [
+      `${major}.${minor}.0-pre.${Number(n) + 1}`,
+      `${major}.${Number(minor) + 1}.0-pre.1`,
+      `${major}.${minor}.0`,
+    ];
+  }
+  const parsed = parseSemver(newest);
+  if (!parsed || parsed.prerelease.length > 0) return [];
+  const { major, minor, patch } = parsed;
+  return [
+    `${major}.${minor}.${patch + 1}`,
+    `${major}.${minor + 1}.0`,
+    `${major + 1}.0.0`,
+    `${major}.${minor + 1}.0-pre.1`,
+    `${major + 1}.0.0-pre.1`,
+  ];
+}
+
+export function checkSourceDrift(sourceVersion, versions) {
+  if (!parseSemver(sourceVersion)) {
+    return { violations: [violation("invalid_source_version", `packages/cli version ${JSON.stringify(sourceVersion)} is not SemVer`)] };
+  }
+  const newest = newestOf(versions);
+  if (!newest) return { violations: [], state: "no-published-baseline" };
+  if (sourceVersion === newest) return { violations: [], state: "in-sync" };
+  const successors = saneSuccessors(newest);
+  if (successors.includes(sourceVersion)) return { violations: [], state: "staged-prep" };
+  if (compareSemver(sourceVersion, newest) < 0) {
+    return {
+      violations: [
+        violation(
+          "source_behind_registry",
+          `packages/cli version ${sourceVersion} is BEHIND newest published ${newest}; sync source to the registry (pull/rebase the release-preparation state) before releasing`,
+        ),
+      ],
+    };
+  }
+  return {
+    violations: [
+      violation(
+        "source_version_jump",
+        `packages/cli version ${sourceVersion} is not a sane successor of newest published ${newest}; expected ${newest} (pre-release-prep) or one of [${successors.join(", ")}] (staged-prep)`,
+      ),
+    ],
+  };
+}
+
+/**
+ * The pure audit over one registry snapshot. Returns { violations, notes, facts }; empty
+ * violations means the registry, phase declaration, and source agree with policy.
+ */
+export function auditRegistryState({ declaration, sourceVersion, registry }) {
+  const { distTags, versions, time } = registry;
+  const violations = [];
+  const notes = [];
+
+  violations.push(...checkVersionScheme(versions, time));
+
+  const tagState = expectedTagState({ declaration, versions, observedTags: distTags });
+  violations.push(...tagState.violations);
+  notes.push(...tagState.notes);
+  if (tagState.expected) {
+    for (const tag of ["latest", "next"]) {
+      const expected = tagState.expected[tag];
+      const observed = distTags?.[tag];
+      if (observed !== expected) {
+        violations.push(
+          violation(
+            `${tag}_off_policy`,
+            `dist-tag ${tag} is ${observed ?? "(unset)"} but policy for phase ${declaration.phase} expects ${expected}`,
+          ),
+        );
+      }
+    }
+  }
+  for (const tag of Object.keys(distTags ?? {})) {
+    if (tag !== "latest" && tag !== "next") {
+      violations.push(violation("unexpected_dist_tag", `dist-tag ${tag}=${distTags[tag]} is outside the latest/next policy`));
+    }
+  }
+
+  const drift = checkSourceDrift(sourceVersion, versions);
+  violations.push(...drift.violations);
+
+  return {
+    violations,
+    notes,
+    facts: {
+      phase: declaration.phase,
+      kind: declaration.kind,
+      candidate: declaration.version,
+      source_version: sourceVersion,
+      newest_published: newestOf(versions),
+      dist_tags: distTags,
+      expected_tags: tagState.expected,
+      source_state: drift.state ?? "violating",
+    },
+  };
+}
+
+/** HTTP status -> structural class: 200 data, 404 violation-class, anything else network-class. */
+export function classifyRegistryStatus(status) {
+  if (status === 200) return "ok";
+  if (status === 404) return "missing";
+  return "unavailable";
+}
+
+export async function fetchRegistryState({ url = REGISTRY_URL, timeoutMs = FETCH_TIMEOUT_MS, fetchImpl = fetch } = {}) {
+  let response;
+  try {
+    response = await fetchImpl(url, {
+      redirect: "error",
+      signal: AbortSignal.timeout(timeoutMs),
+      headers: { accept: "application/json" },
+    });
+  } catch (error) {
+    throw new NetworkUnavailableError(`registry request failed: ${error?.message ?? error}`);
+  }
+  const klass = classifyRegistryStatus(response.status);
+  if (klass === "unavailable") throw new NetworkUnavailableError(`registry responded ${response.status}`);
+  if (klass === "missing") return { missing: true };
+  let text;
+  try {
+    text = await response.text();
+  } catch (error) {
+    throw new NetworkUnavailableError(`registry response read failed: ${error?.message ?? error}`);
+  }
+  if (text.length > MAX_BODY_BYTES) throw new NetworkUnavailableError("registry response exceeded the size bound");
+  let body;
+  try {
+    body = JSON.parse(text);
+  } catch {
+    throw new NetworkUnavailableError("registry response was not JSON");
+  }
+  const { created, modified, ...versionTimes } = body.time ?? {};
+  return {
+    missing: false,
+    distTags: body["dist-tags"] ?? {},
+    versions: Object.keys(body.versions ?? {}),
+    time: versionTimes,
+  };
+}
+
+async function readPhaseDeclaration(phaseFile) {
+  let raw;
+  try {
+    raw = await readFile(phaseFile, "utf8");
+  } catch (error) {
+    if (error?.code === "ENOENT") return parsePhaseDeclaration(null);
+    throw error;
+  }
+  let parsed;
+  try {
+    parsed = JSON.parse(raw);
+  } catch (error) {
+    throw new Error(`${phaseFile} is not valid JSON: ${error.message}`);
+  }
+  return parsePhaseDeclaration(parsed);
+}
+
+function arg(argv, flag) {
+  const at = argv.indexOf(flag);
+  if (at === -1) return undefined;
+  const value = argv[at + 1];
+  if (!value || value.startsWith("--")) throw new Error(`missing value for ${flag}`);
+  return value;
+}
+
+export async function main(argv = process.argv.slice(2)) {
+  const phaseFile = arg(argv, "--phase-file") ?? path.join(repoRoot, "release", "phase.json");
+  const registryJson = arg(argv, "--registry-json"); // replay hatch: audit a captured payload
+  const registryUrl = arg(argv, "--registry-url") ?? REGISTRY_URL; // test hatch for the network path
+
+  let declaration;
+  try {
+    declaration = await readPhaseDeclaration(phaseFile);
+  } catch (error) {
+    console.error(`release-audit: VIOLATION[phase_declaration]: ${error.message}`);
+    return EXIT_VIOLATION;
+  }
+  const cliManifest = JSON.parse(await readFile(path.join(repoRoot, "packages", "cli", "package.json"), "utf8"));
+
+  let registry;
+  if (registryJson) {
+    const body = JSON.parse(await readFile(registryJson, "utf8"));
+    const { created, modified, ...versionTimes } = body.time ?? {};
+    registry = {
+      missing: false,
+      distTags: body["dist-tags"] ?? {},
+      versions: Array.isArray(body.versions) ? body.versions : Object.keys(body.versions ?? {}),
+      time: versionTimes,
+    };
+  } else {
+    registry = await fetchRegistryState({ url: registryUrl });
+  }
+  if (registry.missing) {
+    console.error(`release-audit: VIOLATION[package_missing]: registry has no packument for ${PACKAGE}`);
+    return EXIT_VIOLATION;
+  }
+
+  const result = auditRegistryState({ declaration, sourceVersion: cliManifest.version, registry });
+  console.log(`release-audit: package ${PACKAGE}`);
+  console.log(`release-audit: facts ${JSON.stringify(result.facts)}`);
+  for (const note of result.notes) console.log(`release-audit: note: ${note}`);
+  if (result.violations.length > 0) {
+    for (const v of result.violations) console.error(`release-audit: VIOLATION[${v.code}]: ${v.message}`);
+    console.error(`release-audit: FAIL (${result.violations.length} violation${result.violations.length === 1 ? "" : "s"})`);
+    return EXIT_VIOLATION;
+  }
+  console.log("release-audit: PASS — registry dist-tags, version scheme, and source version agree with policy");
+  return EXIT_PASS;
+}
+
+if (process.argv[1] && path.resolve(process.argv[1]) === scriptPath) {
+  main()
+    .then((code) => {
+      process.exitCode = code;
+    })
+    .catch((error) => {
+      if (error instanceof NetworkUnavailableError) {
+        console.error(`release-audit: NETWORK: ${error.message} — policy not evaluated (neutral, exit ${EXIT_NETWORK})`);
+        process.exitCode = EXIT_NETWORK;
+        return;
+      }
+      console.error(error instanceof Error ? error.stack : error);
+      process.exitCode = EXIT_USAGE;
+    });
+}
