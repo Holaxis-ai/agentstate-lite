@@ -1,11 +1,11 @@
 ---
 type: Task
 title: Independently review the implemented review-alignment artifacts
-status: in_progress
+status: blocked
 priority: '2'
 assignee: review-alignment-reviewer
-actor: review-alignment-reviewer
-timestamp: '2026-08-08T15:18:09.664Z'
+actor: codex-orchestrator
+timestamp: '2026-08-08T16:07:30.499Z'
 ---
 # Objective
 
@@ -22,3 +22,9 @@ Audit exact frozen-byte preservation, census completeness, kind compatibility, t
 [depends on](architecture-review-alignment-family-wrappers.md)
 
 [depends on](architecture-review-alignment-portfolio-view.md)
+
+# Gate outcome
+
+Portability and provenance approve exact View `sha256:70ee30c9a5842ba8e1bb2192ede66c002ef1d5f78efe5e8d52ababc5612788ea`; security remains `CHANGES_REQUIRED`. At 33 or more returned Reviews, one v0 edge selector exceeds the parser's 32-value bound and can leave the snapshot pending. The owning selector parser also trims core-valid opaque IDs, so a complete edge response can describe the wrong identity and permit false currentness.
+
+The first repair belongs in bounded View batching; the second belongs in the view-runtime parser and is outside the accepted bundle-only contract. The task is blocked pending explicit authorization for a source-code scope expansion. Evidence: [system model and boundary](../context-notes/architecture-review-alignment-view-command-system-model.md), [security gate](../context-notes/architecture-review-alignment-view-source-security-review.md), [portability approval](../context-notes/architecture-review-alignment-implementation-portability-review.md), and [provenance approval](../context-notes/architecture-review-alignment-implementation-provenance-review.md).

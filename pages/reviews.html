@@ -58,17 +58,19 @@
     parent.postMessage({ bridge: PROTO, type: "open-page", pageId: pageId }, "*");
   }
   function watch(refresh) {
-    if (typeof refresh !== "function") return Promise.reject(new TypeError("Bridge.watch requires a refresh function"));
-    var active = true, ready = false, running = false, queued = [];
+    if (typeof refresh !== "function") throw new TypeError("Bridge.watch requires a refresh function");
+    var active = true, ready = false, running = false, queued = [], waiters = [];
     function schedule(initial) {
       running = true;
-      var batch = queued.splice(0);
+      var batch = queued.splice(0), batchWaiters = waiters.splice(0);
       return Promise.resolve().then(function () { return refresh(batch); }).then(function (value) {
         running = false;
+        batchWaiters.forEach(function (waiter) { waiter.resolve(value); });
         if (queued.length) void schedule(false);
         return value;
       }, function (err) {
         running = false;
+        batchWaiters.forEach(function (waiter) { waiter.reject(err); });
         if (queued.length) void schedule(false);
         if (initial) throw err;
         console.error("Bridge.watch refresh failed", err);
@@ -79,13 +81,22 @@
       queued.push(event);
       if (ready && !running) void schedule(false);
     }
-    return window.Bridge.subscribe(onChange).then(function () {
+    function requestRefresh() {
+      if (!active) return Promise.reject(new Error("Bridge.watch is not active"));
+      return new Promise(function (resolve, reject) {
+        waiters.push({ resolve:resolve, reject:reject });
+        if (!queued.some(function (item) { return item && item.manual === true; })) queued.push({ manual:true });
+        if (ready && !running) void schedule(false);
+      });
+    }
+    var readyPromise = window.Bridge.subscribe(onChange).then(function () {
       ready = true;
       return schedule(true);
     }, function (err) {
       active = false;
       throw err;
     });
+    return { ready:readyPromise, refresh:requestRefresh };
   }
   window.addEventListener("message", function (e) {
     if (e.source !== window.parent) return;
@@ -116,7 +127,7 @@
   var KNOWN_REVIEW_FIELDS = ["type","title","timestamp","actor","status","role","verdict","verdict_subject","family","target","target_version","evidence_cutoff","template_version","owner"];
   var KNOWN_REQUEST_FIELDS = ["type","title","timestamp","actor","status","reviewer","requested_by","question","decision_summary","decided_at"];
   var portfolio = document.getElementById("portfolio"), detail = document.getElementById("detail"), notices = document.getElementById("notices"), metrics = document.getElementById("metrics"), live = document.getElementById("live");
-  var state = { requests:null, reviews:null, lastGoodRequests:null, lastGoodReviews:null, selectedId:null, filter:"all", detailGeneration:0, refreshCount:0 };
+  var state = { requests:null, reviews:null, lastGoodRequests:null, lastGoodReviews:null, selectedId:null, selectionNotice:null, filter:"all", detailGeneration:0, refreshCount:0, retry:null };
 
   function el(tag, className, text) {
     var item = document.createElement(tag);
@@ -131,7 +142,12 @@
     if (typeof value === "string" || typeof value === "number" || typeof value === "boolean") return String(value);
     try { return JSON.stringify(value); } catch (_) { return String(value); }
   }
-  function totalValue(result) { return result && typeof result.count === "number" ? result.count : null; }
+  function validCount(value) { return typeof value === "number" && Number.isSafeInteger(value) && value >= 0 ? value : null; }
+  function resultShape(result, key) {
+    var collectionValid = !!result && Array.isArray(result[key]), rows = collectionValid ? result[key] : [], count = validCount(result && result.count);
+    var contradictory = collectionValid && count !== null && rows.length > count, total = collectionValid && count !== null && !contradictory ? count : null;
+    return { rows:rows, count:count, total:total, collectionValid:collectionValid, contradictory:contradictory, complete:total !== null && rows.length === total };
+  }
   function shownTotal(shown, total) { return total === null ? String(shown) + " shown · total unknown" : String(shown) + " of " + String(total); }
   function newer(a, b) {
     var av = Date.parse(textValue(fm(a).timestamp, "")), bv = Date.parse(textValue(fm(b).timestamp, ""));
@@ -142,6 +158,16 @@
   function errorMessage(result) { return result && result.reason && result.reason.message ? result.reason.message : "unknown bridge failure"; }
   function fulfilled(result) { return result && result.status === "fulfilled"; }
   function cloneData(value) { var copy = {}; Object.keys(value || {}).forEach(function (key) { copy[key] = value[key]; }); return copy; }
+  function completenessProblem(shape, label, noun) {
+    var units = noun || "rows";
+    if (!shape.collectionValid) return label + " did not return an array; the returned collection and total are unknown.";
+    if (shape.count === null) return label + " returned " + String(shape.rows.length) + " " + units + " but its count is missing or invalid; count must be a finite nonnegative safe integer, so completeness and total are unknown.";
+    if (shape.contradictory) return label + " returned " + String(shape.rows.length) + " " + units + " but count " + String(shape.count) + " underreports that collection; the result is contradictory and total is unknown.";
+    if (!shape.complete) return label + " returned " + String(shape.rows.length) + " of " + String(shape.total) + " " + units + "; the response is partial or capped.";
+    return null;
+  }
+  function posixShellQuote(value) { return "'" + String(value).replace(/'/g,"'\"'\"'") + "'"; }
+  function relationRecoverySubcommand(id) { return "link show --limit 0 -- " + posixShellQuote(id); }
   function setLive(label, tone) {
     live.textContent = "";
     var dot = el("span", "dot" + (tone ? " " + tone : ""));
@@ -151,16 +177,20 @@
 
   function makeRequestData(allResult, openResult) {
     if (fulfilled(allResult) && fulfilled(openResult)) {
-      var all = allResult.value, open = openResult.value;
-      return { rows:all.rows || [], total:totalValue(all), openRows:open.rows || [], openTotal:totalValue(open), lifecycleKnown:true, partial:false, stale:false, problems:[] };
+      var all = resultShape(allResult.value,"rows"), open = resultShape(openResult.value,"rows"), problems = [];
+      var allProblem = completenessProblem(all,"The all-Review-Request query"), openProblem = completenessProblem(open,"The bundle open-filter query");
+      if (allProblem) problems.push(allProblem); if (openProblem) problems.push(openProblem);
+      return { rows:all.rows, total:all.total, allComplete:all.complete, openRows:open.rows, openTotal:open.total, openMembershipComplete:open.complete, partial:!all.complete || !open.complete, stale:false, problems:problems };
     }
     if (fulfilled(allResult)) {
-      var onlyAll = allResult.value;
-      return { rows:onlyAll.rows || [], total:totalValue(onlyAll), openRows:[], openTotal:null, lifecycleKnown:false, partial:true, stale:false, problems:["Open-request classification failed: " + errorMessage(openResult)] };
+      var onlyAll = resultShape(allResult.value,"rows"), onlyAllProblems = ["The bundle open-filter query failed; rows not returned by that query cannot be classified: " + errorMessage(openResult)], onlyAllProblem = completenessProblem(onlyAll,"The all-Review-Request query");
+      if (onlyAllProblem) onlyAllProblems.push(onlyAllProblem);
+      return { rows:onlyAll.rows, total:onlyAll.total, allComplete:onlyAll.complete, openRows:[], openTotal:null, openMembershipComplete:false, partial:true, stale:false, problems:onlyAllProblems };
     }
     if (fulfilled(openResult)) {
-      var onlyOpen = openResult.value;
-      return { rows:onlyOpen.rows || [], total:null, openRows:onlyOpen.rows || [], openTotal:totalValue(onlyOpen), lifecycleKnown:false, partial:true, stale:false, problems:["The complete Review Request query failed; only rows returned by the bundle's open filter are shown: " + errorMessage(allResult)] };
+      var onlyOpen = resultShape(openResult.value,"rows"), onlyOpenProblems = ["The all-Review-Request query failed; only rows returned by the bundle open filter are shown: " + errorMessage(allResult)], onlyOpenProblem = completenessProblem(onlyOpen,"The bundle open-filter query");
+      if (onlyOpenProblem) onlyOpenProblems.push(onlyOpenProblem);
+      return { rows:onlyOpen.rows, total:null, allComplete:false, openRows:onlyOpen.rows, openTotal:onlyOpen.total, openMembershipComplete:onlyOpen.complete, partial:true, stale:false, problems:onlyOpenProblems };
     }
     if (state.lastGoodRequests) {
       var stale = cloneData(state.lastGoodRequests);
@@ -168,7 +198,7 @@
       stale.problems = ["Review Request refresh failed; showing the last successful request snapshot: " + errorMessage(allResult) + "; " + errorMessage(openResult)];
       return stale;
     }
-    return { rows:[], total:null, openRows:[], openTotal:null, lifecycleKnown:false, partial:true, stale:false, unavailable:true, problems:["Review Requests are unavailable: " + errorMessage(allResult) + "; " + errorMessage(openResult)] };
+    return { rows:[], total:null, allComplete:false, openRows:[], openTotal:null, openMembershipComplete:false, partial:true, stale:false, unavailable:true, problems:["Review Requests are unavailable: " + errorMessage(allResult) + "; " + errorMessage(openResult)] };
   }
 
   async function makeReviewData(reviewResult) {
@@ -179,23 +209,28 @@
         stale.problems = ["Review refresh failed; showing the last successful report snapshot: " + errorMessage(reviewResult)];
         return stale;
       }
-      return { rows:[], total:null, edges:[], edgesKnown:false, partial:true, stale:false, unavailable:true, problems:["Reviews are unavailable: " + errorMessage(reviewResult)] };
+      return { rows:[], total:null, rowsComplete:false, edges:[], edgesKnown:false, partial:true, stale:false, unavailable:true, problems:["Reviews are unavailable: " + errorMessage(reviewResult)] };
     }
-    var value = reviewResult.value, rows = value.rows || [], ids = rows.map(function (row) { return row.id; }), edgeResults;
+    var value = resultShape(reviewResult.value,"rows"), rows = value.rows, ids = rows.map(function (row) { return row.id; }), edgeResults;
     if (!ids.length) edgeResults = [{ status:"fulfilled", value:{ edges:[], count:0 } },{ status:"fulfilled", value:{ edges:[], count:0 } }];
     else edgeResults = await Promise.allSettled([Bridge.edges({ from:ids }),Bridge.edges({ to:ids })]);
-    var returned = [], seen = Object.create(null);
-    edgeResults.forEach(function (result) {
-      if (!fulfilled(result)) return;
-      (result.value.edges || []).forEach(function (edge) {
+    var edgeShapes = edgeResults.map(function (result) { return fulfilled(result) ? resultShape(result.value,"edges") : null; }), returned = [], seen = Object.create(null);
+    edgeShapes.forEach(function (shape) {
+      if (!shape) return;
+      shape.rows.forEach(function (edge) {
         var key = JSON.stringify([edge.from,edge.to,edge.text]);
         if (!seen[key]) { seen[key] = true; returned.push(edge); }
       });
     });
-    if (fulfilled(edgeResults[0]) && fulfilled(edgeResults[1])) {
-      return { rows:rows, total:totalValue(value), edges:returned, edgeTotal:returned.length, edgesKnown:true, partial:false, stale:false, problems:[] };
-    }
-    return { rows:rows, total:totalValue(value), edges:returned, edgeTotal:null, edgesKnown:false, partial:true, stale:false, problems:["The bidirectional Review graph query was partial; effective-conclusion claims are suppressed: outbound " + (fulfilled(edgeResults[0]) ? "available" : errorMessage(edgeResults[0])) + "; inbound " + (fulfilled(edgeResults[1]) ? "available" : errorMessage(edgeResults[1]))] };
+    var rowsComplete = value.complete, graphComplete = edgeShapes[0] && edgeShapes[0].complete && edgeShapes[1] && edgeShapes[1].complete, problems = [];
+    var rowProblem = completenessProblem(value,"The Review query"); if (rowProblem) problems.push(rowProblem);
+    ["outbound","inbound"].forEach(function (direction,index) {
+      var result = edgeResults[index];
+      if (!fulfilled(result)) problems.push("The " + direction + " Review graph query failed: " + errorMessage(result));
+      else { var problem = completenessProblem(edgeShapes[index],"The " + direction + " Review graph query","edges"); if (problem) problems.push(problem); }
+    });
+    if (!graphComplete) problems.push("The bidirectional Review graph is incomplete; all effective-conclusion claims are suppressed.");
+    return { rows:rows, total:value.total, rowsComplete:rowsComplete, edges:returned, edgesKnown:!!graphComplete, partial:!rowsComplete || !graphComplete, stale:false, problems:problems };
   }
 
   function isTruncated(data) {
@@ -209,7 +244,7 @@
     metrics.textContent = ""; notices.textContent = "";
     var requests = state.requests, reviews = state.reviews;
     addMetric(requests ? datasetCount(requests) : "unavailable", "human Review Requests");
-    addMetric(requests && requests.lifecycleKnown ? shownTotal(requests.openRows.length, requests.openTotal) : "unknown", "open per bundle Kind rules");
+    addMetric(requests ? shownTotal(requests.openRows.length, requests.openTotal) : "unavailable", "returned by bundle open filter");
     addMetric(reviews ? datasetCount(reviews) : "unavailable", "durable Review reports");
     var incomplete = !requests || !reviews || requests.partial || reviews.partial || requests.stale || reviews.stale || isTruncated(requests) || isTruncated(reviews);
     addMetric(incomplete ? "partial" : "complete", "portfolio snapshot");
@@ -219,6 +254,15 @@
       if (isTruncated(data)) addNotice("A query cap was reached. " + datasetCount(data) + " rows are visible; omitted rows are not classified as unresolved. Use the CLI query for the complete inventory.", "warn");
       if (data.stale) addNotice("This dataset is the last successful snapshot and may not reflect the current bundle head.", "warn");
     });
+    if (state.selectionNotice) addNotice(state.selectionNotice,"warn");
+    if (incomplete && state.retry) {
+      var retry = el("button","action","Retry live refresh"); retry.type = "button";
+      retry.addEventListener("click",function () {
+        retry.disabled = true; retry.textContent = "Retrying…";
+        state.retry().catch(function (error) { retry.disabled = false; retry.textContent = "Retry live refresh"; addNotice("Retry failed: " + error.message,"error"); });
+      });
+      notices.appendChild(retry);
+    }
   }
 
   function badge(text) { return el("span", "badge", text); }
@@ -260,12 +304,11 @@
     var data = state.requests, section = el("section", "dataset"), head = el("div", "dataset-head"); section.dataset.dataset = "requests";
     head.appendChild(el("h2", "", "Human Review Requests")); head.appendChild(el("p", "", data ? datasetCount(data) : "unavailable")); section.appendChild(head);
     if (!data || data.unavailable) section.appendChild(el("div", "empty", "No Review Request rows are currently available."));
-    else if (data.lifecycleKnown) {
-      var openIds = new Set(data.openRows.map(function (row) { return row.id; }));
-      section.appendChild(groupSection("Open per bundle Kind rules", data.rows.filter(function (row) { return openIds.has(row.id); }), "Review Request"));
-      section.appendChild(groupSection("Terminal per bundle Kind rules", data.rows.filter(function (row) { return !openIds.has(row.id); }), "Review Request"));
-    } else {
-      section.appendChild(groupSection("Lifecycle unavailable", data.rows, "Review Request", "The bundle did not return one complete all/open pair, so no row is guessed open or terminal."));
+    else {
+      var returnedIds = new Set(data.openRows.map(function (row) { return row.id; })), returned = data.rows.filter(function (row) { return returnedIds.has(row.id); }), other = data.rows.filter(function (row) { return !returnedIds.has(row.id); });
+      section.appendChild(groupSection("Returned by bundle open filter", returned, "Review Request", "This is transport membership, not a lifecycle conclusion. If no governing Review Request Kind is installed, the open filter may be a no-op."));
+      if (data.openMembershipComplete) section.appendChild(groupSection("Not returned by bundle open filter", other, "Review Request", "The filter response has a numeric complete count. Not returned does not mean terminal."));
+      else section.appendChild(groupSection("Open-filter membership unknown", other, "Review Request", "The filter response failed, was capped, or lacked a numeric count. These rows cannot be classified as returned or not returned."));
     }
     root.appendChild(section);
   }
@@ -296,17 +339,24 @@
   function chooseSelection() {
     var rows = allRows(), ids = new Set(rows.map(function (row) { return row.id; }));
     if (state.selectedId && ids.has(state.selectedId)) return rows.find(function (row) { return row.id === state.selectedId; });
-    var open = state.requests && state.requests.lifecycleKnown ? state.requests.openRows.slice().sort(newer) : [];
+    var open = state.requests ? state.requests.openRows.slice().sort(newer) : [];
     var syntheses = state.reviews ? state.reviews.rows.filter(function (row) { return roleGroup(row) === "synthesis"; }).sort(newer) : [];
     var fallback = open[0] || syntheses[0] || rows.slice().sort(newer)[0] || null;
     state.selectedId = fallback ? fallback.id : null; return fallback;
+  }
+  function reconcileSelection() {
+    var prior = state.selectedId, ids = new Set(allRows().map(function (row) { return row.id; })), disappeared = !!prior && !ids.has(prior);
+    if (disappeared) state.selectedId = null;
+    var selected = chooseSelection();
+    if (disappeared) state.selectionNotice = "Selected record " + prior + " is no longer present in the current returned rows; selection moved deterministically to " + (selected ? selected.id : "no record") + ".";
+    return selected;
   }
   function applyFilter() {
     document.querySelectorAll("[data-dataset]").forEach(function (section) { section.classList.toggle("hidden", state.filter !== "all" && section.dataset.dataset !== state.filter); });
   }
   function renderPortfolio() {
-    portfolio.textContent = ""; renderSummary(); renderRequests(portfolio); renderReviews(portfolio); applyFilter();
-    var selected = chooseSelection();
+    portfolio.textContent = ""; renderRequests(portfolio); renderReviews(portfolio); applyFilter();
+    var selected = reconcileSelection(); renderSummary();
     document.querySelectorAll("[data-record-id]").forEach(function (item) { item.setAttribute("aria-pressed", item.dataset.recordId === state.selectedId ? "true" : "false"); });
     if (selected) void loadDetail(selected); else { detail.textContent = ""; detail.classList.add("hidden"); }
   }
@@ -328,9 +378,13 @@
   }
   function successionAssessment(id) {
     var data = state.reviews;
-    if (!data || data.stale || data.partial || !data.edgesKnown || isTruncated(data)) return { level:"incomplete", title:"Effective conclusion not asserted", detail:"The Review dataset, graph, or cap is incomplete or stale. Currentness is suppressed rather than guessed." };
+    if (!data || data.stale || data.partial || !data.rowsComplete || !data.edgesKnown || isTruncated(data)) return { level:"incomplete", title:"Effective conclusion not asserted", detail:"The Review dataset, graph, count, or cap is incomplete or stale. Currentness is suppressed rather than guessed." };
     var rows = data.rows, byId = Object.create(null); rows.forEach(function (row) { byId[row.id] = row; });
     var selected = byId[id]; if (!selected) return null;
+    if (!completeLine(selected)) return { level:"incomplete", title:"Currentness not asserted", detail:"The declared subject, target, version, evidence cutoff, or verdict fields are incomplete." };
+    var sameLineRows = rows.filter(function (row) { return row.id !== id && sameLine(selected,row); }), sameLineIds = new Set([id].concat(sameLineRows.map(function (row) { return row.id; })));
+    var unknownSameLineEdge = data.edges.some(function (edge) { return edge.text !== "succeeds review" && edge.from !== edge.to && sameLineIds.has(edge.from) && sameLineIds.has(edge.to); });
+    if (unknownSameLineEdge) return { level:"ambiguous", title:"Same-line relation is unclassified", detail:"Another Review on the exact declared line is connected by a relation other than the literal `succeeds review`. The relation remains visible, but automatic currentness fails closed." };
     var candidates = data.edges.filter(function (edge) { return edge.text === "succeeds review"; });
     var adjacency = Object.create(null); rows.forEach(function (row) { adjacency[row.id] = []; });
     candidates.forEach(function (edge) { if (adjacency[edge.from]) adjacency[edge.from].push(edge.to); if (adjacency[edge.to]) adjacency[edge.to].push(edge.from); });
@@ -339,8 +393,8 @@
       var current = queue.shift(); (adjacency[current] || []).forEach(function (next) { if (!component.has(next)) { component.add(next); queue.push(next); } });
     }
     var componentEdges = candidates.filter(function (edge) { return component.has(edge.from) || component.has(edge.to); });
+    if (sameLineRows.some(function (row) { return !component.has(row.id); })) return { level:"ambiguous", title:"Disconnected same-line Reviews", detail:"Another Review declares the exact same target, version, evidence cutoff, and verdict subject but is not connected by a classified succession chain. No standalone or effective conclusion is asserted." };
     if (!componentEdges.length) {
-      if (!completeLine(selected)) return { level:"incomplete", title:"Standalone currentness not asserted", detail:"No classified succession edge exists and the declared subject/target/version/evidence fields are incomplete." };
       return { level:"effective", title:"Standalone effective conclusion for the declared subject", detail:"No classified successor is present in the complete live Review graph. This statement applies only to the displayed verdict subject; it is not a generic target approval." };
     }
     var structural = false, incomplete = false, valid = [];
@@ -396,19 +450,32 @@
   async function renderRelations(container, selectedId, generation) {
     var results = await Promise.allSettled([Bridge.edges({ from:selectedId }), Bridge.edges({ to:selectedId })]);
     if (generation !== state.detailGeneration) return;
-    var rows = [], total = 0, totalKnown = true, problems = [];
-    if (fulfilled(results[0])) { total += totalValue(results[0].value) === null ? 0 : totalValue(results[0].value); (results[0].value.edges || []).forEach(function (edge) { rows.push({ direction:"outbound to", other:edge.to, edge:edge }); }); }
-    else { totalKnown = false; problems.push("Outbound relations unavailable: " + errorMessage(results[0])); }
-    if (fulfilled(results[1])) { total += totalValue(results[1].value) === null ? 0 : totalValue(results[1].value); (results[1].value.edges || []).forEach(function (edge) { rows.push({ direction:"inbound from", other:edge.from, edge:edge }); }); }
-    else { totalKnown = false; problems.push("Inbound relations unavailable: " + errorMessage(results[1])); }
+    var rows = [], total = 0, totalKnown = true, evidenceIncomplete = false, problems = [];
+    function collect(result, label, direction, otherKey) {
+      if (!fulfilled(result)) { totalKnown = false; evidenceIncomplete = true; problems.push(label + " relations unavailable: " + errorMessage(result)); return; }
+      var shape = resultShape(result.value,"edges"), problem = completenessProblem(shape,label + " relations","edges");
+      if (shape.total === null) totalKnown = false; else total += shape.total;
+      if (!shape.complete) evidenceIncomplete = true;
+      if (problem) problems.push(problem);
+      shape.rows.forEach(function (edge) { rows.push({ direction:direction, other:edge[otherKey], edge:edge }); });
+    }
+    collect(results[0],"Outbound","outbound to","to"); collect(results[1],"Inbound","inbound from","from");
     rows.sort(function (a,b) { return a.direction.localeCompare(b.direction) || textValue(a.edge.text, "").localeCompare(textValue(b.edge.text, "")) || a.other.localeCompare(b.other); });
     var visible = rows.slice(0, RELATION_LIMIT), unique = Array.from(new Set(visible.map(function (row) { return row.other; }))), reads = await Promise.all(unique.map(function (id) { return Bridge.read(id).then(function (doc) { return { id:id, doc:doc }; }, function () { return { id:id, doc:null }; }); }));
     if (generation !== state.detailGeneration) return;
     var docs = Object.create(null); reads.forEach(function (item) { docs[item.id] = item.doc; });
     container.textContent = "";
     problems.forEach(function (problem) { container.appendChild(el("div", "notice warn", problem)); });
-    var countText = String(visible.length) + " shown · " + (totalKnown ? String(total) + " total" : "total unknown");
-    if (rows.length > RELATION_LIMIT) countText += " · truncated; use the CLI graph query for all relations";
+    if (evidenceIncomplete || rows.length > RELATION_LIMIT) {
+      var recovery = el("div", "notice warn"), retry = el("button", "action", "Retry relations"), command = el("code", "", relationRecoverySubcommand(selectedId));
+      recovery.appendChild(el("strong", "", "Complete-evidence next action. "));
+      recovery.appendChild(document.createTextNode("Retry these relations. If the response remains incomplete: Using your installed AgentState CLI invocation, run "));
+      recovery.appendChild(command); recovery.appendChild(document.createTextNode(" for the uncapped outbound and inbound inventory. "));
+      retry.type = "button"; retry.addEventListener("click", function () { retry.disabled = true; retry.textContent = "Retrying…"; void renderRelations(container,selectedId,generation); }); recovery.appendChild(retry);
+      container.appendChild(recovery);
+    }
+    var countText = String(visible.length) + " shown · " + String(rows.length) + " returned · " + (totalKnown ? String(total) + " total" : "total unknown");
+    if (rows.length > RELATION_LIMIT) countText += " · locally truncated; use the CLI graph query for all relations";
     container.appendChild(el("div", "render-meta", countText));
     var list = el("div", "relations"), relatedPanel = el("div", "related-panel");
     visible.forEach(function (item) {
@@ -460,12 +527,14 @@
       Bridge.query({ type:"Review", limit:REVIEW_LIMIT })
     ]);
     var requestData = makeRequestData(results[0],results[1]), reviewData = await makeReviewData(results[2]);
+    state.selectionNotice = null;
     state.requests = requestData; state.reviews = reviewData;
     if (!requestData.partial && !requestData.stale) state.lastGoodRequests = cloneData(requestData);
     if (!reviewData.partial && !reviewData.stale) state.lastGoodReviews = cloneData(reviewData);
     state.refreshCount += 1; portfolio.classList.remove("loading"); renderPortfolio();
     var impaired = requestData.partial || requestData.stale || reviewData.partial || reviewData.stale || isTruncated(requestData) || isTruncated(reviewData);
-    setLive(impaired ? "live · incomplete" : "live · complete", impaired ? "warn" : "");
+    var stale = requestData.stale || reviewData.stale;
+    setLive(stale ? "not live · last successful snapshot" : (impaired ? "live · incomplete" : "live · complete"), stale || impaired ? "warn" : "");
   }
 
   document.querySelectorAll("[data-filter]").forEach(function (button) {
@@ -475,7 +544,8 @@
       applyFilter();
     });
   });
-  Bridge.watch(snapshot).catch(function (error) {
+  var watcher = Bridge.watch(snapshot); state.retry = watcher.refresh;
+  watcher.ready.catch(function (error) {
     portfolio.classList.remove("loading"); setLive("subscription failed", "error");
     if (!state.refreshCount) { portfolio.textContent = ""; var box = el("div", "notice error", "Could not subscribe before the initial snapshot: " + error.message); box.setAttribute("role","alert"); portfolio.appendChild(box); }
     else addNotice("Live subscription stopped; the last rendered snapshot remains visible. Reopen the View to retry. " + error.message,"error");
