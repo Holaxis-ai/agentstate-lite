@@ -1,13 +1,13 @@
 ---
 type: Task
 title: Define runtime-neutral compaction checkpoint domain model
-status: todo
+status: done
 priority: '1'
 description: >-
   Establish the shared vocabulary, state model, invariants, and host-adapter
   boundaries before cross-runtime research and design.
-actor: codex-compaction-orchestrator
-timestamp: '2026-08-08T17:05:59.945Z'
+actor: codex-checkpoint-domain-modeler
+timestamp: '2026-08-08T17:12:37.188Z'
 ---
 # Goal
 
@@ -57,3 +57,21 @@ and writes a phase-boundary Context Note summarizing its result. The orchestrato
 sync the bundle.
 
 [depends on](compaction-context-checkpoint-lifecycle.md)
+
+# Outcome
+
+Completed by `codex-checkpoint-domain-modeler` on 2026-08-08. The durable deliverable is
+[the runtime-neutral domain model](../designs/compaction-checkpoint-domain-model.md), version
+`sha256:51ef57197ba2aec56959ef6f45392008daec130905830e2b4f5c20e9148f34fe`.
+
+The model supplies the required non-overlapping taxonomy; exact checkpoint-subject identity and
+ownership boundaries; subject-obligation, derived freshness, and restoration state machines;
+safety, liveness, privacy, durability, and concurrency invariants; shared-core versus host-adapter
+responsibilities; a cross-runtime capability-question matrix; and material unresolved questions.
+It selects no production implementation and treats all unverified host facts as research work.
+
+# Current status
+
+Domain-model phase complete. The next gate is independent Codex, Claude Code, and OpenCode
+capability research using the artifact's research handoff contract. The orchestrator owns bundle
+review and sync.
