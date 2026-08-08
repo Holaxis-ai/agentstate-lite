@@ -4,13 +4,15 @@ title: Extract the v0.1 document-write normalization policy
 status: in_progress
 priority: '2'
 description: >-
-  Implemented in draft PR #222 at 824f998. One 21-line pure internal v0.1 policy
-  now owns timestamp fallback, frontmatter ordering, unknown-field preservation,
-  and body defaulting; writeDocVersioned retains validation/CAS/storage. Focused
-  tests, build, typecheck, and full npm run check pass. Awaiting the required
-  independent parity review.
+  Implemented in draft PR #222 at 982707e. One pure internal v0.1 policy now
+  owns timestamp fallback, frontmatter ordering, unknown-field preservation, and
+  body defaulting; writeDocVersioned retains validation/CAS/storage. Review
+  round one found and the revision fixes two subtle parity drifts: first-read
+  accessor values and unnecessary clock access for valid timestamps. Focused
+  tests and the full repository gate pass. Awaiting exact-revision independent
+  re-review.
 actor: openai/codex
-timestamp: '2026-08-08T01:36:58.435Z'
+timestamp: '2026-08-08T01:51:46.062Z'
 ---
 # Objective
 
