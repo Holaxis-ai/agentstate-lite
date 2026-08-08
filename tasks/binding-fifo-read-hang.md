@@ -5,7 +5,7 @@ status: in_progress
 priority: '2'
 actor: openai/codex
 assignee: openai/codex
-timestamp: '2026-08-08T00:20:39.043Z'
+timestamp: '2026-08-08T00:30:22.201Z'
 ---
 # Problem
 
@@ -16,6 +16,14 @@ PRE-EXISTING — scoped out of the init-target-safety-guard unit by its QA (find
 # Direction
 
 The update-orientation module (PR #209) already ships the pattern: O_NOFOLLOW|O_NONBLOCK handle-based reads with fstat type checks and size caps. Apply the same discipline (or a shared primitive) to the binding read; a FIFO/socket/device at the binding path should be a structured USAGE refusal naming the file.
+
+# Implementation
+
+Draft PR: https://github.com/Holaxis-ai/agentstate-lite/pull/218
+
+Commit: `554945c`
+
+The binding is now opened with `O_NONBLOCK`, validated through `fstat` as a regular file, and read from the validated descriptor. Existing support for symlinked binding files is preserved. The regression test demonstrably timed out against the old implementation and now rejects the FIFO promptly with a structured `USAGE` error. Focused tests, type-check, build, and the full repository check pass. Independent exact-SHA review remains before merge.
 
 # Provenance
 
