@@ -11,7 +11,7 @@ sequence: >-
   evidence → adjudicate status/provenance → implement and prove v0.2 writes →
   update public claim
 actor: openai/codex
-timestamp: '2026-08-05T02:15:58.287Z'
+timestamp: '2026-08-08T01:09:11.588Z'
 ---
 # Outcome
 
@@ -21,6 +21,14 @@ evidence from a live multi-agent producer and consumer back into the standard.
 This work protects portability without turning AgentState into an implementation of every upstream
 proposal. The format remains the interoperability boundary; AgentState's Kinds, mutation authority,
 Views, storage backends, and collaboration model remain product-level extensions.
+
+# Governing product requirements
+
+The [compatibility design](../designs/okf-compatibility-and-upstream-stewardship.md) records the
+founder-level requirements that govern this roadmap: portability as user value, explicit semantic
+authority for extensions, and deliberate rather than automatic edition migration. The
+[founder discussion provenance](../context-notes/okf-founder-portability-requirements-2026-08-05.md)
+preserves why those requirements were adopted.
 
 # Sequence
 

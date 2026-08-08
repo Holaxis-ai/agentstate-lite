@@ -2,7 +2,7 @@
 type: Design
 title: OKF compatibility and upstream stewardship
 actor: openai/codex
-timestamp: '2026-08-05T02:15:27.257Z'
+timestamp: '2026-08-08T01:09:11.415Z'
 ---
 # Decision
 
@@ -23,6 +23,23 @@ extensions.
 
 Compatibility does not mean implementing every optional upstream field. It means making every
 version claim truthful and never silently changing the meaning of user data.
+
+## Founder product requirements (August 5, 2026)
+
+- Portability is a core user value: bundles should remain usable by other tools and movable away
+  from AgentState without losing their meaning.
+- Dynamic modeling makes extension evolution a first-class product requirement, because agents and
+  users can create domain concepts before a later OKF edition defines a similar concept.
+- Standard OKF semantics, portable producer extensions, and bundle-local semantics must be visibly
+  distinguishable to agents.
+- Namespacing prevents direct collisions but does not by itself guarantee interoperability; one
+  registry or mapping authority must govern how overlapping concepts relate.
+- Migration can require semantic and human adjudication rather than a universal mechanical rewrite.
+- AgentState should adopt new prerelease editions deliberately when the interoperability benefit
+  justifies migration, rather than chasing every upstream change.
+
+These requirements come from the
+[founder discussion provenance](../context-notes/okf-founder-portability-requirements-2026-08-05.md).
 
 # Supported-version contract
 
