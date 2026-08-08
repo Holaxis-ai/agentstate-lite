@@ -5,10 +5,11 @@ status: in_progress
 priority: '2'
 actor: openai/codex
 description: >-
-  Implementation is in PR #223 at commit 70e7193; build, all affected package
-  suites, and the full repository check pass. Awaiting independent
-  contract-focused review.
-timestamp: '2026-08-08T02:36:45.318Z'
+  Implementation is in PR #223 at amended commit 1c5520a. Independent review
+  found a clean-checkout CLI source-alias failure; the bundle alias was added,
+  and both npm run build and the full npm run check pass after the fix.
+  Exact-SHA re-review and CI are in progress.
+timestamp: '2026-08-08T02:42:33.605Z'
 ---
 # Objective
 
