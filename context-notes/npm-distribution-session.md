@@ -4,7 +4,7 @@ title: >-
   NPM DISTRIBUTION SESSION — identity + resume pointers (Brian's label,
   2026-08-08)
 actor: anthropic/claude
-timestamp: '2026-08-08T14:22:05.512Z'
+timestamp: '2026-08-08T14:25:55.070Z'
 ---
 # Summary
 
@@ -32,3 +32,16 @@ Resuming after a harness upgrade / compaction / new session claiming this role �
   and have twice caught what the internal ladder missed — invite them on release machinery.
 
 [orients to](../plans/release-conventions-program.md)
+
+# How to resume this exact session
+
+From the project directory (~/GitHub/agentstate-lite):
+
+    claude --resume 5a44a08f-aebe-49f8-981f-258f2dd3406e
+
+(`claude --continue` also works if this is still the most recent session in the project;
+`claude --resume` with no argument opens the interactive picker.) Transcript on disk:
+~/.claude/projects/-Users-brian-GitHub-agentstate-lite/5a44a08f-aebe-49f8-981f-258f2dd3406e.jsonl
+— a plain file, so it survives harness upgrades. If the ID ever fails to resolve after an
+upgrade, find the transcript by content: grep the project transcript dir for
+"npm distribution session" and resume the newest matching ID.
