@@ -395,7 +395,7 @@ export interface StorageBackend {
 
 /** Options for {@link initBundle}. */
 export interface InitBundleOptions {
-  /** OKF version stamped into the root `index.md` frontmatter. Defaults to `"0.1"`. */
+  /** Supported OKF authoring version stamped into the root `index.md`. Defaults to `"0.1"`. */
   okfVersion?: string;
   /**
    * Require that this call CREATE the bundle: the root `index.md` write runs expect-absent

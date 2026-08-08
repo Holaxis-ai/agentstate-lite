@@ -9,7 +9,7 @@ import test, { before } from "node:test";
 import assert from "node:assert/strict";
 import { existsSync } from "node:fs";
 import { execFileSync, spawnSync } from "node:child_process";
-import { mkdir, mkdtemp, rm, symlink } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, rm, symlink } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -105,6 +105,46 @@ test("built CLI: init --dir follow-ups execute from another bundle without losin
       !existsSync(path.join(unrelated, "context-notes", "followup-note.md")),
       "the emitted mutation must not write to the invocation cwd's bundle",
     );
+  } finally {
+    await rm(sandbox, { recursive: true, force: true });
+    await rm(binDir, { recursive: true, force: true });
+  }
+});
+
+test("built CLI: init accepts its supported authoring version and rejects false claims before creation", async () => {
+  const sandbox = await tempDir("aslite-init-version-guard-");
+  const { binDir, env } = await makeBinOnPath();
+
+  try {
+    for (const [name, versionArgs] of [
+      ["default", []],
+      ["explicit", ["--okf-version", "0.1"]],
+    ] as const) {
+      const target = path.join(sandbox, name);
+      const result = run(["init", "--dir", target, "--recipe", "none", ...versionArgs, "--json"], {
+        cwd: sandbox,
+        env,
+      });
+      assert.equal(result.status, 0, result.stdout + result.stderr);
+      assert.match(await readFile(path.join(target, "index.md"), "utf8"), /okf_version: ['"]?0\.1['"]?/);
+    }
+
+    for (const [name, requested, extraArgs] of [
+      ["v02", "0.2", []],
+      ["future", "9.4", ["--create-only"]],
+      ["blank", "", ["--create-only"]],
+    ] as const) {
+      const target = path.join(sandbox, name);
+      const result = run(
+        ["init", "--dir", target, "--recipe", "none", "--okf-version", requested, ...extraArgs],
+        { cwd: sandbox, env },
+      );
+      assert.equal(result.status, 2, result.stdout + result.stderr);
+      assert.match(result.stdout, /code: USAGE/);
+      assert.match(result.stdout, /author 0\.1/);
+      assert.match(result.stdout, /read or transport/);
+      assert.equal(existsSync(target), false, `unsupported version ${JSON.stringify(requested)} must not create its target`);
+    }
   } finally {
     await rm(sandbox, { recursive: true, force: true });
     await rm(binDir, { recursive: true, force: true });

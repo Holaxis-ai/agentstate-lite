@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
+import { existsSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { test } from "node:test";
@@ -58,29 +59,57 @@ test("initBundle writes one deterministic root index with expect-absent CAS and 
   };
 
   try {
-    const bundle = await initBundle(root, { okfVersion: "9.4" });
+    const bundle = await initBundle(root, { okfVersion: "0.1" });
     assert.equal(bundle.root, path.resolve(root));
     assert.equal(writes.length, 1);
     assert.equal(writes[0]!.dir, "");
     assert.equal(writes[0]!.name, "index.md");
     assert.deepEqual(writes[0]!.options, { expectedVersion: null });
-    assert.match(writes[0]!.content, /okf_version: ['"]?9\.4['"]?/);
+    assert.match(writes[0]!.content, /okf_version: ['"]?0\.1['"]?/);
     assert.match(
       writes[0]!.content,
       new RegExp(`${GENERATED_INDEX_MARKER}\\n# ${path.basename(root)}\\n\\nAn Open Knowledge Format bundle\\.\\n$`),
     );
 
-    await initBundle(root, { okfVersion: "never-overwrite" });
+    await initBundle(root, { okfVersion: "0.1" });
     assert.equal(writes.length, 1, "an existing root index must remain byte-untouched");
     const raw = (await new FilesystemBackend(bundle.root).readReserved("", "index.md"))!;
     const parsed = parseMarkdown(raw.content);
     assert.deepEqual({ body: parsed.body, okfVersion: parsed.frontmatter.okf_version }, {
       body: `${GENERATED_INDEX_MARKER}\n# ${path.basename(root)}\n\nAn Open Knowledge Format bundle.\n`,
-      okfVersion: "9.4",
+      okfVersion: "0.1",
     });
   } finally {
     FilesystemBackend.prototype.writeReserved = original;
     await rm(root, { recursive: true, force: true });
+  }
+});
+
+test("initBundle rejects unsupported authoring-version claims before touching the target", async () => {
+  const parent = await mkdtemp(path.join(tmpdir(), "okf-init-version-guard-"));
+  try {
+    for (const requested of ["0.2", "9.4", ""]) {
+      const root = path.join(parent, requested || "blank");
+      await assert.rejects(
+        () => initBundle(root, { okfVersion: requested }),
+        (error: unknown) =>
+          error instanceof InvalidInputError &&
+          error.message.includes(`'${requested}'`) &&
+          /author 0\.1/.test(error.message) &&
+          /read or transport/.test(error.message),
+      );
+      assert.equal(existsSync(root), false, `unsupported version ${JSON.stringify(requested)} must not create its target`);
+    }
+
+    const existing = path.join(parent, "existing-v02");
+    const existingIndex = "---\nokf_version: '0.2'\n---\n# External bundle\n";
+    await mkdir(existing);
+    await writeFile(path.join(existing, "index.md"), existingIndex);
+    await initBundle(existing);
+    const reopened = await new FilesystemBackend(existing).readReserved("", "index.md");
+    assert.equal(reopened?.content, existingIndex, "opening a newer external bundle must not rewrite or reject it");
+  } finally {
+    await rm(parent, { recursive: true, force: true });
   }
 });
 

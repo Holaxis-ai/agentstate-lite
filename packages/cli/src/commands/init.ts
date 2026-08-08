@@ -8,7 +8,7 @@
 import { parseArgs } from "node:util";
 import { existsSync } from "node:fs";
 import path from "node:path";
-import { initBundle, loadKinds } from "@agentstate-lite/core";
+import { initBundle, loadKinds, resolveOkfAuthoringVersion } from "@agentstate-lite/core";
 import { resolveTargetDir, withCreateOnlyTarget } from "../bundle.js";
 import { CliError } from "../errors.js";
 import { parseOrUsage } from "../args.js";
@@ -24,7 +24,8 @@ Usage:
 
 Options:
   --dir <path>            Directory to init the bundle in (default: the current directory)
-  --okf-version <v>       OKF version stamped into the root index.md (default: 0.1)
+  --okf-version <v>       Supported OKF authoring version (currently/default: 0.1); bundles using
+                           other versions remain readable
   --recipe <name-or-path> Apply a recipe on create (default: context-notes; 'none' for a bare
                            bundle) — a built-in name or a path to a recipe folder; see
                            'agentstate-lite recipes' to list built-ins
@@ -116,7 +117,10 @@ export async function init(argv: string[], deps: Partial<InitCliDeps> = {}): Pro
   }
 
   const createOnly = Boolean(values["create-only"]);
-  const okfVersion = values["okf-version"]?.trim();
+  const requestedOkfVersion = values["okf-version"];
+  const okfVersion = resolveOkfAuthoringVersion(
+    requestedOkfVersion === undefined ? undefined : requestedOkfVersion.trim(),
+  );
   // The engine (`initBundle`) no longer seeds anything (CLAUDE.md gate 3: core special-cases
   // nothing about conventions) — it just creates the bundle. `init` applies the default recipe
   // via the SAME generic machinery `recipe add` uses (decision 2: full self-hosting from day
@@ -131,7 +135,7 @@ export async function init(argv: string[], deps: Partial<InitCliDeps> = {}): Pro
   if (createOnly) {
     const result = await withCreateOnlyTarget(values.dir, (physicalTarget) =>
       (deps.initBundleImpl ?? initBundle)(physicalTarget, {
-        ...(okfVersion ? { okfVersion } : {}),
+        okfVersion,
         expectNew: true,
       }),
     );
@@ -140,7 +144,7 @@ export async function init(argv: string[], deps: Partial<InitCliDeps> = {}): Pro
   } else {
     root = resolveTargetDir(values.dir);
     bundle = await (deps.initBundleImpl ?? initBundle)(root, {
-      ...(okfVersion ? { okfVersion } : {}),
+      okfVersion,
     });
   }
   let recipeApplied = "none";

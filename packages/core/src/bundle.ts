@@ -62,6 +62,21 @@ export function backendFor(bundle: Bundle): StorageBackend {
 
 // ── bundle lifecycle ──────────────────────────────────────────────────────────
 
+/** OKF versions this writer can truthfully declare on newly authored bundles. */
+export const SUPPORTED_OKF_AUTHORING_VERSIONS = ["0.1"] as const;
+
+/** Resolve the default authoring version or reject a version this writer cannot produce. */
+export function resolveOkfAuthoringVersion(requested?: string): string {
+  const version = requested ?? SUPPORTED_OKF_AUTHORING_VERSIONS[0];
+  if (!(SUPPORTED_OKF_AUTHORING_VERSIONS as readonly string[]).includes(version)) {
+    throw new InvalidInputError(
+      `Unsupported OKF authoring version '${version}'. This build can author 0.1; ` +
+        "bundles declaring other versions can still be read or transported.",
+    );
+  }
+  return version;
+}
+
 /**
  * Initialize (or open) an OKF bundle at `root`. Creates the directory and a root
  * `index.md` carrying `okf_version` frontmatter (§11 — the sole place any
@@ -70,10 +85,10 @@ export function backendFor(bundle: Bundle): StorageBackend {
  * a local operation; a remote store is provisioned out of band).
  */
 export async function initBundle(root: string, options: InitBundleOptions = {}): Promise<Bundle> {
+  const okfVersion = resolveOkfAuthoringVersion(options.okfVersion);
   const resolved = path.resolve(root);
   const backend = new FilesystemBackend(resolved);
   if (options.expectNew || (await backend.readReserved("", "index.md")) === null) {
-    const okfVersion = options.okfVersion ?? "0.1";
     const name = path.basename(resolved);
     const body = `${GENERATED_INDEX_MARKER}\n# ${name}\n\nAn Open Knowledge Format bundle.\n`;
     // Expect-absent create (Defect C hardening): a plain check-absent-then-unconditional-write
