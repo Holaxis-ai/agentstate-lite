@@ -7,7 +7,7 @@ description: >-
   Add version-aware v0.2 mutation semantics and cross-backend proof after the
   workflow-status and provenance policy is decided.
 actor: openai/codex
-timestamp: '2026-08-08T01:29:27.603Z'
+timestamp: '2026-08-08T02:28:30.446Z'
 ---
 # Objective
 
@@ -42,3 +42,5 @@ decision it informs. It is intentionally not a generic parser rewrite.
 [depends on](okf-upstream-producer-report.md)
 
 [depends on](okf-v0-1-write-policy-extraction.md)
+
+[depends on](meaningful-change-time-lookup.md)
