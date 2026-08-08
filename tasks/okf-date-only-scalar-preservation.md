@@ -4,7 +4,10 @@ title: Preserve YAML date-only scalar shape across mutations
 status: in_progress
 priority: '2'
 actor: openai/codex
-timestamp: '2026-08-08T03:10:06.330Z'
+description: >-
+  Implemented in PR #225 at exact SHA 6838c45; full repository gate and
+  independent review approved. Awaiting merge.
+timestamp: '2026-08-08T03:39:43.137Z'
 ---
 # Objective
 
