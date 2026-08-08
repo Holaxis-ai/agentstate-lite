@@ -4,10 +4,12 @@ title: Pin permissive OKF v0.2 read and transport compatibility
 status: in_progress
 priority: '2'
 description: >-
-  Add a test-only v0.2 fixture suite that freezes current read, query, graph,
-  and local/server agreement before writer semantics change.
+  Implemented in draft PR #221 at 0fd9e72. Test-only: a hand-authored v0.2
+  fixture now pins local/reference-server read, head-query, filter, graph,
+  root-version, content-version, and byte-untouched agreement. Focused suite and
+  full npm run check pass; awaiting CI/merge.
 actor: openai/codex
-timestamp: '2026-08-08T01:14:00.324Z'
+timestamp: '2026-08-08T01:21:11.699Z'
 ---
 # Objective
 
