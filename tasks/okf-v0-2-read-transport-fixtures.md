@@ -4,12 +4,14 @@ title: Pin permissive OKF v0.2 read and transport compatibility
 status: in_progress
 priority: '2'
 description: >-
-  Implemented in draft PR #221 at 0fd9e72. Test-only: a hand-authored v0.2
-  fixture now pins local/reference-server read, head-query, filter, graph,
-  root-version, content-version, and byte-untouched agreement. Focused suite and
-  full npm run check pass; awaiting CI/merge.
+  Ready PR #221 at exact head 0fd9e729bec9e11f7774ba33cecb27d397d779ec.
+  Test-only: a hand-authored v0.2 fixture pins local/reference-server read,
+  head-query, filter, graph, root-version, content-version, and byte-untouched
+  agreement. Focused suite, full local npm run check, and GitHub Node 20/22/26
+  checks pass. Per the risk ladder, no independent review is required for this
+  runtime-neutral test-only unit.
 actor: openai/codex
-timestamp: '2026-08-08T01:21:11.699Z'
+timestamp: '2026-08-08T01:27:20.874Z'
 ---
 # Objective
 
