@@ -10,7 +10,7 @@ question: >-
   Approve the three record corrections aligning the ratified release docs with
   the published pre.3 registry state?
 actor: anthropic/claude
-timestamp: '2026-08-08T14:50:36.717Z'
+timestamp: '2026-08-08T14:51:05.763Z'
 ---
 # Context
 
@@ -60,8 +60,10 @@ them, or approve and we apply with attribution:
 3. E7A (`bootstrap-pre2-upgrade-proof`): widen the upgrade proof to also cover starting from
    pre.3 (title/scope wording is your call).
 
-Note: a SEPARATE proposal about release cadence (how often we publish) is coming via its own
-review — deliberately not mixed into this one. This request is purely "make the records true."
+Note: a SEPARATE decision about release cadence (how often we publish) was ratified by Brian on
+2026-08-08 and is shared with you as an informational notice
+(review-requests/cadence-continuous-staging) — deliberately not mixed into this request, which is
+purely "make the records true."
 
 # Acceptance criteria
 
