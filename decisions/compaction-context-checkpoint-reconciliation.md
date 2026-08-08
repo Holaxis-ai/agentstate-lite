@@ -5,7 +5,7 @@ description: >-
   One lifecycle task owns the portable checkpoint protocol; host-specific
   adapters require a proven host constraint.
 actor: codex-compaction-reconciliation
-timestamp: '2026-08-08T16:39:20.324Z'
+timestamp: '2026-08-08T16:39:53.424Z'
 ---
 # Decision
 
@@ -48,4 +48,4 @@ implemented consistently across agent runtimes.
 - [authoritative lifecycle task](../tasks/compaction-context-checkpoint-lifecycle.md)
 - [archived Claude pilot](../tasks/pre-compact-multi-session.md)
 - [absorbed session-end task](../tasks/session-end-capture.md)
-- [deprecated fixed checkpoint](pre-compact-main.md)
+- [deprecated fixed checkpoint](../context-notes/pre-compact-main.md)
