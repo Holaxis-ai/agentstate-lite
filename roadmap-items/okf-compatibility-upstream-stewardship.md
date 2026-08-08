@@ -11,7 +11,7 @@ sequence: >-
   evidence → adjudicate status/provenance → implement and prove v0.2 writes →
   update public claim
 actor: openai/codex
-timestamp: '2026-08-08T02:28:30.292Z'
+timestamp: '2026-08-08T03:10:06.513Z'
 ---
 # Outcome
 
@@ -73,3 +73,5 @@ maintainers have a concrete producer report or fixtures drawn from AgentState's 
 [contains](../tasks/okf-v0-1-write-policy-extraction.md)
 
 [contains](../tasks/meaningful-change-time-lookup.md)
+
+[contains](../tasks/okf-date-only-scalar-preservation.md)

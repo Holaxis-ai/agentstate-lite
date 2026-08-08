@@ -7,7 +7,7 @@ description: >-
   Add version-aware v0.2 mutation semantics and cross-backend proof after the
   workflow-status and provenance policy is decided.
 actor: openai/codex
-timestamp: '2026-08-08T02:28:30.446Z'
+timestamp: '2026-08-08T03:10:06.009Z'
 ---
 # Objective
 
@@ -23,8 +23,9 @@ upstream posture are adjudicated.
   actor label.
 - Preserve verification history while making current-content trust unambiguous.
 - Preserve date-only scalar shapes such as `stale_after` and `sources[].last_modified`.
-- Make freshness, recent-document, and filesystem-history consumers prefer `generated.at` for v0.2
-  with a v0.1 fallback.
+- Make semantic freshness and recent-document consumers prefer `generated.at` for v0.2 with a
+  v0.1 fallback. Backend/filesystem revision history retains its own write clock and must not be
+  reinterpreted as document meaningful-change time.
 - Apply the adjudicated workflow-status/profile mapping without breaking existing Kind recipes.
 
 # Proof

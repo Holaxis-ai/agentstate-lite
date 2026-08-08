@@ -2,7 +2,7 @@
 type: Design
 title: OKF compatibility and upstream stewardship
 actor: openai/codex
-timestamp: '2026-08-08T01:09:11.415Z'
+timestamp: '2026-08-08T03:10:06.165Z'
 ---
 # Decision
 
@@ -66,8 +66,9 @@ A v0.2 writer must own these invariants at the shared mutation boundary:
 4. Date-only values such as `stale_after` and `sources[].last_modified` retain their date shape.
 5. The v0.1 fallback fields remain readable, and migration is lazy rather than an eager bundle
    rewrite.
-6. Freshness, recent-document, and history consumers prefer `generated.at` for v0.2 and fall back to
-   legacy `timestamp`.
+6. Semantic freshness and recent-document consumers prefer `generated.at` for v0.2 and fall back
+   to legacy `timestamp`. Backend revision history retains its own write clock; it is not a
+   document meaningful-change-time consumer.
 7. Local, memory, and remote backends agree on the resulting document and final version receipt.
 
 # Unresolved field collision
@@ -89,7 +90,8 @@ must keep workflow authoring ergonomic while giving generic OKF consumers an una
 3. Decide the workflow-field/profile mapping based on the product requirement and upstream response.
 4. Implement the version-aware mutation clock and non-lossy scalar handling in the shared mutation
    layer.
-5. Update freshness/history readers and add cross-backend v0.1/v0.2 agreement fixtures.
+5. Update semantic freshness/recent-document readers and add cross-backend v0.1/v0.2 agreement
+   fixtures. Keep backend revision history on its independent write clock.
 6. Only then change defaults, documentation, or the public conformance claim.
 
 # Non-goals
