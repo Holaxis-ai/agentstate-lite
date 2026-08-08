@@ -1,19 +1,19 @@
 ---
 type: Claim
 title: The quantitative architectural-smell report defines a remediation backlog
-status: challenged
+status: deprecated
 reason: >-
-  The report contains useful measurements but conflates type-only edges, proxy
-  size/complexity metrics, intentional mutation contracts, and adapter
-  repetition with demonstrated defects; existing reviewed audits refute several
-  recommendations and the rest require current-main causal evidence before task
-  creation.
+  Adjudicated against current main by four independent findings plus a skeptical
+  reduction. The report does not define a remediation backlog: only the
+  registered-View authority consolidation and core production import gate were
+  independently promoted; the core/server test dependency remains trigger-gated
+  and the CLI type-only cycles are closed as standalone work.
 evidence_command: >-
   npx -y madge@8 --extensions ts,tsx --ts-config tsconfig.json --circular
   packages/cli/src
 evidence_commit: 31921ce
 actor: openai/codex
-timestamp: '2026-08-08T13:33:35.275Z'
+timestamp: '2026-08-08T13:43:25.144Z'
 ---
 # Claim under challenge
 

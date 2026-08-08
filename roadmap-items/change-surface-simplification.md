@@ -3,28 +3,22 @@ type: Roadmap Item
 title: >-
   Change-surface simplification: smaller files, one authority per concern, no
   behavior change
-status: queued
+status: active
 description: >-
-  Reduce everyday change friction by internal decomposition and deletion — never
-  new packages or generalized frameworks. STANDING STANCE (2026-07-18, both
-  review lines converged): RESTRAINT — stable, heavily-tested code is not
-  refactored on size, safety, or memory-freshness arguments; a unit executes
-  only when a real feature, recurring defect, or merge-conflict pattern supplies
-  the demand, and then the decomposition is that unit's opening move. This item
-  is the OBSERVATION HOLDER, not a commitment queue. CANDIDATES with their
-  trigger conditions: sync/establish phase carve
-  (tasks/sync-establish-phase-carve, blocked on demand — constraints recorded
-  there); porcelain.ts internal split (trigger: demonstrated merge conflicts or
-  repeated navigation errors); home.ts split (same); kinds.ts parser
-  decomposition (trigger: demonstrated typed-sections feature pressure);
-  recipes.ts split (trigger: recipe-work collisions); test-file splits (trigger:
-  after any behavior-frozen refactor completes, never during). EXECUTABLE NOW:
-  tasks/cli-mutation-scoping only (the instrument literally cannot finish).
-  REJECTED, do not re-propose: deleting the committed-folder establishment
-  machinery — it is the supported in-tree -> dedicated-board upgrade path and a
-  recorded permanent affordance.
-actor: codex-orchestrator
-timestamp: '2026-08-07T14:45:48.698Z'
+  Observation holder governed by restraint: stable code is not refactored for
+  size or metric scores alone. Current evidence-backed units are registered-View
+  launch-authority consolidation (highest value: delete a duplicated live
+  security decision path) and a production-only core import-direction gate
+  (small preventive test). Retained observation: core/server test dependency,
+  promoted only on measured workflow cost or a clear ownership matrix. Closed:
+  CLI type-only cycles. Existing sync/porcelain/home/kinds/recipes/test-split
+  candidates retain their documented feature/defect/conflict triggers;
+  committed-folder establishment deletion remains rejected.
+actor: openai/codex
+sequence: >-
+  Registered-View launch authority consolidation → core import-direction gate;
+  all other candidates remain trigger-gated
+timestamp: '2026-08-08T13:43:25.460Z'
 ---
 [contains](../tasks/sync-establish-phase-carve.md)
 
@@ -45,3 +39,7 @@ timestamp: '2026-08-07T14:45:48.698Z'
 [contains](../tasks/cli-architecture-review-testing.md)
 
 [contains](../tasks/cli-architecture-review-design-skeptic.md)
+
+[contains](../tasks/registered-view-launch-authority-consolidation.md)
+
+[contains](../tasks/core-import-direction-gate.md)
