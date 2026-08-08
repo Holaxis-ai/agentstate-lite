@@ -3,16 +3,20 @@ type: Task
 title: >-
   Session-END lifecycle hook: capture what happened so next session-start
   context gets richer (AXI principle 7, second half)
-status: todo
+status: canceled
 priority: '2'
 description: >-
-  [VERIFIED 2026-07-19, KEEP — still accurate] Searched
-  packages/cli/src/commands/*.ts and the top-level --help output for
-  'session-end'/'SessionEnd' — no matches; only session-start and hook install
-  (which wires session-start) exist. No session-END lifecycle hook has been
-  built. Session-END lifecycle hook: capture what happened so next session-start
-  context gets richer (AXI principle 7, second half).
-actor: mike/claude
-timestamp: '2026-07-19T13:10:46.420Z'
+  Absorbed into the authoritative checkpoint lifecycle task as the ordinary-stop
+  case; no separate capture protocol or store.
+actor: codex-compaction-reconciliation
+timestamp: '2026-08-08T16:39:21.140Z'
 ---
+# Reconciled disposition (2026-08-08)
 
+This concern is absorbed into the
+[compaction checkpoint lifecycle](../tasks/compaction-context-checkpoint-lifecycle.md) as the
+ordinary-stop lifecycle case. There should be one checkpoint protocol and one durable bundle store,
+not a separate session-end capture feature.
+
+The authoritative Task owns the shared checkpoint contract, the runtime-neutral stop behavior, and
+any thin host adapters that are justified by an actual host constraint.

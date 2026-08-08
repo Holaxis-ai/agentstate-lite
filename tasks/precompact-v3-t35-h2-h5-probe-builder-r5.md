@@ -1,16 +1,23 @@
 ---
 type: Task
 title: Author exact R5 H2-H5 clean-room probe
-status: blocked
+status: canceled
 priority: '1'
 assignee: codex-t35-r5-builder
 description: >-
-  Paused before source creation: scope audit found this compaction probe
-  unrelated to PR 204 and disproportionate; explicit separate-feature direction
-  required.
-actor: codex-pr204-scope-auditor
-timestamp: '2026-08-04T18:55:02.379Z'
+  Canceled by runtime-neutral consolidation; the Claude/tmux clean-room host
+  probe is no longer an implementation predecessor.
+actor: codex-compaction-reconciliation
+timestamp: '2026-08-08T16:39:20.939Z'
 ---
+# Reconciled disposition (2026-08-08)
+
+This exact Claude/tmux clean-room probe is canceled. It is no longer an implementation predecessor
+after consolidation under the runtime-neutral
+[compaction checkpoint lifecycle](../tasks/compaction-context-checkpoint-lifecycle.md). The accepted
+boundary and prior review artifacts remain evidence, but no source authoring or host execution is
+authorized by this Task.
+
 # Goal
 
 Author the exact clean-room R5 H2-H5 host-probe source without executing any part of it. This serves the ultimate agentstate-lite goal by turning the independently accepted host-fact boundary into reviewable immutable bytes while keeping every host mutation behind later static-review and admission gates.

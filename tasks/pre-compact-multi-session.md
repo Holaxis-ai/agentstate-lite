@@ -1,14 +1,27 @@
 ---
 type: Task
 title: Implement and live-prove revision 3 multi-session compaction handoffs
-status: blocked
+status: canceled
 priority: '2'
 description: >-
-  Paused by scope audit: this no-PR compaction feature is unrelated to PR 204;
-  resume only by explicit separate-feature decision.
-actor: codex-pr204-scope-auditor
-timestamp: '2026-08-04T18:55:02.601Z'
+  Superseded as an independent feature by the runtime-neutral checkpoint
+  lifecycle task; Claude pilot artifacts remain research evidence.
+actor: codex-compaction-reconciliation
+timestamp: '2026-08-08T16:39:20.736Z'
 ---
+# Reconciled disposition (2026-08-08)
+
+This Claude-only pilot is canceled as an independent product implementation. The runtime-neutral
+[compaction checkpoint lifecycle](../tasks/compaction-context-checkpoint-lifecycle.md) is the single
+authoritative task. The revision-3 design, reviews, prototypes, and exact-host investigations are
+retained as research evidence about Claude lifecycle behavior and concurrency hazards.
+
+Do not resume the private journal, tmux controller, exact-host broker, or other Claude-specific
+architecture by default. A future design may reuse a narrowly scoped Claude adapter only after it
+identifies a concrete Claude constraint that the shared protocol cannot satisfy, records why the
+portable mechanism is insufficient, and passes design review. Historical progress and blockers
+below describe the pilot at the time it was stopped; they are not the current next action.
+
 # Revision 3 multi-session compaction handoffs
 
 ## Ultimate and proximate goals

@@ -1,28 +1,33 @@
 ---
 type: Context Note
 title: >-
-  DEPRECATED single-id pre-compact handoff -> see session-scoped notes
-  (tasks/pre-compact-multi-session)
-actor: brian-claude
+  DEPRECATED fixed pre-compact handoff; use session-scoped notes pending
+  lifecycle support
+actor: codex-compaction-reconciliation
 description: >-
-  Post-compaction recovery checkpoint for the cache-identity follow-up and
-  separately reviewed hidden-lifecycle defect.
-timestamp: '2026-08-03T15:08:16.470Z'
+  The fixed main-session checkpoint id collides; authoritative replacement work
+  is the runtime-neutral lifecycle task.
+timestamp: '2026-08-08T16:39:21.341Z'
 ---
 # Summary
 
-DEPRECATED single-id handoff. This fixed id (`context-notes/pre-compact-main`) COLLIDES across
-concurrent main sessions — whoever writes last clobbers the rest. The fix is tracked at
-`tasks/pre-compact-multi-session` (a design team is on it as of 2026-08-03).
+DEPRECATED single-id handoff. This fixed id (`context-notes/pre-compact-main`) collides across
+concurrent main sessions: the last writer can replace another session's handoff.
 
-Until that lands, a resuming MAIN session should NOT trust this id. Instead:
+The authoritative product work is now the runtime-neutral
+[compaction checkpoint lifecycle](../tasks/compaction-context-checkpoint-lifecycle.md). The former
+[revision-3 Claude pilot](../tasks/pre-compact-multi-session.md) is retained only as historical
+research evidence; it is not the implementation authority.
 
-- Read the session-scoped handoff matching your session: `context-notes/pre-compact-main-<session_id>`.
-- If you do not know your session id, list `pre-compact-main-*` notes
-  (`aslite list --prefix context-notes/pre-compact-main`) and read the MOST RECENT one, checking its
-  actor/timestamp/summary to confirm it is yours.
+Until the lifecycle task ships a managed identity and freshness protocol, a resuming main session
+should not treat this fixed id as current. Instead:
 
-The authoritative handoff for the most recent orchestrator session is
-`context-notes/pre-compact-main-6cc651d1` (session `6cc651d1-a193-4944-9520-a14f2234d0cf`).
+- read the session-scoped handoff matching the session:
+  `context-notes/pre-compact-main-<session_id>`;
+- if the session id is unavailable, list `pre-compact-main-*` notes with
+  `aslite list --prefix context-notes/pre-compact-main`, then inspect the most recent candidates and
+  verify actor, timestamp, and summary before relying on one; and
+- treat this lookup rule as an interim compatibility convention, not the final architecture.
 
-[tracked by](../tasks/pre-compact-multi-session.md)
+The lifecycle design must replace this heuristic with collision-safe agent/session identity,
+explicit freshness, and honest degraded behavior on runtimes that cannot expose a needed boundary.

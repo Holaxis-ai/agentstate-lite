@@ -4,12 +4,38 @@ title: Prevent context loss across agent compaction
 status: todo
 priority: '1'
 description: >-
-  Design, implement, and validate lifecycle-driven checkpoints that preserve
-  substantive agent context before compaction without relying on human
-  intervention.
-actor: codex-context-lifecycle
-timestamp: '2026-07-30T00:00:28.989Z'
+  Authoritative runtime-neutral lifecycle task for durable context checkpoints;
+  absorbs session-end capture and supersedes the Claude-only pilot.
+actor: codex-compaction-reconciliation
+timestamp: '2026-08-08T16:39:20.531Z'
 ---
+# Reconciliation and implementation policy
+
+This Task is the single product owner for compaction and session-boundary checkpoint behavior. It
+absorbs the ordinary-stop concern from [session-end capture](../tasks/session-end-capture.md) and
+supersedes the independent [revision-3 Claude pilot](../tasks/pre-compact-multi-session.md). The
+pilot's designs, reviews, prototypes, and host probes remain useful research evidence, but they do
+not prescribe the production architecture.
+
+The implementation must be runtime-neutral at its core:
+
+- agentstate-lite owns the checkpoint document contract, session/agent identity, freshness state,
+  synthesis requirements, restoration behavior, loop bounds, and visible failure receipts;
+- runtime integrations are thin capability adapters that translate a host lifecycle event into
+  that shared protocol;
+- a portable mechanism is preferred whenever it can satisfy the invariant honestly;
+- Claude-specific hooks such as `PreCompact`, `Stop`, or `SubagentStop` may be used only for a
+  lifecycle constraint that is actually unique to Claude or unavailable through the portable
+  mechanism, and the Claude-specific behavior must remain inside its adapter;
+- exact-host tmux controllers, private brokers, or host probes are not production dependencies
+  merely because they were useful in exploring Claude behavior; and
+- when Codex, Claude Code, or OpenCode lacks a required lifecycle capability, the product reports
+  an explicit degraded mode rather than simulating guarantees it cannot provide.
+
+The design phase must identify each required invariant first, then select the smallest portable
+mechanism that satisfies it. Any host-specific exception must name the host constraint, explain why
+the shared mechanism is insufficient, and receive design review as an exception.
+
 # Purpose and goals
 
 **Ultimate goal:** Make agent work durable and recoverable across turns, compactions, sessions, and
@@ -40,15 +66,15 @@ Treat context preservation as a small lifecycle protocol rather than a transcrip
 feature:
 
 1. Mark a session or agent as having potentially unsaved context after substantive work.
-2. When the main agent is about to stop, use the runtime's `Stop` hook to check whether a current
-   checkpoint exists.
-3. If the checkpoint is stale, continue the same agent with an instruction to write a concise
+2. At the earliest reliable lifecycle boundary before context can be lost, check whether a current
+   checkpoint exists. Prefer a shared mechanism; map host hooks to this boundary only where needed.
+3. If the checkpoint is stale and the runtime can continue the same agent, request a concise
    synthesis while it still has its working context. The checkpoint should capture the current
    system model, goals, decisions, evidence, blockers, review/QA gates, unverified assumptions, and
    next action—not merely repeat task metadata.
 4. Let the agent stop only after the checkpoint is current, with explicit loop prevention.
-5. Use `PreCompact` as a final freshness check for manual and automatic compaction, and use the
-   compact/resume `SessionStart` path to load the checkpoint into the immediate continuation.
+5. Map pre-compaction and compact/resume events onto the shared freshness and restoration protocol.
+   A Claude `PreCompact` hook is one possible adapter, not the protocol itself.
 6. Keep deterministic external-state capture (bundle state, Git/worktree identity, tests, agents,
    and artifacts) as supporting evidence, not as a substitute for agent-authored synthesis.
 
@@ -59,8 +85,8 @@ choose a different architecture if that architecture better prevents silent cont
 
 - Review current Codex, Claude Code, and OpenCode lifecycle capabilities and their exact behavior
   for `Stop`, `PreCompact`, post-compact/resume, interruption, API failure, and subagent shutdown.
-- Reconcile this work with `tasks/session-end-capture`; decide whether the two tasks should share
-  one checkpoint protocol, be merged, or remain separate with a clear boundary.
+- Treat ordinary session-end capture as one lifecycle case within this checkpoint protocol; do not
+  create a separate checkpoint store or competing product owner.
 - Define the domain model for checkpoint freshness, including session/agent identity, dirty versus
   current state, the unit of substantive work, note identity, and the evidence that makes a
   checkpoint current.
@@ -82,8 +108,9 @@ choose a different architecture if that architecture better prevents silent cont
    it does not treat this task body as an implementation specification.
 2. **Reviewed design:** A design artifact describes the whole lifecycle, components, state
    transitions, timing/ordering dependencies, external state, failure behavior, privacy/security
-   implications, and invariants. It explicitly resolves the relationship with
-   `tasks/session-end-capture`. The design receives an independent review before implementation.
+   implications, and invariants. It implements the recorded consolidation of
+   `tasks/session-end-capture` and documents every justified host-specific adapter. The design
+   receives an independent review before implementation.
 3. **Meaningful preservation:** The selected design causes substantive current understanding to be
    persisted before it can be lost. Success is not defined as copying or summarizing only facts
    that were already present in tasks, Git, or other external artifacts.
