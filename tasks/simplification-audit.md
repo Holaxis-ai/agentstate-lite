@@ -1,7 +1,7 @@
 ---
 type: Task
 title: 'Bounded read-only simplification audit (codex charter, 2026-07-18)'
-status: todo
+status: in_progress
 priority: '3'
 description: >-
   The chartered bounded audit
@@ -19,7 +19,8 @@ description: >-
   or re-rank the candidate list, ≤5 ranked opportunities with parity tests, net
   reduction, risk, PR size each. No code changes; winners execute as separate
   one-claim units.
-actor: mike/claude
-timestamp: '2026-07-18T13:24:44.390Z'
+actor: openai/codex
+assignee: openai/codex
+timestamp: '2026-08-08T13:26:56.017Z'
 ---
 [charter](../context-notes/simplification-audit-recommendation.md)
