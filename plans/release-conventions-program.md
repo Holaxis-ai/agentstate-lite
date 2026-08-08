@@ -4,7 +4,7 @@ title: >-
   Release-conventions program: recorded + enforced conventions, cadence
   decision, first-stable path (orchestrated)
 actor: anthropic/claude
-timestamp: '2026-08-08T01:28:54.911Z'
+timestamp: '2026-08-08T13:38:49.022Z'
 ---
 # Goal
 
@@ -110,3 +110,8 @@ trustworthy primary distribution channel.
   packument validator; their reproductions are now red tests; false-red timeline hunt clean;
   internal delta review APPROVE). PR #219 response posted; awaiting external re-review to lift
   REQUEST CHANGES. Merge held.
+- 2026-08-08: Cadence decision RATIFIED by Brian alone (his call, superseding joint routing).
+  Decision doc finalized; Mike's RR converted to informational (canceled w/ decision_summary);
+  contract carries Amendment A1; implementation plan recorded
+  (plans/continuous-staging-implementation) — build gated behind PR #219 merge -> p5a -> P5B ->
+  P5S. Records-reconciliation RR to Mike still open (factual corrections, unaffected).
