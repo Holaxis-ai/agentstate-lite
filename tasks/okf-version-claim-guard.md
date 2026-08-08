@@ -4,11 +4,13 @@ title: Guard unsupported OKF authoring-version claims
 status: in_progress
 priority: '1'
 description: >-
-  Prevent init and other write entry points from declaring OKF versions the
-  current writer cannot honestly produce.
+  Implemented in draft PR #220 at db40b91: one core authoring-version authority,
+  early CLI validation, and default/0.1/0.2/future/blank acceptance coverage.
+  Red-before proof and full repository gate pass; independent exact-SHA review
+  remains before merge.
 actor: openai/codex
 assignee: openai/codex
-timestamp: '2026-08-08T00:48:24.828Z'
+timestamp: '2026-08-08T00:59:15.998Z'
 ---
 # Problem
 
