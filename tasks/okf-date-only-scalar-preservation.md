@@ -1,13 +1,15 @@
 ---
 type: Task
 title: Preserve YAML date-only scalar shape across mutations
-status: in_progress
+status: done
 priority: '2'
 actor: openai/codex
 description: >-
-  Implemented in PR #225 at exact SHA 6838c45; full repository gate and
-  independent review approved. Awaiting merge.
-timestamp: '2026-08-08T03:39:43.137Z'
+  Merged in PR #225 as e76e10d. The one frontmatter parser now preserves YAML
+  date-only and datetime scalar shape at every depth while retaining legacy
+  top-level timestamp normalization; filesystem mutation proof, full Node
+  20/22/26 CI, and exact-SHA independent review passed.
+timestamp: '2026-08-08T13:15:39.495Z'
 ---
 # Objective
 
