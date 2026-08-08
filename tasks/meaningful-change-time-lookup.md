@@ -1,16 +1,17 @@
 ---
 type: Task
 title: Centralize document meaningful-change time lookup
-status: in_progress
+status: done
 priority: '2'
 actor: openai/codex
 description: >-
-  PR #223 at commit 1c5520a is implementation-complete. Independent exact-SHA
-  review approved after finding and resolving the clean-checkout CLI
-  source-alias defect. Local npm run build, affected package suites, full npm
-  run check, and all GitHub CI jobs on Node 20/22/26 pass. Ready to merge; task
-  remains in_progress until merge.
-timestamp: '2026-08-08T02:48:49.519Z'
+  Merged in PR #223 as merge commit d5307d6a0d0d0d2985b4e007151d471a57afc6bf.
+  Semantic document-time consumers now share one browser-safe raw lookup while
+  preserving v0.1 behavior; backend revision history remains a separate clock.
+  Independent exact-SHA review approved after finding and fixing the
+  clean-checkout CLI source-alias defect. Local full check and GitHub Node
+  20/22/26 CI passed.
+timestamp: '2026-08-08T02:59:12.884Z'
 ---
 # Objective
 
