@@ -8,28 +8,70 @@
  */
 
 import matter from "gray-matter";
+import yaml from "js-yaml";
 import type { Frontmatter } from "./types.js";
 
+const YAML_TIMESTAMP_TAG = "tag:yaml.org,2002:timestamp";
+
+type SchemaWithImplicitTypes = yaml.Schema & {
+  implicit: yaml.Type[];
+};
+
+type TaggedType = yaml.Type & {
+  tag: string;
+};
+
+function requireYamlTimestampType(): yaml.Type {
+  const type = (yaml.DEFAULT_SAFE_SCHEMA as SchemaWithImplicitTypes).implicit.find(
+    (candidate) => (candidate as TaggedType).tag === YAML_TIMESTAMP_TAG,
+  );
+  if (!type) throw new Error("js-yaml safe schema is missing its timestamp type");
+  return type;
+}
+
+const yamlTimestampType = requireYamlTimestampType();
+
 /**
- * Coerce YAML-parsed date values back to ISO-8601 STRINGS.
+ * Keep YAML timestamps as their original strings. The default schema constructs both
+ * `2026-01-02` and `2026-01-02T00:00:00Z` as identical `Date` objects, irreversibly erasing the
+ * date-only distinction before unknown nested frontmatter can be preserved.
+ */
+const stringTimestampType = new yaml.Type(YAML_TIMESTAMP_TAG, {
+  kind: "scalar",
+  resolve: (value) => yamlTimestampType.resolve(value),
+  construct: (value) => value,
+});
+
+const losslessDateSchema = new yaml.Schema({
+  include: [yaml.DEFAULT_SAFE_SCHEMA],
+  implicit: [stringTimestampType],
+});
+
+const yamlEngine = {
+  parse(input: string): object {
+    return (yaml.safeLoad(input, { schema: losslessDateSchema }) ?? {}) as object;
+  },
+};
+
+/**
+ * Normalize the legacy top-level `timestamp` field to an ISO-8601 string.
  *
  * gray-matter/js-yaml turns an UNQUOTED ISO timestamp scalar — the form OKF's own
- * sample bundles use (`timestamp: 2026-07-01T12:05:00Z`) — into a JS `Date`.
- * Our {@link Frontmatter} model is string-typed, and every consumer guards with
- * `typeof … === "string"`, so a `Date` is treated as ABSENT: `freshness` reports
- * `empty` and `list` shows a blank timestamp on any externally-authored bundle.
- * We normalize here, at the ONE frontmatter parse layer, so a spec-shaped
- * external bundle round-trips like a self-produced (quoted) one: every Date-valued
- * key becomes its ISO string, and a numeric `timestamp` is read as epoch millis.
+ * sample bundles use (`timestamp: 2026-07-01T12:05:00Z`) — into a non-string under its
+ * default schema. The parser above now retains all YAML timestamp scalars as strings so
+ * date-only values remain distinguishable at any depth. This legacy field still keeps its
+ * established canonical ISO behavior, including epoch-millisecond input.
  */
 function normalizeFrontmatter(data: Record<string, unknown>): Frontmatter {
   const out: Record<string, unknown> = { ...data };
-  for (const [key, value] of Object.entries(out)) {
-    if (value instanceof Date) {
-      out[key] = value.toISOString();
-    } else if (key === "timestamp" && typeof value === "number" && Number.isFinite(value)) {
-      out[key] = new Date(value).toISOString();
-    }
+  const value = out.timestamp;
+  if (value instanceof Date) {
+    out.timestamp = value.toISOString();
+  } else if (typeof value === "number" && Number.isFinite(value)) {
+    out.timestamp = new Date(value).toISOString();
+  } else if (typeof value === "string" && yamlTimestampType.resolve(value)) {
+    const parsed = yamlTimestampType.construct(value);
+    if (parsed instanceof Date) out.timestamp = parsed.toISOString();
   }
   return out as Frontmatter;
 }
@@ -65,14 +107,10 @@ export class MalformedDocumentError extends Error {
  * Parse raw markdown into `{ frontmatter, body }`. Missing frontmatter yields `{}`. Malformed YAML
  * throws an attributed {@link MalformedDocumentError} (naming `context` when given).
  *
- * The `matter(raw, {})` call passes an options object DELIBERATELY: gray-matter caches the parsed
- * file keyed by input, but populates that cache with the still-UNPARSED file BEFORE parsing and ONLY
- * when no options are given (see its source, index.js). A second parse of malformed content would
- * then hit that cache and silently return `{ data: {} }` instead of re-throwing — an order-dependent
- * footgun where the same bytes parse differently depending on what parsed them first. Passing an
- * (empty) options object bypasses the cache entirely, so malformed YAML throws DETERMINISTICALLY on
- * every call and identical bytes always parse identically. `{}` selects gray-matter's own defaults,
- * so well-formed documents are unaffected.
+ * Passing parser options bypasses gray-matter's input cache. Without options, gray-matter can cache
+ * a still-unparsed file before YAML parsing, causing a later parse of the same malformed bytes to
+ * return empty data instead of throwing again. The custom YAML engine also preserves timestamp-like
+ * scalars as strings so date-only values retain their original semantic shape.
  */
 export function parseMarkdown(
   raw: string,
@@ -80,7 +118,7 @@ export function parseMarkdown(
 ): { frontmatter: Frontmatter; body: string } {
   let parsed;
   try {
-    parsed = matter(raw, {});
+    parsed = matter(raw, { engines: { yaml: yamlEngine } });
   } catch (err) {
     throw new MalformedDocumentError(context, err);
   }

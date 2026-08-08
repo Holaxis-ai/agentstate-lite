@@ -60,26 +60,34 @@ test("contentVersion preserves ordinary hashes and hashes emitted special-key by
   assert.equal(contentVersion(document), versionOfBytes(serialized));
 });
 
-// ── mutation-survivor pins (core-survivor-triage unit) ────────────────────────
-
-// kills: frontmatter.ts:27:51 BlockStatement #1286
-// kills: frontmatter.ts:28:9 ConditionalExpression #1288
-// kills: frontmatter.ts:28:32 BlockStatement #1289
-// kills: frontmatter.ts:30:16 ConditionalExpression #1291
-// kills: frontmatter.ts:30:16 LogicalOperator #1292
-// kills: frontmatter.ts:30:16 ConditionalExpression #1293
-// kills: frontmatter.ts:30:16 LogicalOperator #1294
-// kills: frontmatter.ts:30:16 EqualityOperator #1296
-// kills: frontmatter.ts:30:24 StringLiteral #1297
-// kills: frontmatter.ts:30:39 EqualityOperator #1299
-// kills: frontmatter.ts:30:56 StringLiteral #1300
-// kills: frontmatter.ts:30:92 BlockStatement #1301
-test("pin: parseMarkdown normalizes Date-typed values and epoch-number timestamps to ISO strings, leaving other numerics untouched (gate 2)", () => {
-  const parsed = parseMarkdown("---\ntype: Note\ntimestamp: 2026-07-16T00:00:00Z\ndue: 2026-01-02\npriority: 2\n---\nbody\n");
+test("pin: parseMarkdown normalizes the legacy timestamp while preserving date-only and nested timestamp scalar shapes", () => {
+  const parsed = parseMarkdown(`---
+type: Note
+timestamp: 2026-07-16T00:00:00Z
+due: 2026-01-02
+generated:
+  at: 2026-07-16T00:00:00Z
+sources:
+  - resource: https://example.test/source
+    last_modified: 2026-01-01
+priority: 2
+---
+body
+`);
   assert.equal(typeof parsed.frontmatter.timestamp, "string");
   assert.equal(parsed.frontmatter.timestamp, "2026-07-16T00:00:00.000Z");
-  assert.equal(typeof parsed.frontmatter.due, "string", "EVERY Date-typed value is normalized, not just timestamp");
+  assert.equal(parsed.frontmatter.due, "2026-01-02");
+  assert.deepEqual(parsed.frontmatter.generated, { at: "2026-07-16T00:00:00Z" });
+  assert.deepEqual(parsed.frontmatter.sources, [{
+    resource: "https://example.test/source",
+    last_modified: "2026-01-01",
+  }]);
   assert.equal(parsed.frontmatter.priority, 2, "non-timestamp numbers stay numbers");
+
+  const reparsed = parseMarkdown(stringifyDoc(parsed.frontmatter, parsed.body));
+  assert.equal(reparsed.frontmatter.due, "2026-01-02");
+  assert.deepEqual(reparsed.frontmatter.generated, { at: "2026-07-16T00:00:00Z" });
+  assert.deepEqual(reparsed.frontmatter.sources, parsed.frontmatter.sources);
 
   const numeric = parseMarkdown("---\ntype: Note\ntimestamp: 1720915200000\n---\n");
   assert.equal(numeric.frontmatter.timestamp, new Date(1720915200000).toISOString());

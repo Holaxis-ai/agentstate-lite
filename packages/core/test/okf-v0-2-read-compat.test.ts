@@ -67,8 +67,8 @@ test("OKF v0.2 fixture: root version and ordinary documents read identically thr
   assert.equal(verified[0]!.method, "human-review");
   const sources = shaped.frontmatter.sources as Array<{ resource: string; last_modified: string }>;
   assert.equal(sources[0]!.resource, "https://warehouse.example/revenue");
-  assert.match(sources[0]!.last_modified, /^2026-07-27(?:$|T)/);
-  assert.match(String(shaped.frontmatter.stale_after), /^2026-12-31(?:$|T)/);
+  assert.equal(sources[0]!.last_modified, "2026-07-27");
+  assert.equal(shaped.frontmatter.stale_after, "2026-12-31");
   assert.deepEqual(shaped.frontmatter.x_producer, {
     confidence: 0.94,
     labels: ["finance", "monthly"],
