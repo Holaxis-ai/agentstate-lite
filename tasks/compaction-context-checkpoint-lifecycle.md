@@ -1,13 +1,13 @@
 ---
 type: Task
 title: Prevent context loss across agent compaction
-status: todo
+status: in_progress
 priority: '1'
 description: >-
   Authoritative runtime-neutral lifecycle task for durable context checkpoints;
   absorbs session-end capture and supersedes the Claude-only pilot.
-actor: codex-compaction-reconciliation
-timestamp: '2026-08-08T16:41:39.315Z'
+actor: codex-compaction-orchestrator
+timestamp: '2026-08-08T17:05:02.412Z'
 ---
 # Reconciliation and implementation policy
 
