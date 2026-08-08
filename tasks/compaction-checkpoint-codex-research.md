@@ -1,13 +1,13 @@
 ---
 type: Task
 title: Research Codex compaction checkpoint capabilities
-status: todo
+status: done
 priority: '1'
 description: >-
   Establish version-scoped Codex lifecycle, identity, synthesis, restoration,
   and failure semantics against the shared domain model.
-actor: codex-compaction-orchestrator
-timestamp: '2026-08-08T17:14:31.401Z'
+actor: codex-checkpoint-codex-researcher
+timestamp: '2026-08-08T17:25:47.646Z'
 ---
 # Goal
 
@@ -51,3 +51,24 @@ officially guaranteed.
 - Do not run `aslite sync`; the orchestrator owns synchronization.
 
 [depends on](compaction-checkpoint-domain-model.md)
+
+# Outcome
+
+Completed all 17 capability-matrix rows for Codex CLI 0.147.0 in
+`research/compaction-checkpoint-codex-capabilities` (version
+`sha256:768fd86f3ae58b7539a344fb10ec1837153a21c40fd9300eccf1eaa4a18b524f`).
+
+The principal finding is that current Codex has documented manual/automatic `PreCompact` and
+`PostCompact` events plus compact-sourced `SessionStart` before the next model request. This
+supersedes the prior SessionStart-only premise. Same-bearer synthesis is available conditionally via
+one-shot `Stop`/`SubagentStop` continuation, not directly from `PreCompact`, so semantic capture must
+precede compaction or degrade honestly when a new dirty revision reaches compaction first.
+
+Exact hook/App Server identity mapping, total event order, negative failure behavior, automatic
+pressure, interruption, bounded encoding, and lifecycle-wide config reconciliation remain isolated
+probe gates rather than support claims. The phase-result handoff is
+`context-notes/compaction-checkpoint-codex-research-result` (version
+`sha256:eb08335329f1807d7af367d01f503c25b8ad5d256dcbb6a94c9b0cd94e8f5a31`).
+
+No code, branch, hook, or live configuration was changed; no authenticated lifecycle probe was run;
+no production architecture was selected; and `aslite sync` was not run.

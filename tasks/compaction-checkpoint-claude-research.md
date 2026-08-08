@@ -1,13 +1,14 @@
 ---
 type: Task
 title: Research Claude Code compaction checkpoint capabilities
-status: todo
+status: done
 priority: '1'
 description: >-
-  Establish current Claude Code lifecycle facts and isolate only genuinely
-  host-specific adapter constraints.
-actor: codex-compaction-orchestrator
-timestamp: '2026-08-08T17:14:31.622Z'
+  Completed Claude Code 2.1.226 lifecycle matrix, adapter boundary, and isolated
+  validation gaps.
+actor: codex-checkpoint-claude-researcher
+assignee: codex-checkpoint-claude-researcher
+timestamp: '2026-08-08T17:25:08.550Z'
 ---
 # Goal
 
@@ -53,3 +54,11 @@ citations/URLs.
 - Do not run `aslite sync`; the orchestrator owns synchronization.
 
 [depends on](compaction-checkpoint-domain-model.md)
+
+# Outcome
+
+Completed 2026-08-08 against Claude Code 2.1.226 on Darwin arm64/macOS 26.6. The 17-row evidence matrix, lifecycle/failure semantics, isolated probe gaps, and runtime-neutral adapter constraints are recorded in [Claude Code compaction-checkpoint capabilities](../research/compaction-checkpoint-claude-capabilities.md). The phase handoff is [Claude Code compaction-checkpoint research result](../context-notes/compaction-checkpoint-claude-research-result.md).
+
+Architecture-level conclusion: Claude supplies conditional lifecycle transport—not shared durability. `PreCompact` can validate/block but cannot invoke same-bearer semantic synthesis; proactive synthesis is available at successful `Stop`/`SubagentStop`; compact-sourced `SessionStart` supplies a bounded restoration gate. Concurrent resume makes `session_id` insufficient as a unique carrier key. Shared persistence, CAS, generation/freshness, ambiguity handling, and receipt levels remain runtime-neutral core concerns.
+
+No repository code or host configuration was changed, no live Claude state/model was used, and `aslite sync` was not run.

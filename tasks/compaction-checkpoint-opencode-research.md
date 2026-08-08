@@ -1,13 +1,13 @@
 ---
 type: Task
 title: Research OpenCode compaction checkpoint capabilities
-status: todo
+status: done
 priority: '1'
 description: >-
   Establish OpenCode lifecycle and identity capabilities and the strongest
   honest degraded behavior.
-actor: codex-compaction-orchestrator
-timestamp: '2026-08-08T17:14:31.851Z'
+actor: codex-checkpoint-opencode-researcher
+timestamp: '2026-08-08T17:27:33.925Z'
 ---
 # Goal
 
@@ -52,3 +52,13 @@ exact citations/URLs and distinguish documented, source-inspected, and empirical
 - Do not run `aslite sync`; the orchestrator owns synchronization.
 
 [depends on](compaction-checkpoint-domain-model.md)
+
+# Outcome
+
+Completed 2026-08-08 by `codex-checkpoint-opencode-researcher`.
+
+- Deliverable: `research/compaction-checkpoint-opencode-capabilities` version `sha256:42bae79aa4e990cc6c7bb714648d487d67500ba56392aca0c8fdb4d70b793744`.
+- Phase result: `context-notes/compaction-checkpoint-opencode-research-result` version `sha256:7f3fd033036eb3cf8ef94b4421eff3b00315acdfe4c187ea895047086cd3f0da`.
+- All 17 domain-model capability questions are answered with target version/build/platform/date, evidence class and primary source, ordering/payload/identity/failure facts, scenario and invariant impact, confidence, and deterministic gaps.
+- Strongest honest classification: full automated lifecycle and strict-S2 capture-only are unsupported; restore-only is conditional; inspectable/manual is supported. The current adapter remains startup-orientation injection, not compaction checkpointing.
+- Repository code and live OpenCode state were left unchanged. No `aslite sync` was run.
