@@ -4,7 +4,7 @@ title: >-
   Release-conventions program: recorded + enforced conventions, cadence
   decision, first-stable path (orchestrated)
 actor: anthropic/claude
-timestamp: '2026-08-08T00:47:24.511Z'
+timestamp: '2026-08-08T00:59:55.956Z'
 ---
 # Goal
 
@@ -95,3 +95,8 @@ trustworthy primary distribution channel.
   recorded: post-stable removed-vs-collapsed next (recorded decision needed BEFORE 0.1.0 —
   feeds the cadence amendment's invariant redefinition); over-enforcement override hatches;
   buffering nit. Reviewer endorsed the packument-fetch design fork. PR #219 comment posted.
+- 2026-08-08: Audit gate MERGE-READY — appended fix f44143d passed delta re-review (APPROVE, all
+  probes empirical: boundedness, A/B/C green, fresh counter-probe red, at_rest byte-identical).
+  PR #219 awaiting Brian's merge. Program state: item 4 done pending merge; awaiting Mike on both
+  RRs (records reconciliation + cadence ratification); then implementation plan -> p5a -> P5B ->
+  P5S (schedule Brian/Mike ~30min) -> enable continuous staging.
