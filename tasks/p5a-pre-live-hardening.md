@@ -16,8 +16,8 @@ description: >-
   separator before execFile. Not command-injection (no shell) and not reachable
   via automation today (dispatch inputs are SemVer/embedded), but close it
   before live.
-actor: anthropic/claude
-timestamp: '2026-08-08T15:19:34.925Z'
+actor: openai/codex
+timestamp: '2026-08-08T16:33:23.195Z'
 ---
 [hardens](npm-staged-release-automation.md)
 
@@ -37,3 +37,9 @@ Full design: the designer report logged on plans/release-conventions-program. Br
    GitHub attestations, Apache/Debian maintainer signatures), so receipts stay.
 4. **No second approval button**: the one human approval remains npm 2FA stage-approve; the gate
    verifies evidence mechanically (per contract section 5).
+5. **Split operators permitted**: inspection and approval MAY be signed by different allowed
+   operators; Brian and Mike may split roles. The reconciled state retains per-step actor identity.
+6. **No run_id in the receipt binding tuple**: confirmed. Bind stage_id + version +
+   tarball_sha256 + draft_release_id so a valid receipt survives finalize redispatch.
+7. **Prerelease approval without inspection is valid**: publish the verified approval receipt plus
+   the permanent public missing-inspection stamp. Stable still requires inspection.
