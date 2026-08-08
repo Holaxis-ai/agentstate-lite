@@ -2,7 +2,7 @@
 type: Plan
 title: P5A release receipt gate fix delta
 actor: openai/codex-plan-receipt-gate
-timestamp: '2026-08-08T16:39:58.024Z'
+timestamp: '2026-08-08T16:39:58.407Z'
 ---
 # Summary
 
@@ -105,3 +105,7 @@ If L1 receives a dedicated test file, include it literally in this command and i
 Record: integrated base SHA, fix commit SHA, focused-test receipt, exact-SHA review verdict, targeted-QA verdict, repository-gate exit, pushed branch, and the still-pending Brian allowed-signers verification. P5A closes only after the PR merges; then the program proceeds P5B -> P5S -> continuous staging.
 
 [plans task](../tasks/p5a-pre-live-hardening.md)
+
+[derives from handoff](../context-notes/receipt-gate-codex-handoff.md)
+
+[uses domain model](../context-notes/release-receipt-gate-domain-model-2026-08-08.md)
