@@ -3,16 +3,16 @@ type: Task
 title: >-
   readPageBlob returns a dead 'version' field that launders an
   upstream-controlled header
-status: todo
+status: done
 priority: '3'
 description: >-
-  After PR #172 no caller reads readPageBlob's .version, but the field survives
-  as 'x-version header ?? computed hash' — conditionally trustworthy, typed like
-  real identity, sitting in scope for the next person adding a check. Delete it
-  so a future consumer must call blobVersion() deliberately. Trap, not a live
-  defect.
-actor: mike/claude
-timestamp: '2026-07-27T02:12:13.569Z'
+  Closed as obsolete on 2026-08-07 after current-tree verification.
+  readPageBlob.version is now consumed by registered View admission/currentness
+  checks and entry_version catalog validation in
+  packages/ui-server/src/server.ts. Deleting it would remove a live version-pin
+  guard; no code change was made.
+actor: openai/codex
+timestamp: '2026-08-08T00:07:50.440Z'
 ---
 # Problem
 
