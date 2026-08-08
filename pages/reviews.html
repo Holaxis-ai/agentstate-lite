@@ -2,83 +2,484 @@
 <html lang="en">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Review requests</title>
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Review portfolio</title>
 <style>
-  :root{--bg:#f4f2ed;--paper:#fffefa;--ink:#19212b;--muted:#68727d;--line:#d9d6ce;--navy:#173b57;--blue:#236c91;--blue-soft:#e5f0f5;--amber:#a96f16;--red:#a8463d;--green:#24705a;--mono:ui-monospace,"SFMono-Regular",Menlo,monospace;--serif:Iowan Old Style,Georgia,serif}
-  @media(prefers-color-scheme:dark){:root{--bg:#111820;--paper:#17212a;--ink:#edf1f4;--muted:#a3afb9;--line:#34414c;--navy:#173b57;--blue:#79bddb;--blue-soft:#203846;--amber:#e2ad56;--red:#ef8f85;--green:#69c5a5}}
-  *{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--ink);font:15px/1.55 system-ui,-apple-system,"Segoe UI",sans-serif}button,select{font:inherit}
-  header{background:var(--navy);color:#fff;padding:24px clamp(18px,4vw,48px)}header h1{font:500 32px/1.1 var(--serif);margin:0 0 5px}.eyebrow{font:600 11px/1.3 var(--mono);letter-spacing:.12em;text-transform:uppercase;opacity:.75}.header-line{display:flex;align-items:end;justify-content:space-between;gap:20px}.live{font:12px var(--mono);white-space:nowrap}.dot{display:inline-block;width:7px;height:7px;border-radius:50%;background:#7be1b7;margin-right:6px}
-  main{max-width:1180px;margin:auto;padding:26px clamp(18px,4vw,48px) 70px}.toolbar{display:grid;grid-template-columns:minmax(240px,1fr) auto;gap:16px;align-items:end;margin-bottom:18px}.toolbar label{display:block;color:var(--muted);font-size:12px;margin-bottom:5px}.toolbar select{width:100%;padding:10px 12px;border:1px solid var(--line);border-radius:6px;background:var(--paper);color:var(--ink)}.count{font:12px var(--mono);color:var(--muted);padding-bottom:11px}
-  .panel{background:var(--paper);border:1px solid var(--line);border-radius:9px;overflow:hidden;margin-bottom:18px}.summary{padding:22px}.summary-top{display:flex;justify-content:space-between;gap:16px;align-items:start}.summary h2{font:500 27px/1.2 var(--serif);margin:0 0 6px}.id{font:11px var(--mono);color:var(--muted);overflow-wrap:anywhere}.badge{display:inline-block;padding:4px 9px;border-radius:999px;background:var(--blue-soft);color:var(--blue);font:700 11px var(--mono);text-transform:uppercase;letter-spacing:.04em}.badge.approved{color:var(--green)}.badge.changes_requested,.badge.canceled{color:var(--red)}.badge.in_review{color:var(--amber)}
-  .facts{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:13px 25px;margin-top:20px;padding-top:18px;border-top:1px solid var(--line)}.fact dt{color:var(--muted);font:10px var(--mono);text-transform:uppercase;letter-spacing:.08em}.fact dd{margin:3px 0 0}.question{grid-column:1/-1;font:500 20px/1.45 var(--serif)}
-  .notice{padding:13px 16px;background:var(--blue-soft);border-left:3px solid var(--blue);color:var(--muted)}.notice strong{color:var(--ink)}
-  .section-title{padding:13px 18px;border-bottom:1px solid var(--line);font:700 11px var(--mono);letter-spacing:.09em;text-transform:uppercase;color:var(--muted)}.markdown{padding:18px 22px;overflow-wrap:anywhere}.markdown h1,.markdown h2,.markdown h3{font-family:var(--serif);font-weight:500;line-height:1.25;margin:1.1em 0 .45em}.markdown h1:first-child,.markdown h2:first-child{margin-top:0}.markdown p{margin:.65em 0}.markdown ul,.markdown ol{padding-left:1.4em}.markdown pre{white-space:pre-wrap;background:var(--bg);border:1px solid var(--line);padding:12px;border-radius:6px;font:12px/1.5 var(--mono)}.markdown code{font:12px var(--mono);background:var(--bg);padding:1px 4px;border-radius:3px}
-  .group{margin-bottom:18px}.group h3{font:600 12px var(--mono);text-transform:uppercase;letter-spacing:.07em;color:var(--muted);margin:0 0 8px}.cards{display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:10px}.artifact{background:var(--paper);border:1px solid var(--line);border-radius:7px;padding:15px;display:flex;flex-direction:column;min-height:145px}.artifact .type{color:var(--blue);font:700 10px var(--mono);text-transform:uppercase}.artifact h4{font:500 19px/1.25 var(--serif);margin:5px 0}.artifact .meta{font:11px var(--mono);color:var(--muted);overflow-wrap:anywhere}.artifact .excerpt{color:var(--muted);font-size:13px;margin:10px 0}.artifact details{margin-top:10px;border-top:1px solid var(--line);padding-top:9px}.artifact summary{color:var(--blue);font-weight:650;cursor:pointer}.artifact details .markdown{padding:10px 0 0;font-size:13px}.artifact button{margin-top:auto;align-self:start;border:1px solid var(--blue);background:transparent;color:var(--blue);border-radius:5px;padding:6px 10px;cursor:pointer}.artifact button:hover{background:var(--blue-soft)}
-  .empty,.error{padding:12vh 20px;text-align:center;color:var(--muted);font:20px var(--serif)}.error{color:var(--red)}.hidden{display:none}.loading{opacity:.6;pointer-events:none}@media(max-width:650px){.toolbar{grid-template-columns:1fr}.facts{grid-template-columns:1fr}.question{grid-column:auto}.summary-top{display:block}.badge{margin-top:10px}}
+  :root{color-scheme:light dark;--bg:#f4f2ed;--paper:#fffefa;--paper-2:#f9f7f1;--ink:#19212b;--muted:#68727d;--line:#d9d6ce;--navy:#173b57;--blue:#236c91;--blue-soft:#e5f0f5;--amber:#9a6415;--amber-soft:#f7ecd7;--red:#a8463d;--red-soft:#f7e5e2;--green:#24705a;--green-soft:#e3f2eb;--mono:ui-monospace,"SFMono-Regular",Menlo,monospace;--serif:Iowan Old Style,Georgia,serif}
+  @media(prefers-color-scheme:dark){:root{--bg:#111820;--paper:#17212a;--paper-2:#1c2832;--ink:#edf1f4;--muted:#a3afb9;--line:#34414c;--navy:#173b57;--blue:#79bddb;--blue-soft:#203846;--amber:#e2ad56;--amber-soft:#3b3020;--red:#ef8f85;--red-soft:#3d2727;--green:#69c5a5;--green-soft:#203a32}}
+  *{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--ink);font:15px/1.5 system-ui,-apple-system,"Segoe UI",sans-serif}button{font:inherit}button:focus-visible{outline:3px solid var(--blue);outline-offset:2px}
+  header{background:var(--navy);color:#fff;padding:24px clamp(18px,4vw,48px)}.eyebrow{font:700 11px/1.3 var(--mono);letter-spacing:.12em;text-transform:uppercase;opacity:.72}.header-row{display:flex;align-items:end;justify-content:space-between;gap:24px}.header-row h1{font:500 34px/1.08 var(--serif);margin:4px 0}.header-row p{margin:0;max-width:720px;opacity:.8}.live{font:12px/1.4 var(--mono);white-space:nowrap}.dot{display:inline-block;width:7px;height:7px;border-radius:50%;background:#7be1b7;margin-right:6px}.dot.warn{background:#f0bd64}.dot.error{background:#ef8f85}
+  main{max-width:1240px;margin:auto;padding:24px clamp(16px,4vw,48px) 70px}.metrics{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:10px;margin-bottom:16px}.metric{background:var(--paper);border:1px solid var(--line);border-radius:8px;padding:14px}.metric b{display:block;font:500 25px/1.1 var(--serif)}.metric span{display:block;color:var(--muted);font-size:12px;margin-top:3px}.toolbar{display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:12px;margin:18px 0}.filters{display:flex;flex-wrap:wrap;gap:7px}.filter{border:1px solid var(--line);border-radius:999px;background:var(--paper);color:var(--ink);padding:7px 12px;cursor:pointer}.filter[aria-pressed="true"]{border-color:var(--blue);background:var(--blue-soft);color:var(--blue);font-weight:700}.scope-note{color:var(--muted);font-size:12px}
+  .notice{border:1px solid var(--line);border-left:4px solid var(--blue);background:var(--paper);border-radius:6px;padding:11px 14px;margin:10px 0;color:var(--muted)}.notice strong{color:var(--ink)}.notice.warn{border-left-color:var(--amber);background:var(--amber-soft)}.notice.error{border-left-color:var(--red);background:var(--red-soft);color:var(--ink)}
+  .dataset{margin:26px 0}.dataset-head{display:flex;align-items:baseline;justify-content:space-between;gap:16px;border-bottom:1px solid var(--line);padding-bottom:8px}.dataset-head h2{font:500 27px/1.2 var(--serif);margin:0}.dataset-head p{margin:0;color:var(--muted);font:12px var(--mono)}.group{margin:18px 0}.group-head{display:flex;align-items:baseline;justify-content:space-between;gap:12px}.group h3{font:700 12px/1.3 var(--mono);letter-spacing:.08em;text-transform:uppercase;color:var(--muted);margin:0 0 8px}.group-count{color:var(--muted);font:12px var(--mono)}.cards{display:grid;grid-template-columns:repeat(auto-fill,minmax(285px,1fr));gap:10px}.record-card{width:100%;min-height:164px;text-align:left;border:1px solid var(--line);border-radius:8px;background:var(--paper);color:var(--ink);padding:15px;cursor:pointer;display:flex;flex-direction:column}.record-card:hover{border-color:var(--blue)}.record-card[aria-pressed="true"]{border:2px solid var(--blue);padding:14px;background:var(--blue-soft)}.card-top{display:flex;align-items:start;justify-content:space-between;gap:10px}.kind{font:700 10px/1.3 var(--mono);text-transform:uppercase;letter-spacing:.07em;color:var(--blue)}.badges{display:flex;justify-content:flex-end;flex-wrap:wrap;gap:4px}.badge{border-radius:999px;background:var(--paper-2);border:1px solid var(--line);padding:3px 7px;font:700 10px/1.2 var(--mono);overflow-wrap:anywhere}.record-card h4{font:500 20px/1.24 var(--serif);margin:7px 0 4px}.record-card .id{font:11px/1.35 var(--mono);color:var(--muted);overflow-wrap:anywhere}.card-summary{margin:10px 0;color:var(--muted);font-size:13px;overflow-wrap:anywhere}.card-foot{margin-top:auto;padding-top:9px;border-top:1px solid var(--line);font:11px/1.35 var(--mono);color:var(--muted);overflow-wrap:anywhere}.empty{border:1px dashed var(--line);border-radius:8px;padding:28px;text-align:center;color:var(--muted)}
+  .detail{margin-top:32px;background:var(--paper);border:1px solid var(--line);border-radius:9px;overflow:hidden}.detail-head{padding:20px 22px;border-bottom:1px solid var(--line)}.detail-title-row{display:flex;justify-content:space-between;gap:18px;align-items:start}.detail h2{font:500 29px/1.18 var(--serif);margin:0 0 4px}.detail-id{font:11px var(--mono);color:var(--muted);overflow-wrap:anywhere}.detail-grid{display:grid;grid-template-columns:minmax(0,1fr) minmax(300px,.62fr);align-items:start}.detail-main{min-width:0;border-right:1px solid var(--line)}.detail-side{min-width:0}.section{padding:18px 22px;border-bottom:1px solid var(--line)}.section:last-child{border-bottom:0}.section h3{font:700 11px/1.3 var(--mono);letter-spacing:.08em;text-transform:uppercase;color:var(--muted);margin:0 0 12px}.facts{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:11px 20px}.fact dt{font:10px/1.3 var(--mono);text-transform:uppercase;letter-spacing:.06em;color:var(--muted)}.fact dd{margin:3px 0 0;overflow-wrap:anywhere}.extra{margin-top:14px;padding-top:13px;border-top:1px solid var(--line)}.extra summary{cursor:pointer;color:var(--blue);font-weight:700}.extra dl{margin-bottom:0}.assessment{border-left:4px solid var(--green);background:var(--green-soft);padding:12px 14px;border-radius:5px}.assessment.ambiguous,.assessment.incomplete{border-left-color:var(--amber);background:var(--amber-soft)}.assessment strong{display:block}.assessment p{margin:3px 0 0;color:var(--muted)}
+  .document-panel{min-height:100px;overflow-wrap:anywhere}.document-panel [data-aslite-rendered-document]{line-height:1.62}.document-panel h1,.document-panel h2,.document-panel h3{font-family:var(--serif);font-weight:500;line-height:1.25}.document-panel pre{white-space:pre-wrap;overflow-wrap:anywhere;background:var(--bg);border:1px solid var(--line);border-radius:6px;padding:12px}.document-panel [data-aslite-doc-id]{cursor:pointer;text-decoration:underline;color:var(--blue)}.render-meta{margin-top:12px;font:11px/1.4 var(--mono);color:var(--muted);overflow-wrap:anywhere}
+  .relations{display:grid;gap:8px}.relation{border:1px solid var(--line);border-radius:7px;padding:12px;background:var(--paper-2)}.relation-top{display:flex;align-items:start;justify-content:space-between;gap:8px}.relation h4{font:500 17px/1.25 var(--serif);margin:4px 0}.relation-meta{font:11px/1.4 var(--mono);color:var(--muted);overflow-wrap:anywhere}.relation-label{color:var(--blue);font-weight:700;overflow-wrap:anywhere}.actions{display:flex;flex-wrap:wrap;gap:6px;margin-top:9px}.action{border:1px solid var(--blue);background:transparent;color:var(--blue);border-radius:5px;padding:5px 9px;cursor:pointer}.action:hover{background:var(--blue-soft)}.related-panel{margin-top:12px;border-top:1px solid var(--line);padding-top:14px}.error-text{color:var(--red)}.hidden{display:none!important}.loading{opacity:.65;pointer-events:none}
+  @media(max-width:850px){.metrics{grid-template-columns:repeat(2,minmax(0,1fr))}.detail-grid{grid-template-columns:1fr}.detail-main{border-right:0;border-bottom:1px solid var(--line)}}
+  @media(max-width:560px){header{padding:20px 16px}.header-row{display:block}.live{margin-top:12px}.metrics{grid-template-columns:1fr 1fr}.cards{grid-template-columns:1fr}.facts{grid-template-columns:1fr}.detail-title-row{display:block}.dataset-head{display:block}.dataset-head p{margin-top:5px}}
+  @media(prefers-reduced-motion:reduce){*{scroll-behavior:auto!important}}
 </style>
 </head>
 <body>
-<header><div class="eyebrow">durable human decisions</div><div class="header-line"><h1>Review requests</h1><div class="live" id="live"><span class="dot"></span>connecting</div></div></header>
-<main id="app"><div class="empty">Subscribing before reading…</div></main>
+<header>
+  <div class="eyebrow">durable decisions and evidence</div>
+  <div class="header-row">
+    <div><h1>Review portfolio</h1><p>Human decision requests and durable Review reports remain separate, linked, and live.</p></div>
+    <div class="live" id="live" role="status" aria-live="polite"><span class="dot"></span>connecting</div>
+  </div>
+</header>
+<main>
+  <section class="metrics" id="metrics" aria-label="Portfolio summary"></section>
+  <div id="notices" aria-live="polite"></div>
+  <div class="toolbar">
+    <nav class="filters" aria-label="Portfolio record type">
+      <button class="filter" type="button" data-filter="all" aria-pressed="true">All records</button>
+      <button class="filter" type="button" data-filter="requests" aria-pressed="false">Human requests</button>
+      <button class="filter" type="button" data-filter="reviews" aria-pressed="false">Review reports</button>
+    </nav>
+    <div class="scope-note">Read-only · live bundle types and links · no migration inventory</div>
+  </div>
+  <div id="portfolio"><div class="empty">Subscribing before reading…</div></div>
+  <section class="detail hidden" id="detail" aria-live="polite"></section>
+</main>
 <script>
-(function(){
-  var PROTO="v0",seq=0,pending={},subs=[];
-  function send(type,extra){return new Promise(function(resolve,reject){var id=String(++seq);pending[id]={resolve:resolve,reject:reject};var msg={bridge:PROTO,id:id,type:type};if(extra)for(var k in extra)msg[k]=extra[k];parent.postMessage(msg,"*")})}
-  function openPage(pageId){parent.postMessage({bridge:PROTO,type:"open-page",pageId:pageId},"*")}
-  window.addEventListener("message",function(e){if(e.source!==window.parent)return;var m=e.data;if(!m||m.bridge!==PROTO)return;if(m.type==="change"){subs.slice().forEach(function(cb){cb(m.event)});return}var p=pending[m.id];if(!p)return;delete pending[m.id];if(m.type==="error")p.reject(new Error(m.error&&m.error.message||"bridge error"));else p.resolve(m.result)});
-  window.Bridge={query:function(params){return send("query",{params:params})},read:function(docId){return send("read",{docId:docId})},edges:function(params){return send("edges",{params:params})},openPage:openPage,subscribe:function(cb){subs.push(cb);return send("subscribe")}};
+(function () {
+  var PROTO = "v0", seq = 0, pending = {}, subs = [];
+  function send(type, extra) {
+    return new Promise(function (resolve, reject) {
+      var id = String(++seq);
+      pending[id] = { resolve: resolve, reject: reject };
+      var msg = { bridge: PROTO, id: id, type: type };
+      if (extra) for (var k in extra) msg[k] = extra[k];
+      parent.postMessage(msg, "*");
+    });
+  }
+  function openPage(pageId) {
+    parent.postMessage({ bridge: PROTO, type: "open-page", pageId: pageId }, "*");
+  }
+  function watch(refresh) {
+    if (typeof refresh !== "function") return Promise.reject(new TypeError("Bridge.watch requires a refresh function"));
+    var active = true, ready = false, running = false, queued = [];
+    function schedule(initial) {
+      running = true;
+      var batch = queued.splice(0);
+      return Promise.resolve().then(function () { return refresh(batch); }).then(function (value) {
+        running = false;
+        if (queued.length) void schedule(false);
+        return value;
+      }, function (err) {
+        running = false;
+        if (queued.length) void schedule(false);
+        if (initial) throw err;
+        console.error("Bridge.watch refresh failed", err);
+      });
+    }
+    function onChange(event) {
+      if (!active) return;
+      queued.push(event);
+      if (ready && !running) void schedule(false);
+    }
+    return window.Bridge.subscribe(onChange).then(function () {
+      ready = true;
+      return schedule(true);
+    }, function (err) {
+      active = false;
+      throw err;
+    });
+  }
+  window.addEventListener("message", function (e) {
+    if (e.source !== window.parent) return;
+    var m = e.data;
+    if (!m || m.bridge !== PROTO) return;
+    if (m.type === "change") { subs.forEach(function (cb) { cb(m.event); }); return; }
+    var p = pending[m.id];
+    if (!p) return;
+    delete pending[m.id];
+    if (m.type === "error") p.reject(new Error((m.error && m.error.message) || "bridge error"));
+    else p.resolve(m.result);
+  });
+  window.Bridge = {
+    hello: function () { return send("hello"); },
+    query: function (params) { return send("query", { params: params }); },
+    read: function (docId) { return send("read", { docId: docId }); },
+    renderDocument: function (docId) { return send("render-document", { docId: docId }); },
+    edges: function (params) { return send("edges", { params: params }); },
+    openPage: openPage,
+    subscribe: function (cb) { subs.push(cb); return send("subscribe"); },
+    watch: watch
+  };
 })();
 
-(function(){
+(function () {
   "use strict";
-  var app=document.getElementById("app"),live=document.getElementById("live"),generation=0,selectedId=null,heads=[];
-  function esc(value){return String(value==null?"":value).replace(/[&<>"']/g,function(c){return{"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]})}
-  function fm(doc){return doc&&doc.frontmatter||{}}
-  function dateValue(doc){var n=Date.parse(fm(doc).timestamp||"");return Number.isFinite(n)?n:0}
-  function inline(text){return esc(text).replace(/`([^`]+)`/g,"<code>$1</code>").replace(/\*\*([^*]+)\*\*/g,"<strong>$1</strong>")}
-  function markdown(body){
-    var lines=String(body||"").replace(/\r/g,"").split("\n"),out=[],list=null,inCode=false,code=[];
-    function closeList(){if(list){out.push("</"+list+">");list=null}}
-    lines.forEach(function(line){
-      if(/^```/.test(line)){closeList();if(inCode){out.push("<pre><code>"+esc(code.join("\n"))+"</code></pre>");code=[]}inCode=!inCode;return}
-      if(inCode){code.push(line);return}
-      var h=line.match(/^(#{1,3})\s+(.+)$/);if(h){closeList();out.push("<h"+h[1].length+">"+inline(h[2])+"</h"+h[1].length+">");return}
-      var ul=line.match(/^\s*[-*]\s+(.+)$/),ol=line.match(/^\s*\d+[.)]\s+(.+)$/);if(ul||ol){var wanted=ul?"ul":"ol";if(list!==wanted){closeList();list=wanted;out.push("<"+list+">")}out.push("<li>"+inline((ul||ol)[1])+"</li>");return}
-      closeList();if(line.trim())out.push("<p>"+inline(line.trim())+"</p>")
-    });closeList();if(inCode)out.push("<pre><code>"+esc(code.join("\n"))+"</code></pre>");return out.join("")
+  var REQUEST_LIMIT = 200, REVIEW_LIMIT = 500, RELATION_LIMIT = 100;
+  var KNOWN_REVIEW_FIELDS = ["type","title","timestamp","actor","status","role","verdict","verdict_subject","family","target","target_version","evidence_cutoff","template_version","owner"];
+  var KNOWN_REQUEST_FIELDS = ["type","title","timestamp","actor","status","reviewer","requested_by","question","decision_summary","decided_at"];
+  var portfolio = document.getElementById("portfolio"), detail = document.getElementById("detail"), notices = document.getElementById("notices"), metrics = document.getElementById("metrics"), live = document.getElementById("live");
+  var state = { requests:null, reviews:null, lastGoodRequests:null, lastGoodReviews:null, selectedId:null, filter:"all", detailGeneration:0, refreshCount:0 };
+
+  function el(tag, className, text) {
+    var item = document.createElement(tag);
+    if (className) item.className = className;
+    if (text !== undefined) item.textContent = text;
+    return item;
   }
-  function withoutGraphLinkParagraphs(body){
-    var lines=String(body||"").replace(/\r/g,"").split("\n"),index=lines.length-1,sawLink=false;
-    function isBundleLinkOnly(line){var match=line.match(/^\s*\[[^\]]+\]\(([^)\s]+)(?:\s+"[^"]*")?\)\s*$/);if(!match)return false;var target=match[1].replace(/^<|>$/g,"");return !/^[a-z][a-z0-9+.-]*:/i.test(target)&&target.charAt(0)!=="#"&&/\.md(?:#.*)?$/i.test(target)}
-    while(index>=0){if(!lines[index].trim()){index--;continue}if(isBundleLinkOnly(lines[index])){sawLink=true;index--;continue}break}
-    return sawLink?lines.slice(0,index+1).join("\n"):lines.join("\n")
+  function fm(row) { return row && row.frontmatter || {}; }
+  function present(value) { return value !== undefined && value !== null && value !== ""; }
+  function textValue(value, missing) {
+    if (!present(value)) return missing || "not declared";
+    if (typeof value === "string" || typeof value === "number" || typeof value === "boolean") return String(value);
+    try { return JSON.stringify(value); } catch (_) { return String(value); }
   }
-  function statusClass(s){return String(s||"").replace(/[^a-z_]/g,"")}
-  function isPage(doc){return fm(doc).type==="Page"&&/^pages-registry\//.test(doc.id||"")}
-  function renderShell(all,openIds){
-    var options=all.map(function(h){var f=fm(h);return '<option value="'+esc(h.id)+'"'+(h.id===selectedId?' selected':'')+'>'+esc(f.title||h.id)+' — '+esc(f.status||"unknown")+'</option>'}).join("");
-    app.innerHTML='<div class="toolbar"><div><label for="request-select">Review request</label><select id="request-select">'+options+'</select></div><div class="count">'+openIds.size+' open · '+all.length+' total</div></div><div id="detail"><div class="empty">Loading request and evidence…</div></div>';
-    document.getElementById("request-select").addEventListener("change",function(e){selectedId=e.target.value;loadDetail(selectedId)})
+  function totalValue(result) { return result && typeof result.count === "number" ? result.count : null; }
+  function shownTotal(shown, total) { return total === null ? String(shown) + " shown · total unknown" : String(shown) + " of " + String(total); }
+  function newer(a, b) {
+    var av = Date.parse(textValue(fm(a).timestamp, "")), bv = Date.parse(textValue(fm(b).timestamp, ""));
+    if (!Number.isFinite(av)) av = 0;
+    if (!Number.isFinite(bv)) bv = 0;
+    return bv - av || String(a.id).localeCompare(String(b.id));
   }
-  function artifactCard(edge,doc){var f=fm(doc),page=isPage(doc),body=String(doc.body||""),summary=body.replace(/[#*`\n]+/g," ").trim().slice(0,220)||"No body content";return '<article class="artifact"><div class="type">'+esc(f.type||"Document")+'</div><h4>'+esc(f.title||doc.id)+'</h4><div class="meta">'+esc(doc.id)+'</div>'+(page?'':'<div class="excerpt">'+esc(summary)+'</div><details><summary>Read full artifact</summary><div class="markdown">'+markdown(body)+'</div></details>')+(page?'<button type="button" data-open-page="'+esc(doc.id)+'">Open Page</button>':'')+'</article>'}
-  function renderDetail(request,edges,targetDocs){
-    var f=fm(request),groups=Object.create(null);edges.forEach(function(edge){var key=String(edge.text==null?"":edge.text);if(!Object.prototype.hasOwnProperty.call(groups,key))groups[key]=[];groups[key].push(edge)});
-    var evidence=Object.keys(groups).sort().map(function(text){return '<section class="group"><h3>'+esc(text)+'</h3><div class="cards">'+groups[text].map(function(edge){var doc=targetDocs[edge.to];return doc?artifactCard(edge,doc):'<article class="artifact"><div class="type">Unavailable</div><h4>'+esc(edge.to)+'</h4><div class="meta">The linked document could not be read.</div></article>'}).join("")+'</div></section>'}).join("");
-    var decided=(f.decision_summary||f.decided_at)?'<div class="notice"><strong>Persisted decision:</strong> '+esc(f.decision_summary||"No summary supplied")+(f.decided_at?' · '+esc(f.decided_at):'')+'</div>':'';
-    document.getElementById("detail").innerHTML='<section class="panel summary" data-testid="review-detail"><div class="summary-top"><div><h2>'+esc(f.title||request.id)+'</h2><div class="id">'+esc(request.id)+'</div></div><span class="badge '+statusClass(f.status)+'">'+esc(f.status||"unknown")+'</span></div><dl class="facts"><div class="fact"><dt>Reviewer</dt><dd>'+esc(f.reviewer||"Not named")+'</dd></div><div class="fact"><dt>Requested by</dt><dd>'+esc(f.requested_by||"Not named")+'</dd></div><div class="fact question"><dt>Review question</dt><dd>'+esc(f.question||"No question supplied")+'</dd></div></dl></section>'+decided+'<section class="panel"><div class="section-title">Request record</div><div class="markdown" data-testid="request-body">'+markdown(withoutGraphLinkParagraphs(request.body))+'</div></section><div class="notice"><strong>Read-only workflow:</strong> record a response through an attributed agent or CLI update on this durable request. This Page exposes no approval or mutation control.</div><div class="section-title" style="border:0;padding-left:0;margin-top:22px">Linked evidence · '+edges.length+'</div>'+(evidence||'<section class="panel"><div class="empty" style="padding:35px">No outbound evidence is linked.</div></section>');
-    document.querySelectorAll("[data-open-page]").forEach(function(button){button.addEventListener("click",function(){Bridge.openPage(button.getAttribute("data-open-page"))})})
+  function errorMessage(result) { return result && result.reason && result.reason.message ? result.reason.message : "unknown bridge failure"; }
+  function fulfilled(result) { return result && result.status === "fulfilled"; }
+  function cloneData(value) { var copy = {}; Object.keys(value || {}).forEach(function (key) { copy[key] = value[key]; }); return copy; }
+  function setLive(label, tone) {
+    live.textContent = "";
+    var dot = el("span", "dot" + (tone ? " " + tone : ""));
+    live.appendChild(dot);
+    live.appendChild(document.createTextNode(label));
   }
-  function loadDetail(id){
-    var mine=++generation,detail=document.getElementById("detail");if(detail)detail.innerHTML='<div class="empty">Loading request and evidence…</div>';
-    return Promise.all([Bridge.read(id),Bridge.edges({from:id})]).then(function(result){if(mine!==generation)return;var request=result[0],edges=result[1].edges||[],ids=[];edges.forEach(function(e){if(ids.indexOf(e.to)<0)ids.push(e.to)});return Promise.all(ids.map(function(target){return Bridge.read(target).then(function(doc){return{target:target,doc:doc}},function(){return{target:target,doc:null}})})).then(function(rows){if(mine!==generation)return;var docs={};rows.forEach(function(row){if(row.doc)docs[row.target]=row.doc});renderDetail(request,edges,docs)})}).catch(function(err){if(mine!==generation)return;detail=document.getElementById("detail");if(detail)detail.innerHTML='<div class="error">Could not load this review: '+esc(err.message)+'</div>'})
+
+  function makeRequestData(allResult, openResult) {
+    if (fulfilled(allResult) && fulfilled(openResult)) {
+      var all = allResult.value, open = openResult.value;
+      return { rows:all.rows || [], total:totalValue(all), openRows:open.rows || [], openTotal:totalValue(open), lifecycleKnown:true, partial:false, stale:false, problems:[] };
+    }
+    if (fulfilled(allResult)) {
+      var onlyAll = allResult.value;
+      return { rows:onlyAll.rows || [], total:totalValue(onlyAll), openRows:[], openTotal:null, lifecycleKnown:false, partial:true, stale:false, problems:["Open-request classification failed: " + errorMessage(openResult)] };
+    }
+    if (fulfilled(openResult)) {
+      var onlyOpen = openResult.value;
+      return { rows:onlyOpen.rows || [], total:null, openRows:onlyOpen.rows || [], openTotal:totalValue(onlyOpen), lifecycleKnown:false, partial:true, stale:false, problems:["The complete Review Request query failed; only rows returned by the bundle's open filter are shown: " + errorMessage(allResult)] };
+    }
+    if (state.lastGoodRequests) {
+      var stale = cloneData(state.lastGoodRequests);
+      stale.stale = true; stale.partial = true;
+      stale.problems = ["Review Request refresh failed; showing the last successful request snapshot: " + errorMessage(allResult) + "; " + errorMessage(openResult)];
+      return stale;
+    }
+    return { rows:[], total:null, openRows:[], openTotal:null, lifecycleKnown:false, partial:true, stale:false, unavailable:true, problems:["Review Requests are unavailable: " + errorMessage(allResult) + "; " + errorMessage(openResult)] };
   }
-  function reload(){
-    var mine=++generation;live.innerHTML='<span class="dot"></span>refreshing';app.classList.add("loading");
-    return Promise.all([Bridge.query({type:"Review Request"}),Bridge.query({type:"Review Request",open:true})]).then(function(result){if(mine!==generation)return;heads=(result[0].rows||[]).slice().sort(function(a,b){return dateValue(b)-dateValue(a)||String(a.id).localeCompare(String(b.id))});var open=(result[1].rows||[]).slice().sort(function(a,b){return dateValue(b)-dateValue(a)}),ids=new Set(heads.map(function(h){return h.id}));if(!selectedId||!ids.has(selectedId))selectedId=(open[0]||heads[0]||{}).id||null;app.classList.remove("loading");live.innerHTML='<span class="dot"></span>live';if(!selectedId){app.innerHTML='<div class="empty" data-testid="empty-state">No Review Requests yet. This Page will update when one is created.</div>';return}renderShell(heads,new Set(open.map(function(h){return h.id})));return loadDetail(selectedId)}).catch(function(err){if(mine!==generation)return;app.classList.remove("loading");live.textContent="read failed";app.innerHTML='<div class="error">Could not read review requests: '+esc(err.message)+'</div>'})
+
+  async function makeReviewData(reviewResult) {
+    if (!fulfilled(reviewResult)) {
+      if (state.lastGoodReviews) {
+        var stale = cloneData(state.lastGoodReviews);
+        stale.stale = true; stale.partial = true;
+        stale.problems = ["Review refresh failed; showing the last successful report snapshot: " + errorMessage(reviewResult)];
+        return stale;
+      }
+      return { rows:[], total:null, edges:[], edgesKnown:false, partial:true, stale:false, unavailable:true, problems:["Reviews are unavailable: " + errorMessage(reviewResult)] };
+    }
+    var value = reviewResult.value, rows = value.rows || [], ids = rows.map(function (row) { return row.id; }), edgeResults;
+    if (!ids.length) edgeResults = [{ status:"fulfilled", value:{ edges:[], count:0 } },{ status:"fulfilled", value:{ edges:[], count:0 } }];
+    else edgeResults = await Promise.allSettled([Bridge.edges({ from:ids }),Bridge.edges({ to:ids })]);
+    var returned = [], seen = Object.create(null);
+    edgeResults.forEach(function (result) {
+      if (!fulfilled(result)) return;
+      (result.value.edges || []).forEach(function (edge) {
+        var key = JSON.stringify([edge.from,edge.to,edge.text]);
+        if (!seen[key]) { seen[key] = true; returned.push(edge); }
+      });
+    });
+    if (fulfilled(edgeResults[0]) && fulfilled(edgeResults[1])) {
+      return { rows:rows, total:totalValue(value), edges:returned, edgeTotal:returned.length, edgesKnown:true, partial:false, stale:false, problems:[] };
+    }
+    return { rows:rows, total:totalValue(value), edges:returned, edgeTotal:null, edgesKnown:false, partial:true, stale:false, problems:["The bidirectional Review graph query was partial; effective-conclusion claims are suppressed: outbound " + (fulfilled(edgeResults[0]) ? "available" : errorMessage(edgeResults[0])) + "; inbound " + (fulfilled(edgeResults[1]) ? "available" : errorMessage(edgeResults[1]))] };
   }
-  // Bridge v0 has no replay. Register first, await the acknowledgement, then take a full snapshot.
-  Bridge.subscribe(function(){reload()}).then(function(){return reload()}).catch(function(err){live.textContent="subscription failed";app.innerHTML='<div class="error">Could not subscribe: '+esc(err.message)+'</div>'});
+
+  function isTruncated(data) {
+    return !!data && ((data.total !== null && data.rows.length < data.total) || (data.openTotal !== undefined && data.openTotal !== null && data.openRows.length < data.openTotal));
+  }
+  function datasetCount(data) { return data && data.rows ? shownTotal(data.rows.length, data.total) : "unavailable"; }
+  function addMetric(value, label) { var card = el("article", "metric"); card.appendChild(el("b", "", value)); card.appendChild(el("span", "", label)); metrics.appendChild(card); }
+  function addNotice(message, tone) { var box = el("div", "notice" + (tone ? " " + tone : "")); box.setAttribute(tone === "error" ? "role" : "data-kind", tone === "error" ? "alert" : "notice"); box.appendChild(el("strong", "", tone === "error" ? "Unavailable. " : "Incomplete view. ")); box.appendChild(document.createTextNode(message)); notices.appendChild(box); }
+
+  function renderSummary() {
+    metrics.textContent = ""; notices.textContent = "";
+    var requests = state.requests, reviews = state.reviews;
+    addMetric(requests ? datasetCount(requests) : "unavailable", "human Review Requests");
+    addMetric(requests && requests.lifecycleKnown ? shownTotal(requests.openRows.length, requests.openTotal) : "unknown", "open per bundle Kind rules");
+    addMetric(reviews ? datasetCount(reviews) : "unavailable", "durable Review reports");
+    var incomplete = !requests || !reviews || requests.partial || reviews.partial || requests.stale || reviews.stale || isTruncated(requests) || isTruncated(reviews);
+    addMetric(incomplete ? "partial" : "complete", "portfolio snapshot");
+    [requests,reviews].forEach(function (data) {
+      if (!data) return;
+      (data.problems || []).forEach(function (problem) { addNotice(problem, data.unavailable ? "error" : "warn"); });
+      if (isTruncated(data)) addNotice("A query cap was reached. " + datasetCount(data) + " rows are visible; omitted rows are not classified as unresolved. Use the CLI query for the complete inventory.", "warn");
+      if (data.stale) addNotice("This dataset is the last successful snapshot and may not reflect the current bundle head.", "warn");
+    });
+  }
+
+  function badge(text) { return el("span", "badge", text); }
+  function cardButton(row, kind) {
+    var f = fm(row), button = el("button", "record-card");
+    button.type = "button"; button.dataset.recordId = row.id;
+    button.setAttribute("aria-pressed", row.id === state.selectedId ? "true" : "false");
+    var top = el("div", "card-top"), badges = el("div", "badges");
+    top.appendChild(el("span", "kind", kind));
+    if (kind === "Review Request") badges.appendChild(badge(textValue(f.status, "status not declared")));
+    else {
+      badges.appendChild(badge(textValue(f.role, "role not declared")));
+      badges.appendChild(badge(textValue(f.verdict, "verdict not declared")));
+    }
+    top.appendChild(badges); button.appendChild(top);
+    button.appendChild(el("h4", "", textValue(f.title, row.id)));
+    button.appendChild(el("div", "id", row.id));
+    if (kind === "Review Request") button.appendChild(el("div", "card-summary", textValue(f.question, "Review question not declared")));
+    else button.appendChild(el("div", "card-summary", "Subject: " + textValue(f.verdict_subject, "not declared") + " · Target: " + textValue(f.target, "not declared")));
+    button.appendChild(el("div", "card-foot", kind === "Review Request" ? "Reviewer: " + textValue(f.reviewer, "not declared") : "Status: " + textValue(f.status, "not declared") + " · Cutoff: " + textValue(f.evidence_cutoff, "not declared")));
+    button.addEventListener("click", function () {
+      state.selectedId = row.id;
+      document.querySelectorAll("[data-record-id]").forEach(function (item) { item.setAttribute("aria-pressed", item === button ? "true" : "false"); });
+      void loadDetail(row);
+    });
+    return button;
+  }
+  function groupSection(title, rows, kind, note) {
+    var section = el("section", "group"), head = el("div", "group-head"), cards = el("div", "cards");
+    head.appendChild(el("h3", "", title)); head.appendChild(el("span", "group-count", String(rows.length)));
+    section.appendChild(head);
+    if (note) section.appendChild(el("div", "notice", note));
+    rows.slice().sort(newer).forEach(function (row) { cards.appendChild(cardButton(row, kind)); });
+    if (!rows.length) cards.appendChild(el("div", "empty", "No records in this group."));
+    section.appendChild(cards); return section;
+  }
+
+  function renderRequests(root) {
+    var data = state.requests, section = el("section", "dataset"), head = el("div", "dataset-head"); section.dataset.dataset = "requests";
+    head.appendChild(el("h2", "", "Human Review Requests")); head.appendChild(el("p", "", data ? datasetCount(data) : "unavailable")); section.appendChild(head);
+    if (!data || data.unavailable) section.appendChild(el("div", "empty", "No Review Request rows are currently available."));
+    else if (data.lifecycleKnown) {
+      var openIds = new Set(data.openRows.map(function (row) { return row.id; }));
+      section.appendChild(groupSection("Open per bundle Kind rules", data.rows.filter(function (row) { return openIds.has(row.id); }), "Review Request"));
+      section.appendChild(groupSection("Terminal per bundle Kind rules", data.rows.filter(function (row) { return !openIds.has(row.id); }), "Review Request"));
+    } else {
+      section.appendChild(groupSection("Lifecycle unavailable", data.rows, "Review Request", "The bundle did not return one complete all/open pair, so no row is guessed open or terminal."));
+    }
+    root.appendChild(section);
+  }
+
+  function roleGroup(row) {
+    var role = fm(row).role;
+    if (role === "synthesis") return "synthesis";
+    if (role === "specialist" || role === "approval" || role === "addendum" || role === "rereview") return "support";
+    return "other";
+  }
+  function renderReviews(root) {
+    var data = state.reviews, section = el("section", "dataset"), head = el("div", "dataset-head"); section.dataset.dataset = "reviews";
+    head.appendChild(el("h2", "", "Durable Review reports")); head.appendChild(el("p", "", data ? datasetCount(data) : "unavailable")); section.appendChild(head);
+    if (!data || data.unavailable) section.appendChild(el("div", "empty", "No Review rows are currently available."));
+    else {
+      section.appendChild(groupSection("Declared synthesis role", data.rows.filter(function (row) { return roleGroup(row) === "synthesis"; }), "Review"));
+      section.appendChild(groupSection("Declared supporting roles", data.rows.filter(function (row) { return roleGroup(row) === "support"; }), "Review"));
+      section.appendChild(groupSection("Other / undeclared role", data.rows.filter(function (row) { return roleGroup(row) === "other"; }), "Review", "Unknown and missing roles remain visible and are not inferred from titles, paths, family hints, timestamps, or other metadata."));
+    }
+    root.appendChild(section);
+  }
+  function allRows() {
+    var rows = [];
+    if (state.requests) rows = rows.concat(state.requests.rows || []);
+    if (state.reviews) rows = rows.concat(state.reviews.rows || []);
+    return rows;
+  }
+  function chooseSelection() {
+    var rows = allRows(), ids = new Set(rows.map(function (row) { return row.id; }));
+    if (state.selectedId && ids.has(state.selectedId)) return rows.find(function (row) { return row.id === state.selectedId; });
+    var open = state.requests && state.requests.lifecycleKnown ? state.requests.openRows.slice().sort(newer) : [];
+    var syntheses = state.reviews ? state.reviews.rows.filter(function (row) { return roleGroup(row) === "synthesis"; }).sort(newer) : [];
+    var fallback = open[0] || syntheses[0] || rows.slice().sort(newer)[0] || null;
+    state.selectedId = fallback ? fallback.id : null; return fallback;
+  }
+  function applyFilter() {
+    document.querySelectorAll("[data-dataset]").forEach(function (section) { section.classList.toggle("hidden", state.filter !== "all" && section.dataset.dataset !== state.filter); });
+  }
+  function renderPortfolio() {
+    portfolio.textContent = ""; renderSummary(); renderRequests(portfolio); renderReviews(portfolio); applyFilter();
+    var selected = chooseSelection();
+    document.querySelectorAll("[data-record-id]").forEach(function (item) { item.setAttribute("aria-pressed", item.dataset.recordId === state.selectedId ? "true" : "false"); });
+    if (selected) void loadDetail(selected); else { detail.textContent = ""; detail.classList.add("hidden"); }
+  }
+
+  function addFact(list, label, value) { var wrap = el("div", "fact"), dt = el("dt", "", label), dd = el("dd", "", textValue(value)); wrap.appendChild(dt); wrap.appendChild(dd); list.appendChild(wrap); }
+  function extraMetadata(f, known) {
+    var keys = Object.keys(f).filter(function (key) { return known.indexOf(key) < 0; }).sort();
+    if (!keys.length) return null;
+    var box = el("details", "extra"), summary = el("summary", "", "Other metadata · " + String(keys.length)), list = el("dl", "facts");
+    box.appendChild(summary); keys.forEach(function (key) { addFact(list, key, f[key]); }); box.appendChild(list); return box;
+  }
+  function completeLine(row) {
+    var f = fm(row), keys = ["target","target_version","evidence_cutoff","verdict_subject","verdict"];
+    return keys.every(function (key) { return present(f[key]); });
+  }
+  function sameLine(a, b) {
+    var af = fm(a), bf = fm(b), keys = ["target","target_version","evidence_cutoff","verdict_subject"];
+    return completeLine(a) && completeLine(b) && keys.every(function (key) { return textValue(af[key]) === textValue(bf[key]); });
+  }
+  function successionAssessment(id) {
+    var data = state.reviews;
+    if (!data || data.stale || data.partial || !data.edgesKnown || isTruncated(data)) return { level:"incomplete", title:"Effective conclusion not asserted", detail:"The Review dataset, graph, or cap is incomplete or stale. Currentness is suppressed rather than guessed." };
+    var rows = data.rows, byId = Object.create(null); rows.forEach(function (row) { byId[row.id] = row; });
+    var selected = byId[id]; if (!selected) return null;
+    var candidates = data.edges.filter(function (edge) { return edge.text === "succeeds review"; });
+    var adjacency = Object.create(null); rows.forEach(function (row) { adjacency[row.id] = []; });
+    candidates.forEach(function (edge) { if (adjacency[edge.from]) adjacency[edge.from].push(edge.to); if (adjacency[edge.to]) adjacency[edge.to].push(edge.from); });
+    var component = new Set([id]), queue = [id];
+    while (queue.length) {
+      var current = queue.shift(); (adjacency[current] || []).forEach(function (next) { if (!component.has(next)) { component.add(next); queue.push(next); } });
+    }
+    var componentEdges = candidates.filter(function (edge) { return component.has(edge.from) || component.has(edge.to); });
+    if (!componentEdges.length) {
+      if (!completeLine(selected)) return { level:"incomplete", title:"Standalone currentness not asserted", detail:"No classified succession edge exists and the declared subject/target/version/evidence fields are incomplete." };
+      return { level:"effective", title:"Standalone effective conclusion for the declared subject", detail:"No classified successor is present in the complete live Review graph. This statement applies only to the displayed verdict subject; it is not a generic target approval." };
+    }
+    var structural = false, incomplete = false, valid = [];
+    componentEdges.forEach(function (edge) {
+      if (edge.from === edge.to) { structural = true; return; }
+      if (!byId[edge.from] || !byId[edge.to]) { incomplete = true; return; }
+      if (!sameLine(byId[edge.from], byId[edge.to])) { incomplete = true; return; }
+      valid.push(edge);
+    });
+    if (incomplete) return { level:"incomplete", title:"Succession applicability incomplete", detail:"At least one exact succession edge lacks matching declared subject, target, version, evidence cutoff, or verdict metadata. Other links remain visible but do not establish currentness." };
+    var out = Object.create(null), inbound = Object.create(null); component.forEach(function (node) { out[node] = []; inbound[node] = []; });
+    valid.forEach(function (edge) { out[edge.from].push(edge.to); inbound[edge.to].push(edge.from); });
+    component.forEach(function (node) { if (out[node].length > 1 || inbound[node].length > 1) structural = true; });
+    var visiting = new Set(), visited = new Set();
+    function cycle(node) {
+      if (visiting.has(node)) return true;
+      if (visited.has(node)) return false;
+      visiting.add(node);
+      var found = (out[node] || []).some(cycle);
+      visiting.delete(node); visited.add(node); return found;
+    }
+    component.forEach(function (node) { if (cycle(node)) structural = true; });
+    var roots = Array.from(component).filter(function (node) { return out[node].length === 0; });
+    var termini = Array.from(component).filter(function (node) { return inbound[node].length === 0; });
+    if (roots.length !== 1 || termini.length !== 1) structural = true;
+    if (structural) return { level:"ambiguous", title:"Succession graph ambiguous", detail:"Competing predecessors/successors, a cycle/self-edge, or non-unique root/terminus prevents an effective-conclusion claim." };
+    var terminus = termini[0], terminusRow = byId[terminus];
+    if (id === terminus) return { level:"effective", title:"Effective terminus for the declared subject", detail:"This is the unique applicable leaf of an explicit successor-to-predecessor chain. Verdict: " + textValue(fm(terminusRow).verdict) + ". Subject: " + textValue(fm(terminusRow).verdict_subject) + "." };
+    return { level:"historical", title:"Predecessor in an explicit succession chain", detail:"The unique effective terminus is " + terminus + ". Its verdict applies only to its declared subject and exact target/evidence line." };
+  }
+
+  function renderAssessment(container, row) {
+    if (fm(row).type !== "Review") return;
+    var value = successionAssessment(row.id); if (!value) return;
+    var box = el("div", "assessment " + (value.level === "effective" || value.level === "historical" ? "" : value.level));
+    box.appendChild(el("strong", "", value.title)); box.appendChild(el("p", "", value.detail)); container.appendChild(box);
+  }
+  function renderedBody(panel, rendered) {
+    panel.textContent = "";
+    var body = el("div", "document-panel");
+    body.innerHTML = rendered.html;
+    panel.appendChild(body);
+    var meta = el("div", "render-meta", rendered.document.id + " · " + rendered.document.version + (rendered.bounded ? " · safely shortened" : "")); panel.appendChild(meta);
+    return body;
+  }
+  async function loadRelated(docId, panel) {
+    panel.textContent = ""; panel.appendChild(el("div", "notice", "Rendering the linked record through the shared document renderer…"));
+    try {
+      var rendered = await Bridge.renderDocument(docId), body = renderedBody(panel, rendered);
+      body.addEventListener("click", function (event) { var target = event.target instanceof Element ? event.target.closest("[data-aslite-doc-id]") : null; var next = target && target.getAttribute("data-aslite-doc-id"); if (next) void loadRelated(next, panel); });
+    } catch (error) { panel.textContent = ""; panel.appendChild(el("div", "error-text", "Could not render this record: " + error.message)); }
+  }
+  async function renderRelations(container, selectedId, generation) {
+    var results = await Promise.allSettled([Bridge.edges({ from:selectedId }), Bridge.edges({ to:selectedId })]);
+    if (generation !== state.detailGeneration) return;
+    var rows = [], total = 0, totalKnown = true, problems = [];
+    if (fulfilled(results[0])) { total += totalValue(results[0].value) === null ? 0 : totalValue(results[0].value); (results[0].value.edges || []).forEach(function (edge) { rows.push({ direction:"outbound to", other:edge.to, edge:edge }); }); }
+    else { totalKnown = false; problems.push("Outbound relations unavailable: " + errorMessage(results[0])); }
+    if (fulfilled(results[1])) { total += totalValue(results[1].value) === null ? 0 : totalValue(results[1].value); (results[1].value.edges || []).forEach(function (edge) { rows.push({ direction:"inbound from", other:edge.from, edge:edge }); }); }
+    else { totalKnown = false; problems.push("Inbound relations unavailable: " + errorMessage(results[1])); }
+    rows.sort(function (a,b) { return a.direction.localeCompare(b.direction) || textValue(a.edge.text, "").localeCompare(textValue(b.edge.text, "")) || a.other.localeCompare(b.other); });
+    var visible = rows.slice(0, RELATION_LIMIT), unique = Array.from(new Set(visible.map(function (row) { return row.other; }))), reads = await Promise.all(unique.map(function (id) { return Bridge.read(id).then(function (doc) { return { id:id, doc:doc }; }, function () { return { id:id, doc:null }; }); }));
+    if (generation !== state.detailGeneration) return;
+    var docs = Object.create(null); reads.forEach(function (item) { docs[item.id] = item.doc; });
+    container.textContent = "";
+    problems.forEach(function (problem) { container.appendChild(el("div", "notice warn", problem)); });
+    var countText = String(visible.length) + " shown · " + (totalKnown ? String(total) + " total" : "total unknown");
+    if (rows.length > RELATION_LIMIT) countText += " · truncated; use the CLI graph query for all relations";
+    container.appendChild(el("div", "render-meta", countText));
+    var list = el("div", "relations"), relatedPanel = el("div", "related-panel");
+    visible.forEach(function (item) {
+      var doc = docs[item.other], f = doc && doc.frontmatter || {}, card = el("article", "relation"), top = el("div", "relation-top");
+      top.appendChild(el("span", "kind", doc ? textValue(f.type, "Document") : "Unavailable")); top.appendChild(el("span", "relation-label", item.direction + " · " + textValue(item.edge.text, "(unlabeled)"))); card.appendChild(top);
+      card.appendChild(el("h4", "", doc ? textValue(f.title, item.other) : item.other));
+      card.appendChild(el("div", "relation-meta", item.other + (doc ? " · status: " + textValue(f.status, "not declared") + " · verdict: " + textValue(f.verdict, "not declared") : " · target could not be read")));
+      if (doc) {
+        var actions = el("div", "actions"), read = el("button", "action", "Read record"); read.type = "button"; read.addEventListener("click", function () { void loadRelated(doc.id, relatedPanel); }); actions.appendChild(read);
+        if (f.type === "View") { var open = el("button", "action", "Open View"); open.type = "button"; open.addEventListener("click", function () { Bridge.openPage(doc.id); }); actions.appendChild(open); }
+        card.appendChild(actions);
+      }
+      list.appendChild(card);
+    });
+    if (!visible.length) list.appendChild(el("div", "empty", "No visible relations are linked to this record."));
+    container.appendChild(list); container.appendChild(relatedPanel);
+  }
+
+  async function loadDetail(row) {
+    var generation = ++state.detailGeneration, f = fm(row), isRequest = f.type === "Review Request";
+    detail.textContent = ""; detail.classList.remove("hidden");
+    var head = el("div", "detail-head"), titleRow = el("div", "detail-title-row"), titleWrap = el("div"), headBadges = el("div", "badges");
+    titleWrap.appendChild(el("h2", "", textValue(f.title, row.id))); titleWrap.appendChild(el("div", "detail-id", row.id));
+    headBadges.appendChild(badge(textValue(f.type, "Document"))); headBadges.appendChild(badge(isRequest ? textValue(f.status, "status not declared") : textValue(f.verdict, "verdict not declared")));
+    titleRow.appendChild(titleWrap); titleRow.appendChild(headBadges); head.appendChild(titleRow); detail.appendChild(head);
+    var grid = el("div", "detail-grid"), main = el("div", "detail-main"), side = el("aside", "detail-side"), factsSection = el("section", "section"), facts = el("dl", "facts");
+    factsSection.appendChild(el("h3", "", isRequest ? "Request lifecycle" : "Review decision card"));
+    if (isRequest) {
+      addFact(facts,"Lifecycle status",f.status); addFact(facts,"Reviewer",f.reviewer); addFact(facts,"Requested by",f.requested_by); addFact(facts,"Review question",f.question); addFact(facts,"Decision summary",f.decision_summary); addFact(facts,"Decided at",f.decided_at);
+    } else {
+      addFact(facts,"Role",f.role); addFact(facts,"Record status",f.status); addFact(facts,"Verdict",f.verdict); addFact(facts,"Verdict subject",f.verdict_subject); addFact(facts,"Family hint",f.family); addFact(facts,"Target",f.target); addFact(facts,"Target version",f.target_version); addFact(facts,"Evidence cutoff",f.evidence_cutoff); addFact(facts,"Template version",f.template_version); addFact(facts,"Owner",f.owner);
+    }
+    addFact(facts,"Document version",row.version); factsSection.appendChild(facts);
+    var extra = extraMetadata(f, isRequest ? KNOWN_REQUEST_FIELDS : KNOWN_REVIEW_FIELDS); if (extra) factsSection.appendChild(extra);
+    main.appendChild(factsSection);
+    if (!isRequest) { var assessmentSection = el("section", "section"); assessmentSection.appendChild(el("h3", "", "Declared succession and effective conclusion")); renderAssessment(assessmentSection,row); assessmentSection.appendChild(el("div", "render-meta", "Only exact, method-conformant `succeeds review` edges participate. Approval, support, navigation, family hints, timestamps, and unknown relations never establish target currentness.")); main.appendChild(assessmentSection); }
+    var bodySection = el("section", "section"), bodyPanel = el("div", "document-panel"); bodySection.appendChild(el("h3", "", "Authoritative record body")); bodyPanel.appendChild(el("div", "notice", "Rendering through the shared bounded document renderer…")); bodySection.appendChild(bodyPanel); main.appendChild(bodySection);
+    var relationSection = el("section", "section"), relationPanel = el("div", "relations"); relationSection.appendChild(el("h3", "", "Bidirectional live relations")); relationPanel.appendChild(el("div", "notice", "Reading exact outbound and inbound edge labels…")); relationSection.appendChild(relationPanel); side.appendChild(relationSection);
+    grid.appendChild(main); grid.appendChild(side); detail.appendChild(grid);
+    Bridge.renderDocument(row.id).then(function (rendered) { if (generation !== state.detailGeneration) return; var body = renderedBody(bodyPanel,rendered); body.addEventListener("click",function(event){var target=event.target instanceof Element?event.target.closest("[data-aslite-doc-id]"):null;var docId=target&&target.getAttribute("data-aslite-doc-id");if(docId)void loadRelated(docId,relationPanel);}); }, function (error) { if (generation !== state.detailGeneration) return; bodyPanel.textContent = ""; bodyPanel.appendChild(el("div","error-text","Could not render this record: " + error.message)); });
+    void renderRelations(relationPanel,row.id,generation);
+  }
+
+  async function snapshot() {
+    setLive("refreshing", "warn"); portfolio.classList.add("loading");
+    var results = await Promise.allSettled([
+      Bridge.query({ type:"Review Request", limit:REQUEST_LIMIT }),
+      Bridge.query({ type:"Review Request", open:true, limit:REQUEST_LIMIT }),
+      Bridge.query({ type:"Review", limit:REVIEW_LIMIT })
+    ]);
+    var requestData = makeRequestData(results[0],results[1]), reviewData = await makeReviewData(results[2]);
+    state.requests = requestData; state.reviews = reviewData;
+    if (!requestData.partial && !requestData.stale) state.lastGoodRequests = cloneData(requestData);
+    if (!reviewData.partial && !reviewData.stale) state.lastGoodReviews = cloneData(reviewData);
+    state.refreshCount += 1; portfolio.classList.remove("loading"); renderPortfolio();
+    var impaired = requestData.partial || requestData.stale || reviewData.partial || reviewData.stale || isTruncated(requestData) || isTruncated(reviewData);
+    setLive(impaired ? "live · incomplete" : "live · complete", impaired ? "warn" : "");
+  }
+
+  document.querySelectorAll("[data-filter]").forEach(function (button) {
+    button.addEventListener("click", function () {
+      state.filter = button.dataset.filter;
+      document.querySelectorAll("[data-filter]").forEach(function (item) { item.setAttribute("aria-pressed", item === button ? "true" : "false"); });
+      applyFilter();
+    });
+  });
+  Bridge.watch(snapshot).catch(function (error) {
+    portfolio.classList.remove("loading"); setLive("subscription failed", "error");
+    if (!state.refreshCount) { portfolio.textContent = ""; var box = el("div", "notice error", "Could not subscribe before the initial snapshot: " + error.message); box.setAttribute("role","alert"); portfolio.appendChild(box); }
+    else addNotice("Live subscription stopped; the last rendered snapshot remains visible. Reopen the View to retry. " + error.message,"error");
+  });
 })();
 </script>
 </body>

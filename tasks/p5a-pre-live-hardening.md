@@ -17,8 +17,23 @@ description: >-
   via automation today (dispatch inputs are SemVer/embedded), but close it
   before live.
 actor: anthropic/claude
-timestamp: '2026-08-08T13:46:59.783Z'
+timestamp: '2026-08-08T15:19:34.925Z'
 ---
 [hardens](npm-staged-release-automation.md)
 
 [gates](self-discovered-upgrade-proof.md)
+
+# Design decisions (Brian, 2026-08-08) — receipt gate v1
+
+Full design: the designer report logged on plans/release-conventions-program. Brian's calls:
+1. **Inspection tier**: PRERELEASE (-> next) = inspection recommended + recorded — absence
+   publishes with a permanent, visible "published without inspection receipt" stamp; STABLE
+   (-> latest) = inspection receipt strictly required. Invalid/forged evidence is ALWAYS red for
+   both tiers (absence tolerated for prereleases; forgery never).
+2. **Signing**: operators' existing GitHub SSH keys via ssh-keygen -Y; public keys in a reviewed
+   .github/release-allowed-signers (Brian + Mike).
+3. **Receipts/stamps PUBLIC on the release page** — resolved by Brian's convention rule: public
+   attestation is the widely adopted practice (npm provenance, Sigstore transparency logs,
+   GitHub attestations, Apache/Debian maintainer signatures), so receipts stay.
+4. **No second approval button**: the one human approval remains npm 2FA stage-approve; the gate
+   verifies evidence mechanically (per contract section 5).
