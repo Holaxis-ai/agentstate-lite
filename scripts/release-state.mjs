@@ -36,6 +36,17 @@ const STATE_RECEIPT_FIELDS = {
   rolled_back: ["actor", "rolled_back_at", "restored_next", "deprecated_version", "recovery_command"],
 };
 
+// The public receipt vocabulary stays `actor` for every operator-owned transition. Only the
+// accumulated ledger namespaces that identity so different legal steps may have different owners
+// without weakening same-state replay checks.
+const STATE_ACTOR_KEYS = {
+  inspected: "inspected_by",
+  rejected: "rejected_by",
+  approved_public: "approved_by",
+  promoted: "promoted_by",
+  rolled_back: "rolled_back_by",
+};
+
 // Legal forward transitions. Each state's receipt is validated against STATE_RECEIPT_FIELDS; the
 // ledger accumulates every fixed identifier so cross-state contradictions fail closed.
 const TRANSITIONS = {
@@ -88,20 +99,24 @@ function requireFields(state, receipt) {
  * the proposed receipt contradicts a fixed immutable identifier and we fail closed. Returns
  * { identifiers, changed } — `changed:false` means every key re-asserted an identical value.
  */
-function mergeIdentifiers(existing, receipt) {
+function mergeIdentifiers(state, existing, receipt) {
   const identifiers = { ...existing };
   let changed = false;
   for (const [key, value] of Object.entries(receipt)) {
-    if (key in identifiers) {
-      if (!stableEqual(identifiers[key], value)) {
+    const ledgerKey = key === "actor" ? STATE_ACTOR_KEYS[state] : key;
+    if (!ledgerKey) {
+      throw new ReleaseStateError("unknown_state", `state ${state} has no actor identity mapping`);
+    }
+    if (ledgerKey in identifiers) {
+      if (!stableEqual(identifiers[ledgerKey], value)) {
         throw new ReleaseStateError(
           "identifier_mismatch",
-          `receipt.${key} = ${JSON.stringify(value)} contradicts fixed ${JSON.stringify(identifiers[key])}`,
+          `receipt.${key} = ${JSON.stringify(value)} contradicts fixed ${ledgerKey} ${JSON.stringify(identifiers[ledgerKey])}`,
         );
       }
       continue;
     }
-    identifiers[key] = value;
+    identifiers[ledgerKey] = value;
     changed = true;
   }
   return { identifiers, changed };
@@ -150,7 +165,7 @@ export function reconcile(ledger, event) {
 
   // Idempotent replay of the transition that produced the current state.
   if (to === from) {
-    const merged = mergeIdentifiers(identifiers, receipt); // throws on any contradiction
+    const merged = mergeIdentifiers(to, identifiers, receipt); // throws on any contradiction
     return { ledger: { state: to, identifiers: merged.identifiers }, changed: false };
   }
 
@@ -161,7 +176,7 @@ export function reconcile(ledger, event) {
       `cannot move ${from ?? "null"} -> ${to} (legal: ${legal.join(", ") || "none"})`,
     );
   }
-  const merged = mergeIdentifiers(identifiers, receipt);
+  const merged = mergeIdentifiers(to, identifiers, receipt);
   crossCheck(to, merged.identifiers);
   return { ledger: { state: to, identifiers: merged.identifiers }, changed: true };
 }

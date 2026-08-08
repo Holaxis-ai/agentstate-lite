@@ -6,7 +6,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 
 import { fileSha256 } from "./verify-npm-package.mjs";
-import { isAuxiliaryReleaseAssetName } from "./release-ordering.mjs";
+import { parseAuxiliaryReleaseAssetName } from "./release-ordering.mjs";
 import { parseStagePublishJson, verifyFinalizerChain } from "./release-receipts.mjs";
 
 const scriptPath = fileURLToPath(import.meta.url);
@@ -32,7 +32,7 @@ async function captureDraft(argv) {
   // A reused draft (rejected-N version reuse) may still carry receipt assets from a rejected
   // sibling stage; those are the ordering gate's concern — the core capture stays exactly two.
   const coreAssets = (Array.isArray(release.assets) ? release.assets : []).filter(
-    (asset) => !isAuxiliaryReleaseAssetName(asset?.name),
+    (asset) => !parseAuxiliaryReleaseAssetName(asset?.name, { mode: "pre-stage" }),
   );
   if (coreAssets.length !== 2) {
     throw new Error(`draft must contain exactly the retained tarball and candidate.json; found ${coreAssets.length}`);

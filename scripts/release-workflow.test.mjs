@@ -7,6 +7,7 @@ import { fileURLToPath } from "node:url";
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const staged = readFileSync(path.join(repoRoot, ".github", "workflows", "release-staged.yml"), "utf8");
 const finalize = readFileSync(path.join(repoRoot, ".github", "workflows", "release-finalize.yml"), "utf8");
+const verifyOrdering = readFileSync(path.join(repoRoot, "scripts", "release-verify-ordering.mjs"), "utf8");
 
 // Split a workflow's `jobs:` mapping into { jobName -> rawJobText } using the 2-space job-header
 // indentation. Dependency-free (no yaml package in the published boundary); the format is ours.
@@ -91,16 +92,24 @@ test("the ordering gate runs BEFORE registry mutation and again before publicati
     assert.match(jobs[name], /release-verify-ordering\.mjs verify/, `${name} verifies signed receipt ordering`);
     assert.match(jobs[name], /--allowed-signers \.github\/release-allowed-signers/, `${name} pins the committed signer file`);
   }
-  // In the finalize job the ordering re-verify precedes stamping, which precedes the publish op.
+  // The write-capable job plans, normalizes, re-queries, proves the exact set, then publishes.
   const body = jobs.finalize;
   const verifyAt = body.indexOf("release-verify-ordering.mjs verify");
-  const stampAt = body.indexOf("release-verify-ordering.mjs stamp");
+  const planAt = body.indexOf("release-verify-ordering.mjs plan");
+  const applyAt = body.indexOf("release-verify-ordering.mjs apply");
+  const requeryAt = body.indexOf('> final-draft-release.json');
+  const finalAt = body.indexOf("release-verify-ordering.mjs final");
   const publishAt = body.indexOf("release-run-operations.mjs --op immutable-release");
-  assert.ok(verifyAt !== -1 && stampAt !== -1 && publishAt !== -1);
-  assert.ok(verifyAt < stampAt && stampAt < publishAt, "verify -> stamp -> publish, in that order");
-  // The stamp is workflow-emitted, public, and lands BEFORE the draft is published.
-  assert.match(body, /gh release upload "v\$VERSION" "stamp-out\/\$ASSET_NAME"/);
-  assert.match(body, /-F "body=@stamp-out\/body\.txt"/);
+  assert.ok([verifyAt, planAt, applyAt, requeryAt, finalAt, publishAt].every((at) => at !== -1));
+  assert.ok(
+    verifyAt < planAt && planAt < applyAt && applyAt < requeryAt && requeryAt < finalAt && finalAt < publishAt,
+    "verify -> plan -> ID-only normalization -> re-query -> exact final proof -> publish",
+  );
+  assert.match(body, /retry-safe status --clobber/);
+  assert.match(verifyOrdering, /releases\/assets\/\$\{item\.id\}/, "cleanup targets exact release-asset IDs");
+  assert.match(verifyOrdering, /"--clobber"/, "status upload is retry-safe");
+  assert.match(verifyOrdering, /normalizeReceiptStatusBody/, "one owned-body normalizer prepares PATCH bytes");
+  assert.match(body, /--mode "\$MODE"/, "dry-run traverses the same apply adapter with a zero-mutation mode");
   // The environment gate also binds the ordering job.
   assert.match(jobs["ordering-verified"], /environment: release/);
 });

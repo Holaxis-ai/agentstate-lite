@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
-import { execFileSync } from "node:child_process";
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { execFileSync, spawnSync } from "node:child_process";
+import { createHash } from "node:crypto";
+import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import test from "node:test";
@@ -8,10 +9,12 @@ import { fileURLToPath } from "node:url";
 
 import {
   buildReceiptStatusStamp,
+  buildPublicationPlan,
   canonicalPayloadBytes,
   canonicalReceiptPayload,
   evaluateOrdering,
-  isAuxiliaryReleaseAssetName,
+  normalizeReceiptStatusBody,
+  parseAuxiliaryReleaseAssetName,
   parseReceiptFile,
   policyTagFor,
   receiptAssetName,
@@ -20,8 +23,16 @@ import {
   SIGN_NAMESPACE,
   stampAnnotation,
   stampAssetName,
+  verifyFinalPublication,
+  verifyReceiptStatusBody,
 } from "./release-ordering.mjs";
-import { allowedSignerPrincipals, main as verifyOrderingMain, selectReceiptAssets, verifySignedReceipt } from "./release-verify-ordering.mjs";
+import {
+  allowedSignerPrincipals,
+  applyPublicationPlan,
+  main as verifyOrderingMain,
+  selectReceiptAssets,
+  verifySignedReceipt,
+} from "./release-verify-ordering.mjs";
 import { buildStageReceipt } from "./release-receipts.mjs";
 import { ReleaseStateError } from "./release-state.mjs";
 
@@ -35,6 +46,10 @@ const MANIFEST_SHA = "sha256:" + "b".repeat(64);
 const INTEGRITY = "sha512-YWJjZA==";
 const RUN_CREATED_AT = "2026-08-08T12:00:00Z";
 const ALLOWED = ["briand-ai", "mikec-ai"];
+
+function sha256Bytes(bytes) {
+  return `sha256:${createHash("sha256").update(bytes).digest("hex")}`;
+}
 
 function stageReceiptFor(version) {
   const tarball = `holaxis-aslite-${version}.tgz`;
@@ -69,6 +84,10 @@ function chainFor(version) {
     draft_release_id: "300",
     tarball_sha256: TARBALL_SHA,
     integrity: INTEGRITY,
+    core_assets: [
+      { id: 202, name: "candidate.json", digest: MANIFEST_SHA },
+      { id: 201, name: `holaxis-aslite-${version}.tgz`, digest: TARBALL_SHA },
+    ],
   };
 }
 
@@ -88,6 +107,11 @@ function receiptFor(decision, version, overrides = {}, meta = {}) {
     payload,
     uploaderLogin: meta.uploaderLogin ?? payload.actor,
     uploadedAt: meta.uploadedAt ?? (decision === "inspected" ? "2026-08-08T10:01:00Z" : "2026-08-08T10:31:00Z"),
+    asset: meta.asset ?? {
+      id: decision === "inspected" ? 401 : 402,
+      name: receiptAssetName(decision, STAGE_ID),
+      digest: decision === "inspected" ? `sha256:${"1".repeat(64)}` : `sha256:${"2".repeat(64)}`,
+    },
   };
 }
 
@@ -155,12 +179,31 @@ test("tier + naming authorities", () => {
   assert.equal(policyTagFor(STABLE), "latest");
   assert.equal(receiptAssetName("inspected", STAGE_ID), `receipt-inspected-${STAGE_ID}.json`);
   assert.equal(stampAssetName(STAGE_ID), `receipt-status-${STAGE_ID}.json`);
-  assert.ok(isAuxiliaryReleaseAssetName(`receipt-approved-${STAGE_ID}.json`));
-  assert.ok(isAuxiliaryReleaseAssetName(`receipt-status-${STAGE_ID}.json`));
-  assert.ok(!isAuxiliaryReleaseAssetName("evil.tgz"));
-  assert.ok(!isAuxiliaryReleaseAssetName("receipt-forged-x.json"));
-  assert.ok(!isAuxiliaryReleaseAssetName("candidate.json"));
+  assert.ok(parseAuxiliaryReleaseAssetName(`receipt-approved-${STAGE_ID}.json`, { mode: "pre-stage" }));
+  assert.ok(parseAuxiliaryReleaseAssetName(`receipt-status-${STAGE_ID}.json`, { mode: "pre-stage" }));
+  assert.equal(parseAuxiliaryReleaseAssetName("evil.tgz", { mode: "pre-stage" }), null);
+  assert.equal(parseAuxiliaryReleaseAssetName("receipt-forged-x.json", { mode: "pre-stage" }), null);
+  assert.equal(parseAuxiliaryReleaseAssetName("receipt-approved-dry-run-stage.json", { mode: "pre-stage" }), null);
+  assert.equal(parseAuxiliaryReleaseAssetName("candidate.json", { mode: "pre-stage" }), null);
   assert.throws(() => receiptAssetName("status", STAGE_ID), /unknown receipt decision/);
+  assert.deepEqual(
+    parseAuxiliaryReleaseAssetName(`receipt-approved-${OTHER_STAGE_ID}.json`, { mode: "pre-stage" }),
+    { name: `receipt-approved-${OTHER_STAGE_ID}.json`, decision: "approved", stage_id: OTHER_STAGE_ID, category: "residual" },
+  );
+  assert.equal(
+    parseAuxiliaryReleaseAssetName(`receipt-status-${STAGE_ID}.json`, { mode: "finalize", currentStageId: STAGE_ID }).category,
+    "current_status",
+  );
+  assert.equal(
+    parseAuxiliaryReleaseAssetName(`receipt-inspected-${OTHER_STAGE_ID}.json`, { mode: "finalize", currentStageId: STAGE_ID }).category,
+    "sibling",
+  );
+  assert.equal(parseAuxiliaryReleaseAssetName("receipt-status-0000.json", { mode: "pre-stage" }), null);
+  assert.throws(() => parseAuxiliaryReleaseAssetName("candidate.json", { mode: "unknown" }), /unknown auxiliary classification mode/);
+  assert.throws(
+    () => parseAuxiliaryReleaseAssetName("candidate.json", { mode: "finalize", currentStageId: "dry-run-stage" }),
+    /invalid current stage id/,
+  );
 });
 
 test("TIER MATRIX — prerelease with both receipts reaches approved_public, no stamp", () => {
@@ -169,7 +212,24 @@ test("TIER MATRIX — prerelease with both receipts reaches approved_public, no 
   assert.equal(result.state, "approved_public");
   assert.deepEqual(result.missing, []);
   assert.equal(result.stamp_required, false);
-  assert.equal(result.actor, "briand-ai");
+  assert.deepEqual(result.actors, { inspected: "briand-ai", approved: "briand-ai" });
+  assert.deepEqual(result.receipt_assets.map((asset) => asset.name), [
+    receiptAssetName("approved", STAGE_ID),
+    receiptAssetName("inspected", STAGE_ID),
+  ]);
+});
+
+test("split inspector and approver identities pass in both directions and both tiers", () => {
+  for (const version of [PRE, STABLE]) {
+    for (const [inspector, approver] of [["briand-ai", "mikec-ai"], ["mikec-ai", "briand-ai"]]) {
+      const result = evaluate(version, {
+        inspected: receiptFor("inspected", version, { actor: inspector }, { uploaderLogin: inspector }),
+        approved: receiptFor("approved", version, { actor: approver }, { uploaderLogin: approver }),
+      });
+      assert.equal(result.state, "approved_public");
+      assert.deepEqual(result.actors, { inspected: inspector, approved: approver });
+    }
+  }
 });
 
 test("TIER MATRIX — prerelease missing inspection passes WITH stamp, ledger stays staged", () => {
@@ -204,11 +264,11 @@ test("TIER MATRIX — stable with both receipts passes; missing either is red", 
   );
 });
 
-test("TIER MATRIX — dry-run tolerates absence in BOTH tiers (reported, not red, no stamp)", () => {
+test("TIER MATRIX — dry-run reports the same prerelease stamp plan while stable absence remains non-mutating", () => {
   for (const version of [PRE, STABLE]) {
     const result = evaluate(version, { mode: "dry-run", inspected: null, approved: null });
     assert.deepEqual(result.missing, ["inspected", "approved"]);
-    assert.equal(result.stamp_required, false, "stamping is a live-publish act");
+    assert.equal(result.stamp_required, version === PRE);
   }
 });
 
@@ -221,7 +281,6 @@ test("ADVERSARIAL — present-but-invalid evidence is red in every tier and mode
     ["bot-uploaded receipt (CI token cannot impersonate an operator)", { inspected: receiptFor("inspected", PRE, {}, { uploaderLogin: "github-actions[bot]" }) }],
     ["receipt uploaded after finalize dispatch", { inspected: receiptFor("inspected", PRE, {}, { uploadedAt: "2026-08-08T12:00:01Z" }) }],
     ["approval uploaded before inspection", { approved: receiptFor("approved", PRE, {}, { uploadedAt: "2026-08-08T09:00:00Z" }) }],
-    ["cross-operator inspect/approve (approver must attest their own inspection)", { approved: receiptFor("approved", PRE, { actor: "mikec-ai" }, { uploaderLogin: "mikec-ai" }) }],
     ["decision/kind mismatch", { inspected: receiptFor("approved", PRE) }],
   ];
   for (const [label, receipts] of cases) {
@@ -285,6 +344,188 @@ test("stamp: built only when required, names the missing evidence, annotation ma
   assert.equal(both.note, "published without inspected receipt or approved receipt");
   const clean = evaluate(PRE);
   assert.throws(() => buildReceiptStatusStamp({ result: clean, finalizeRunId: "555", emittedAt: "2026-08-08T13:00:00Z" }), /does not require one/);
+});
+
+test("workflow-owned receipt-status body converges across retries and rejects malformed ownership", () => {
+  const original = "Prepared draft.\n\nHuman note.\n";
+  const first = normalizeReceiptStatusBody(original, "status A");
+  const second = normalizeReceiptStatusBody(first, "status B");
+  assert.equal((second.match(/aslite-receipt-status:start/g) ?? []).length, 1);
+  assert.match(second, /status B/);
+  assert.doesNotMatch(second, /status A/);
+  assert.ok(second.startsWith(original), "all pre-existing release-note bytes remain untouched");
+  assert.equal(verifyReceiptStatusBody(second, "status B"), true);
+  const removed = normalizeReceiptStatusBody(second, null);
+  assert.doesNotMatch(removed, /aslite-receipt-status/);
+  assert.match(removed, /Prepared draft/);
+  assert.match(removed, /Human note/);
+  assert.equal(verifyReceiptStatusBody(removed, null), true);
+  for (const malformed of [
+    "<!-- aslite-receipt-status:start -->\nmissing end",
+    "<!-- aslite-receipt-status:end -->\nmissing start",
+    "<!-- aslite-receipt-status:start --><!-- aslite-receipt-status:start --><!-- aslite-receipt-status:end -->",
+  ]) {
+    assert.throws(() => normalizeReceiptStatusBody(malformed, "status"), /duplicate|unbalanced/);
+  }
+});
+
+function releaseForPlan(version, ordering, extras = [], body = "Prepared draft.") {
+  return {
+    id: 300,
+    draft: true,
+    tag_name: `v${version}`,
+    body,
+    assets: [...chainFor(version).core_assets, ...ordering.receipt_assets, ...extras],
+  };
+}
+
+test("publication planner emits a sorted draft-bound ID-only cleanup manifest", () => {
+  const ordering = evaluate(PRE, { inspected: null });
+  const status = { name: stampAssetName(STAGE_ID), digest: `sha256:${"5".repeat(64)}` };
+  const release = releaseForPlan(PRE, ordering, [
+    { id: 910, name: stampAssetName(STAGE_ID), digest: `sha256:${"6".repeat(64)}` },
+    { id: 700, name: `receipt-inspected-${OTHER_STAGE_ID}.json`, digest: `sha256:${"7".repeat(64)}` },
+    { id: 650, name: `receipt-status-${OTHER_STAGE_ID}.json`, digest: `sha256:${"8".repeat(64)}` },
+  ]);
+  const plan = buildPublicationPlan({ release, chain: chainFor(PRE), ordering, status, bodyAnnotation: "current annotation" });
+  assert.equal(plan.draft_release_id, 300);
+  assert.deepEqual(plan.delete.map(({ id, category }) => [id, category]), [
+    [650, "sibling"],
+    [700, "sibling"],
+    [910, "current_status"],
+  ]);
+  assert.deepEqual(plan.keep.status, status);
+  assert.ok(plan.delete.every((item) => Number.isSafeInteger(item.id)));
+  const wrongDraft = { ...release, id: 301 };
+  assert.throws(
+    () => buildPublicationPlan({ release: wrongDraft, chain: chainFor(PRE), ordering, status, bodyAnnotation: "current annotation" }),
+    /draft release id/,
+  );
+});
+
+test("full receipts remove a pre-planted status asset and stale owned-body claim", () => {
+  const ordering = evaluate(PRE);
+  const staleBody = normalizeReceiptStatusBody("Prepared draft.", "stale missing-inspection claim");
+  const release = releaseForPlan(PRE, ordering, [
+    { id: 910, name: stampAssetName(STAGE_ID), digest: `sha256:${"6".repeat(64)}` },
+  ], staleBody);
+  const plan = buildPublicationPlan({
+    release,
+    chain: chainFor(PRE),
+    ordering,
+    status: null,
+    bodyAnnotation: null,
+  });
+  assert.deepEqual(plan.delete, [{ id: 910, name: stampAssetName(STAGE_ID), category: "current_status" }]);
+  assert.equal(plan.keep.status, null);
+  const finalRelease = {
+    ...release,
+    body: normalizeReceiptStatusBody(staleBody, null),
+    assets: [...chainFor(PRE).core_assets, ...ordering.receipt_assets],
+  };
+  const proof = verifyFinalPublication({ release: finalRelease, plan });
+  assert.equal(proof.status_asset, null);
+});
+
+test("HIGHEST-RISK M1 — final publication binds receipt id/digest, generated status digest/final id, and exact set", () => {
+  const ordering = evaluate(PRE, { inspected: null });
+  const status = { name: stampAssetName(STAGE_ID), digest: `sha256:${"5".repeat(64)}` };
+  const annotation = "current annotation";
+  const plan = buildPublicationPlan({
+    release: releaseForPlan(PRE, ordering),
+    chain: chainFor(PRE),
+    ordering,
+    status,
+    bodyAnnotation: annotation,
+  });
+  const approval = ordering.receipt_assets[0];
+  const body = normalizeReceiptStatusBody("Prepared draft.", annotation);
+  const replaced = releaseForPlan(PRE, ordering, [], body);
+  replaced.assets = [
+    ...chainFor(PRE).core_assets,
+    { ...approval, id: 777, digest: `sha256:${"b".repeat(64)}` },
+    { id: 888, name: status.name, digest: `sha256:${"f".repeat(64)}` },
+  ];
+  assert.throws(() => verifyFinalPublication({ release: replaced, plan }), /differs from verified id\/name\/digest/);
+
+  const restoredApproval = { ...replaced, assets: [...chainFor(PRE).core_assets, approval, replaced.assets.at(-1)] };
+  assert.throws(() => verifyFinalPublication({ release: restoredApproval, plan }), /differs from generated bytes/);
+
+  const exact = {
+    ...restoredApproval,
+    assets: [...chainFor(PRE).core_assets, approval, { id: 999, name: status.name, digest: status.digest }],
+  };
+  const proof = verifyFinalPublication({ release: exact, plan });
+  assert.deepEqual(proof.status_asset, { id: 999, name: status.name, digest: status.digest });
+
+  const sibling = {
+    ...exact,
+    assets: [...exact.assets, { id: 1000, name: `receipt-status-${OTHER_STAGE_ID}.json`, digest: `sha256:${"e".repeat(64)}` }],
+  };
+  assert.throws(() => verifyFinalPublication({ release: sibling, plan }), /unexpected final asset/);
+});
+
+test("publication executor is empirically mutation-free in dry-run and live uses exact IDs plus --clobber", async () => {
+  const scratch = mkdtempSync(path.join(tmpdir(), "aslite-publication-apply-"));
+  try {
+    const statusBytes = Buffer.from("generated status bytes\n");
+    const status = { name: stampAssetName(STAGE_ID), digest: sha256Bytes(statusBytes) };
+    const ordering = evaluate(PRE, { inspected: null });
+    const plan = buildPublicationPlan({
+      release: releaseForPlan(PRE, ordering, [
+        { id: 910, name: stampAssetName(STAGE_ID), digest: `sha256:${"6".repeat(64)}` },
+        { id: 700, name: `receipt-inspected-${OTHER_STAGE_ID}.json`, digest: `sha256:${"7".repeat(64)}` },
+      ]),
+      chain: chainFor(PRE),
+      ordering,
+      status,
+      bodyAnnotation: "current annotation",
+    });
+    writeFileSync(path.join(scratch, status.name), statusBytes);
+    writeFileSync(path.join(scratch, "body.txt"), normalizeReceiptStatusBody("Prepared draft.", "current annotation"));
+    const calls = [];
+    let injectedAbsent = false;
+    const runner = (command, args) => {
+      calls.push([command, ...args]);
+      if (!injectedAbsent && args.includes("repos/Holaxis-ai/agentstate-lite/releases/assets/700")) {
+        injectedAbsent = true;
+        const error = new Error("HTTP 404");
+        error.stderr = "Not Found";
+        throw error;
+      }
+    };
+    const dry = await applyPublicationPlan({ mode: "dry-run", plan, repo: "Holaxis-ai/agentstate-lite", outDir: scratch, run: runner });
+    assert.deepEqual(dry, { mutated: false, calls: 0 });
+    assert.deepEqual(calls, [], "dry-run invokes no cleanup, upload, or PATCH command");
+    const bin = path.join(scratch, "bin");
+    const publishLog = path.join(scratch, "publish.log");
+    mkdirSync(bin);
+    const ghStub = path.join(bin, "gh");
+    writeFileSync(ghStub, `#!/bin/sh\nprintf '%s\\n' "$*" >> "$ASLITE_TEST_PUBLISH_LOG"\n`);
+    chmodSync(ghStub, 0o755);
+    const dryPublish = spawnSync(process.execPath, [
+      path.join(repoRoot, "scripts", "release-run-operations.mjs"),
+      "--op", "immutable-release", "--version", PRE, "--release-id", "300",
+    ], {
+      encoding: "utf8",
+      env: { ...process.env, PATH: `${bin}:${process.env.PATH}`, ASLITE_TEST_PUBLISH_LOG: publishLog },
+    });
+    assert.equal(dryPublish.status, 0);
+    assert.equal(existsSync(publishLog), false, "dry-run renders publication but never invokes gh");
+
+    await applyPublicationPlan({ mode: "live", plan, repo: "Holaxis-ai/agentstate-lite", outDir: scratch, run: runner });
+    const deletes = calls.filter((call) => call.includes("DELETE"));
+    assert.deepEqual(deletes.map((call) => call.find((token) => token.includes("releases/assets/"))), [
+      "repos/Holaxis-ai/agentstate-lite/releases/assets/700",
+      "repos/Holaxis-ai/agentstate-lite/releases/assets/910",
+    ]);
+    assert.equal(injectedAbsent, true, "an already-absent planned ID is retry-tolerated");
+    const upload = calls.find((call) => call[1] === "release" && call[2] === "upload");
+    assert.ok(upload.includes("--clobber"));
+    assert.ok(calls.some((call) => call.includes("PATCH") && call.some((token) => token === "repos/Holaxis-ai/agentstate-lite/releases/300")));
+  } finally {
+    rmSync(scratch, { recursive: true, force: true });
+  }
 });
 
 test("receipt emission commands are validated and injection-shaped values throw", () => {
@@ -383,7 +624,7 @@ test("ssh signature round-trip: signed receipt verifies; tampering/wrong key/nam
   });
 });
 
-test("verify subcommand end to end: green chain writes the ordering proof; stamp subcommand materializes assets", async () => {
+test("verify/plan/final subcommands bind downloaded bytes through the final publication proof", async () => {
   await (async () => {
     const scratch = mkdtempSync(path.join(tmpdir(), "aslite-ordering-e2e-"));
     try {
@@ -392,18 +633,25 @@ test("verify subcommand end to end: green chain writes the ordering proof; stamp
       writeFileSync(signersPath, `${brian.allowedLine}\n`);
 
       const inspected = receiptFor("inspected", PRE).payload;
-      const approved = receiptFor("approved", PRE).payload;
+      const approved = receiptFor("approved", PRE, { actor: "mikec-ai" }).payload;
+      const mike = makeSigner(scratch, "mikec-ai");
+      writeFileSync(signersPath, `${brian.allowedLine}\n${mike.allowedLine}\n`);
       const receiptsDir = path.join(scratch, "receipts");
       mkdirSync(receiptsDir, { recursive: true });
-      writeFileSync(path.join(receiptsDir, receiptAssetName("inspected", STAGE_ID)), signReceipt(scratch, brian.keyPath, inspected));
-      writeFileSync(path.join(receiptsDir, receiptAssetName("approved", STAGE_ID)), signReceipt(scratch, brian.keyPath, approved));
+      const inspectedText = signReceipt(scratch, brian.keyPath, inspected);
+      const approvedText = signReceipt(scratch, mike.keyPath, approved);
+      writeFileSync(path.join(receiptsDir, receiptAssetName("inspected", STAGE_ID)), inspectedText);
+      writeFileSync(path.join(receiptsDir, receiptAssetName("approved", STAGE_ID)), approvedText);
 
       const release = {
         id: 300,
+        draft: true,
+        tag_name: `v${PRE}`,
         body: "Prepared draft.",
         assets: [
-          { id: 1, name: receiptAssetName("inspected", STAGE_ID), uploader: { login: "briand-ai" }, created_at: "2026-08-08T10:01:00Z" },
-          { id: 2, name: receiptAssetName("approved", STAGE_ID), uploader: { login: "briand-ai" }, created_at: "2026-08-08T10:31:00Z" },
+          ...chainFor(PRE).core_assets,
+          { id: 401, name: receiptAssetName("inspected", STAGE_ID), digest: sha256Bytes(inspectedText), uploader: { login: "briand-ai" }, created_at: "2026-08-08T10:01:00Z" },
+          { id: 402, name: receiptAssetName("approved", STAGE_ID), digest: sha256Bytes(approvedText), uploader: { login: "mikec-ai" }, created_at: "2026-08-08T10:31:00Z" },
         ],
       };
       const releasePath = path.join(scratch, "draft-release.json");
@@ -413,6 +661,23 @@ test("verify subcommand end to end: green chain writes the ordering proof; stamp
       writeFileSync(releasePath, JSON.stringify(release));
       writeFileSync(chainPath, JSON.stringify(chainFor(PRE)));
       writeFileSync(stagePath, JSON.stringify(stageReceiptFor(PRE)));
+
+      const digestMismatch = {
+        ...release,
+        assets: release.assets.map((asset) => asset.name === receiptAssetName("inspected", STAGE_ID)
+          ? { ...asset, digest: `sha256:${"f".repeat(64)}` }
+          : asset),
+      };
+      writeFileSync(releasePath, JSON.stringify(digestMismatch));
+      await assert.rejects(
+        verifyOrderingMain([
+          "verify", "--mode", "live", "--chain", chainPath, "--receipt", stagePath,
+          "--release", releasePath, "--receipts-dir", receiptsDir, "--run-created-at", RUN_CREATED_AT,
+          "--allowed-signers", signersPath, "--out", outPath,
+        ]),
+        /downloaded digest .* != GitHub asset digest/,
+      );
+      writeFileSync(releasePath, JSON.stringify(release));
 
       await verifyOrderingMain([
         "verify",
@@ -428,9 +693,10 @@ test("verify subcommand end to end: green chain writes the ordering proof; stamp
       const result = JSON.parse(readFileSync(outPath, "utf8"));
       assert.equal(result.state, "approved_public");
       assert.equal(result.stamp_required, false);
+      assert.deepEqual(result.actors, { inspected: "briand-ai", approved: "mikec-ai" });
 
-      // A stamped path: strip the inspection receipt and re-verify, then stamp.
-      const bare = { ...release, assets: release.assets.slice(1) };
+      // A stamped path: strip the inspection receipt and re-verify, then generate the complete plan.
+      const bare = { ...release, assets: release.assets.filter((asset) => asset.name !== receiptAssetName("inspected", STAGE_ID)) };
       writeFileSync(releasePath, JSON.stringify(bare));
       await verifyOrderingMain([
         "verify",
@@ -447,13 +713,16 @@ test("verify subcommand end to end: green chain writes the ordering proof; stamp
       assert.deepEqual(stampedResult.missing, ["inspected"]);
       assert.equal(stampedResult.stamp_required, true);
 
-      const stampDir = path.join(scratch, "stamp-out");
+      const stampDir = path.join(scratch, "publication-out");
+      const planPath = path.join(scratch, "publication-plan.json");
       await verifyOrderingMain([
-        "stamp",
+        "plan",
         "--result", outPath,
+        "--chain", chainPath,
         "--release", releasePath,
         "--out-dir", stampDir,
         "--finalize-run-id", "555",
+        "--out", planPath,
       ]);
       const assetName = readFileSync(path.join(stampDir, "asset-name.txt"), "utf8").trim();
       assert.equal(assetName, stampAssetName(STAGE_ID));
@@ -462,14 +731,102 @@ test("verify subcommand end to end: green chain writes the ordering proof; stamp
       const body = readFileSync(path.join(stampDir, "body.txt"), "utf8");
       assert.ok(body.startsWith("Prepared draft.\n\n"), "existing release body is preserved");
       assert.match(body, /published without inspected receipt/);
+      const plan = JSON.parse(readFileSync(planPath, "utf8"));
+      assert.equal(plan.keep.status.digest, sha256Bytes(readFileSync(path.join(stampDir, assetName))));
+
+      const finalRelease = {
+        ...bare,
+        body,
+        assets: [
+          ...chainFor(PRE).core_assets,
+          ...stampedResult.receipt_assets,
+          { id: 999, name: assetName, digest: plan.keep.status.digest },
+        ],
+      };
+      const finalReleasePath = path.join(scratch, "final-release.json");
+      const finalProofPath = path.join(scratch, "final-proof.json");
+      writeFileSync(finalReleasePath, JSON.stringify(finalRelease));
+      await verifyOrderingMain(["final", "--release", finalReleasePath, "--plan", planPath, "--out", finalProofPath]);
+      assert.equal(JSON.parse(readFileSync(finalProofPath, "utf8")).status_asset.id, 999);
 
       // No stamp required -> empty asset-name.txt sentinel.
       writeFileSync(outPath, JSON.stringify(result));
-      const cleanDir = path.join(scratch, "stamp-clean");
-      await verifyOrderingMain(["stamp", "--result", outPath, "--release", releasePath, "--out-dir", cleanDir, "--finalize-run-id", "555"]);
+      writeFileSync(releasePath, JSON.stringify(release));
+      const cleanDir = path.join(scratch, "publication-clean");
+      await verifyOrderingMain([
+        "plan", "--result", outPath, "--chain", chainPath, "--release", releasePath,
+        "--out-dir", cleanDir, "--finalize-run-id", "555", "--out", path.join(scratch, "clean-plan.json"),
+      ]);
       assert.equal(readFileSync(path.join(cleanDir, "asset-name.txt"), "utf8"), "");
     } finally {
       rmSync(scratch, { recursive: true, force: true });
     }
   })();
+});
+
+test("inspection mismatch unwinds batch scratch state, emits no receipt, and prints reject guidance", () => {
+  const harness = mkdtempSync(path.join(tmpdir(), "aslite-inspect-mismatch-test-"));
+  try {
+    const bin = path.join(harness, "bin");
+    const controlledTmp = path.join(harness, "tmp");
+    mkdirSync(bin);
+    mkdirSync(controlledTmp);
+    const manifestPath = path.join(harness, "candidate.json");
+    const batchPath = path.join(harness, "batch.json");
+    const ghLog = path.join(harness, "gh.log");
+    writeFileSync(manifestPath, JSON.stringify({
+      version: PRE,
+      tarball: { sha256: TARBALL_SHA, integrity: INTEGRITY },
+    }));
+    writeFileSync(batchPath, JSON.stringify([{
+      stage_id: STAGE_ID,
+      version: PRE,
+      draft_release_id: "300",
+      decision: "inspected",
+    }]));
+    const ghStub = path.join(bin, "gh");
+    writeFileSync(ghStub, `#!/bin/sh
+printf '%s\\n' "$*" >> "$ASLITE_TEST_GH_LOG"
+case "$*" in
+  *releases/assets/*) exec /bin/cat "$ASLITE_TEST_MANIFEST" ;;
+  *releases/300*) printf '%s\\n' '{"id":300,"draft":true,"assets":[{"id":22,"name":"candidate.json"}]}' ;;
+  'api user --jq .login') printf '%s\\n' 'briand-ai' ;;
+  *) exit 2 ;;
+esac
+`);
+    const npmStub = path.join(bin, "npm");
+    writeFileSync(npmStub, `#!/bin/sh
+if [ "$1:$2:$3" = "stage:download:${STAGE_ID}" ]; then
+  printf '%s' 'mismatching staged bytes' > "$ASLITE_TEST_DOWNLOAD_NAME"
+  exit 0
+fi
+exit 2
+`);
+    chmodSync(ghStub, 0o755);
+    chmodSync(npmStub, 0o755);
+    const result = spawnSync(process.execPath, [
+      path.join(repoRoot, "scripts", "release-inspect.mjs"),
+      "--batch", batchPath,
+      "--key", path.join(harness, "unused-key"),
+      "--repo", "Holaxis-ai/agentstate-lite",
+    ], {
+      encoding: "utf8",
+      env: {
+        ...process.env,
+        PATH: `${bin}:${process.env.PATH}`,
+        TMPDIR: controlledTmp,
+        ASLITE_TEST_GH_LOG: ghLog,
+        ASLITE_TEST_MANIFEST: manifestPath,
+        ASLITE_TEST_DOWNLOAD_NAME: `holaxis-aslite-${PRE}-${STAGE_ID}.tgz`,
+      },
+    });
+    assert.equal(result.status, 1);
+    assert.match(result.stderr, /MISMATCH: staged tarball/);
+    assert.match(result.stderr, new RegExp(`npm stage reject ${STAGE_ID}`));
+    assert.match(result.stderr, /receipt not emitted/);
+    assert.deepEqual(readdirSync(controlledTmp), [], "finally removes the scratch directory and suspect tarball");
+    assert.doesNotMatch(readFileSync(ghLog, "utf8"), /release upload/, "mismatch never uploads a receipt");
+  } finally {
+    rmSync(harness, { recursive: true, force: true });
+  }
 });

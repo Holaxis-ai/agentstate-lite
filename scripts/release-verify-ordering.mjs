@@ -1,7 +1,9 @@
-// Workflow-facing adapter for the operator-receipt ordering gate. Three subcommands:
+// Workflow-facing adapter for the operator-receipt ordering and exact-publication gate:
 //   assets  — list "<assetId> <assetName>" for THIS stage id's receipt assets on the draft release
 //   verify  — verify signatures/uploaders/timestamps, then evaluate ordering via the pure module
-//   stamp   — materialize the receipt-status stamp asset + release-body annotation when required
+//   plan    — materialize status/body bytes and a draft-bound, ID-only cleanup manifest
+//   apply   — dry-run no-op or the one live cleanup/upload/PATCH executor
+//   final   — prove the re-queried exact asset inventory and owned body before publication
 // Values arrive as argv/file data only (workflows bind expressions to env first); every signature
 // is checked with `ssh-keygen -Y verify` against the committed allowed-signers file before the
 // payload is trusted. Missing evidence is decided by the pure tier policy; this adapter fails
@@ -14,16 +16,20 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 
 import {
+  buildPublicationPlan,
   buildReceiptStatusStamp,
   canonicalPayloadBytes,
   evaluateOrdering,
+  normalizeReceiptStatusBody,
+  parseAuxiliaryReleaseAssetName,
   parseReceiptFile,
-  receiptAssetName,
   RECEIPT_DECISIONS,
   SIGN_NAMESPACE,
   stampAnnotation,
   stampAssetName,
+  verifyFinalPublication,
 } from "./release-ordering.mjs";
+import { fileSha256 } from "./verify-npm-package.mjs";
 
 const scriptPath = fileURLToPath(import.meta.url);
 
@@ -82,15 +88,16 @@ export function verifySignedReceipt({ text, allowedSignersPath }) {
 
 /** Select this stage id's receipt assets from a GitHub release JSON. */
 export function selectReceiptAssets(release, stageId) {
-  const wanted = new Map(RECEIPT_DECISIONS.map((decision) => [receiptAssetName(decision, stageId), decision]));
   const found = {};
   for (const asset of release?.assets ?? []) {
-    const decision = wanted.get(asset?.name);
-    if (!decision) continue;
+    const classified = parseAuxiliaryReleaseAssetName(asset?.name, { mode: "finalize", currentStageId: stageId });
+    if (classified?.category !== "current_receipt") continue;
+    const decision = classified.decision;
     if (found[decision]) throw new Error(`operator receipt verification failed: duplicate ${decision} receipt asset`);
     found[decision] = {
       id: String(asset.id),
       name: asset.name,
+      digest: asset.digest,
       uploaderLogin: asset.uploader?.login,
       uploadedAt: asset.created_at,
     };
@@ -121,11 +128,21 @@ async function verifyCommand(argv) {
   for (const decision of RECEIPT_DECISIONS) {
     const asset = assets[decision];
     if (!asset) continue;
+    const receiptPath = path.join(receiptsDir, asset.name);
+    const localDigest = await fileSha256(receiptPath);
+    if (localDigest !== asset.digest) {
+      throw new Error(`operator receipt verification failed: ${decision} downloaded digest ${localDigest} != GitHub asset digest ${asset.digest}`);
+    }
     const payload = verifySignedReceipt({
-      text: await readFile(path.join(receiptsDir, asset.name), "utf8"),
+      text: await readFile(receiptPath, "utf8"),
       allowedSignersPath,
     });
-    receipts[decision] = { payload, uploaderLogin: asset.uploaderLogin, uploadedAt: asset.uploadedAt };
+    receipts[decision] = {
+      payload,
+      uploaderLogin: asset.uploaderLogin,
+      uploadedAt: asset.uploadedAt,
+      asset: { id: asset.id, name: asset.name, digest: localDigest },
+    };
   }
 
   const result = evaluateOrdering({
@@ -145,31 +162,122 @@ async function verifyCommand(argv) {
   console.log(JSON.stringify(result));
 }
 
-async function stampCommand(argv) {
+async function planCommand(argv) {
   const result = await jsonFile(arg(argv, "--result"));
+  const chain = await jsonFile(arg(argv, "--chain"));
   const release = await jsonFile(arg(argv, "--release"));
   const outDir = arg(argv, "--out-dir");
   const finalizeRunId = arg(argv, "--finalize-run-id");
   await mkdir(outDir, { recursive: true });
-  if (!result.stamp_required) {
-    await writeFile(path.join(outDir, "asset-name.txt"), "");
-    return;
+  let status = null;
+  let annotation = null;
+  if (result.stamp_required) {
+    const stamp = buildReceiptStatusStamp({ result, finalizeRunId, emittedAt: new Date().toISOString() });
+    const assetName = stampAssetName(stamp.stage_id);
+    const assetPath = path.join(outDir, assetName);
+    await writeFile(assetPath, `${JSON.stringify(stamp, null, 2)}\n`);
+    status = { name: assetName, digest: await fileSha256(assetPath) };
+    annotation = stampAnnotation(stamp);
   }
-  const stamp = buildReceiptStatusStamp({ result, finalizeRunId, emittedAt: new Date().toISOString() });
-  const assetName = stampAssetName(stamp.stage_id);
-  await writeFile(path.join(outDir, assetName), `${JSON.stringify(stamp, null, 2)}\n`);
-  await writeFile(path.join(outDir, "asset-name.txt"), `${assetName}\n`);
-  const body = typeof release.body === "string" && release.body.trim() ? `${release.body}\n\n` : "";
-  await writeFile(path.join(outDir, "body.txt"), `${body}${stampAnnotation(stamp)}\n`);
-  console.log(JSON.stringify({ stamped: true, asset: assetName, missing: stamp.missing }));
+  const body = normalizeReceiptStatusBody(typeof release.body === "string" ? release.body : "", annotation);
+  const plan = buildPublicationPlan({ release, chain, ordering: result, status, bodyAnnotation: annotation });
+  await writeFile(path.join(outDir, "asset-name.txt"), status ? `${status.name}\n` : "");
+  await writeFile(path.join(outDir, "body.txt"), body);
+  await writeFile(arg(argv, "--out"), `${JSON.stringify(plan, null, 2)}\n`);
+  console.log(JSON.stringify({ planned: true, delete: plan.delete, status: plan.keep.status, missing: result.missing }));
+}
+
+function isNotFound(error) {
+  return /(?:HTTP 404|Not Found|status code 404)/i.test(`${String(error?.stderr ?? "")}\n${String(error?.message ?? error)}`);
+}
+
+function validatePlanForMutation(plan) {
+  if (plan?.schema !== "aslite.publication-plan.v1") throw new Error("unknown publication plan schema");
+  if (!Number.isSafeInteger(plan.draft_release_id) || plan.draft_release_id <= 0) throw new Error("publication plan has invalid draft release id");
+  if (!/^v\d+\.\d+\.\d+(?:-[0-9A-Za-z][0-9A-Za-z.-]*)?(?:\+[0-9A-Za-z][0-9A-Za-z.-]*)?$/.test(plan.tag ?? "")) {
+    throw new Error("publication plan has invalid release tag");
+  }
+  if (!Array.isArray(plan.delete)) throw new Error("publication plan has no delete manifest");
+  if (plan.keep?.status) {
+    if (plan.keep.status.name !== stampAssetName(plan.stage_id) || !/^sha256:[a-f0-9]{64}$/.test(plan.keep.status.digest ?? "")) {
+      throw new Error("publication plan has invalid generated status proof");
+    }
+  }
+  let prior = -1;
+  const ids = new Set();
+  for (const item of plan.delete) {
+    if (
+      !Number.isSafeInteger(item?.id) || item.id <= 0 || typeof item.name !== "string"
+      || !["current_status", "sibling"].includes(item.category)
+    ) {
+      throw new Error("publication plan has invalid delete entry");
+    }
+    if (ids.has(item.id) || item.id < prior) throw new Error("publication plan delete entries must be sorted and unique by id");
+    ids.add(item.id);
+    prior = item.id;
+  }
+}
+
+/** The only live mutation executor; dry-run returns before invoking its injected command runner. */
+export async function applyPublicationPlan({ mode, plan, repo, outDir, run = execFileSync }) {
+  if (mode !== "dry-run" && mode !== "live") throw new Error(`unknown publication mode ${JSON.stringify(mode)}`);
+  validatePlanForMutation(plan);
+  if (!/^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/.test(repo ?? "")) throw new Error("invalid GitHub repository name");
+  if (mode === "dry-run") return { mutated: false, calls: 0 };
+
+  let calls = 0;
+  for (const item of plan.delete) {
+    try {
+      calls += 1;
+      run("gh", ["api", "-X", "DELETE", `repos/${repo}/releases/assets/${item.id}`], { encoding: "utf8", stdio: "pipe" });
+    } catch (error) {
+      if (!isNotFound(error)) throw error;
+    }
+  }
+  if (plan.keep.status) {
+    const statusPath = path.join(outDir, plan.keep.status.name);
+    const localDigest = await fileSha256(statusPath);
+    if (localDigest !== plan.keep.status.digest) throw new Error(`generated status digest ${localDigest} != plan ${plan.keep.status.digest}`);
+    calls += 1;
+    run("gh", ["release", "upload", plan.tag, statusPath, "--repo", repo, "--clobber"], { encoding: "utf8", stdio: "pipe" });
+  }
+  calls += 1;
+  run(
+    "gh",
+    ["api", "-X", "PATCH", `repos/${repo}/releases/${plan.draft_release_id}`, "-F", `body=@${path.join(outDir, "body.txt")}`],
+    { encoding: "utf8", stdio: "pipe" },
+  );
+  return { mutated: true, calls };
+}
+
+async function applyCommand(argv) {
+  const plan = await jsonFile(arg(argv, "--plan"));
+  const result = await applyPublicationPlan({
+    mode: arg(argv, "--mode"),
+    plan,
+    repo: arg(argv, "--repo"),
+    outDir: arg(argv, "--out-dir"),
+  });
+  console.log(JSON.stringify(result));
+}
+
+async function finalCommand(argv) {
+  const proof = verifyFinalPublication({
+    release: await jsonFile(arg(argv, "--release")),
+    plan: await jsonFile(arg(argv, "--plan")),
+  });
+  await writeFile(arg(argv, "--out"), `${JSON.stringify(proof, null, 2)}\n`);
+  console.log(JSON.stringify(proof));
 }
 
 export async function main(argv) {
   const [command, ...rest] = argv;
   if (command === "assets") return assetsCommand(rest);
   if (command === "verify") return verifyCommand(rest);
-  if (command === "stamp") return stampCommand(rest);
-  throw new Error("usage: release-verify-ordering.mjs assets|verify|stamp ...");
+  if (command === "plan") return planCommand(rest);
+  if (command === "apply") return applyCommand(rest);
+  if (command === "final") return finalCommand(rest);
+  throw new Error("usage: release-verify-ordering.mjs assets|verify|plan|apply|final ...");
 }
 
 if (process.argv[1] && path.resolve(process.argv[1]) === scriptPath) {

@@ -73,7 +73,7 @@ async function emitReceipt({ decision, stageId, version, draftReleaseId, keyPath
         console.error(`MISMATCH: staged tarball ${observed} != retained candidate ${expectedSha}`);
         console.error(`The staged bytes are NOT the retained candidate. Reject the stage:`);
         console.error(`  ${rejectOperation({ stageId }).command}`);
-        process.exit(1);
+        throw new Error("inspection mismatch; receipt not emitted");
       }
       console.log(`MATCH: staged tarball ${observed}`);
     } else {
@@ -137,6 +137,6 @@ if (process.argv[1] && path.resolve(process.argv[1]) === scriptPath) {
     }
   } catch (error) {
     console.error(error instanceof Error ? error.message : String(error));
-    process.exit(1);
+    process.exitCode = 1;
   }
 }

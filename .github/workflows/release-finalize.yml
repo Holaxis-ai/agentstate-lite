@@ -7,7 +7,9 @@ name: Finalize release (separately dispatched)
 # a pre-publish re-check) additionally verifies SIGNED operator inspection/approval receipts
 # (draft-release assets, ssh-signed against .github/release-allowed-signers) by replaying the
 # release-state machine: stable candidates require both receipts; a prerelease missing receipts
-# publishes with a permanent public receipt-status stamp; invalid evidence is always fatal.
+# publishes with a permanent public receipt-status stamp; invalid evidence is always fatal. The
+# write-capable job then deletes only planned asset IDs, replaces status/body evidence, re-queries
+# the draft, and proves the exact retained id/name/digest inventory before publication.
 #
 # P5S must protect the `release` environment and set ASLITE_RELEASE_LIVE_ENABLED=true there. GitHub
 # auto-creates missing environments without protection, so absence of that explicit variable always
@@ -319,23 +321,38 @@ jobs:
             --run-created-at "$(cat run-created-at.txt)" \
             --allowed-signers .github/release-allowed-signers --out ordering-result.json
 
-      - name: Stamp missing receipt evidence, then publish the already-prepared draft
+      - name: Plan exact publication inventory and workflow-owned receipt status
+        env:
+          FINALIZE_RUN_ID: ${{ github.run_id }}
+        run: |
+          set -euo pipefail
+          node scripts/release-verify-ordering.mjs plan --result ordering-result.json \
+            --chain verified-chain.json --release draft-release.json --out-dir publication-out \
+            --finalize-run-id "$FINALIZE_RUN_ID" --out publication-plan.json
+
+      - name: Apply ID-only cleanup, retry-safe status --clobber, and owned body normalization
         env:
           GH_TOKEN: ${{ github.token }}
           LIVE_RELEASE_ENABLED: ${{ vars.ASLITE_RELEASE_LIVE_ENABLED }}
+        run: |
+          set -euo pipefail
+          if [ "$MODE" = "live" ]; then
+            test "$LIVE_RELEASE_ENABLED" = "true" || { echo "::error::release environment is not explicitly live-enabled"; exit 1; }
+          fi
+          node scripts/release-verify-ordering.mjs apply --mode "$MODE" --plan publication-plan.json \
+            --repo "$GITHUB_REPOSITORY" --out-dir publication-out
+
+      - name: Re-query and prove exact final inventory and owned body before publication
+        env:
+          GH_TOKEN: ${{ github.token }}
           DRAFT_RELEASE_ID: ${{ inputs.draft_release_id }}
           VERSION: ${{ inputs.version }}
         run: |
           set -euo pipefail
-          node scripts/release-verify-ordering.mjs stamp --result ordering-result.json \
-            --release draft-release.json --out-dir stamp-out --finalize-run-id "$GITHUB_RUN_ID"
           if [ "$MODE" = "live" ]; then
-            test "$LIVE_RELEASE_ENABLED" = "true" || { echo "::error::release environment is not explicitly live-enabled"; exit 1; }
-            if [ -s stamp-out/asset-name.txt ]; then
-              ASSET_NAME="$(cat stamp-out/asset-name.txt)"
-              gh release upload "v$VERSION" "stamp-out/$ASSET_NAME" --repo "$GITHUB_REPOSITORY"
-              gh api -X PATCH "repos/$GITHUB_REPOSITORY/releases/$DRAFT_RELEASE_ID" -F "body=@stamp-out/body.txt"
-            fi
+            gh api "repos/$GITHUB_REPOSITORY/releases/$DRAFT_RELEASE_ID" > final-draft-release.json
+            node scripts/release-verify-ordering.mjs final --release final-draft-release.json \
+              --plan publication-plan.json --out final-publication-proof.json
             node scripts/release-run-operations.mjs --op immutable-release \
               --version "$VERSION" --release-id "$DRAFT_RELEASE_ID" --execute
           else
