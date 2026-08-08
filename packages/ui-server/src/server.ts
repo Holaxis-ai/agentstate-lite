@@ -19,8 +19,8 @@ import {
   requestFromIncomingMessage,
   writeResponseToServerResponse,
 } from "@agentstate-lite/server";
-import { assertSafeBlobKey, blobVersion, readBlob, readDocVersioned, loadKinds, queryEdges, queryHeads, type Bundle, type EdgeFilter, type Frontmatter } from "@agentstate-lite/core";
-import { PAGE_TYPE_NAMES, parseRegistration, resolveDeclaredAccess } from "@agentstate-lite/core/page";
+import { assertSafeBlobKey, loadKinds, queryEdges, queryHeads, type Bundle, type EdgeFilter } from "@agentstate-lite/core";
+import { parseRegistration } from "@agentstate-lite/core/page";
 import { isAllowedHost } from "./host.js";
 import { checkAuth, mintSessionSecret, sessionCookieHeader } from "./session.js";
 import type { UiAssetHandler } from "./assets.js";
@@ -31,13 +31,14 @@ import {
   PageActionLaunchAuthority,
   PageBridgeLaunchAuthority,
   PageLaunchRegistry,
+  RegisteredViewLaunchError,
   SessionViewAuthorizationStore,
   TrustedActionService,
-  admitActiveView,
   launchIsCurrent,
   listViewCatalog,
+  mintActiveViewLaunch,
   pageLaunchAuthorizationSubject,
-  projectViewCatalog,
+  ViewNotFoundError,
   type ActionTerminalResult,
   type BridgeDocumentRenderer,
   type BridgeOutcome,
@@ -49,9 +50,6 @@ import { startWatcher, type ChangeEvent, type WatcherHandle } from "./watch.js";
 
 /** Always loopback: a network-exposed key proxy is a different feature and security boundary. */
 const HOST = "127.0.0.1";
-
-/** The single-bundle reference router's bundle segment (mirrors the SPA client's `BUNDLE`). */
-const REMOTE_BUNDLE = "default";
 
 /**
  * The home surface's sharing-chip state (designs/home-surface, the 9-row truth table). Declared
@@ -91,41 +89,18 @@ export interface WorkspaceSummaryEntry {
   open: boolean;
 }
 
-export interface UiServerOptions {
-  mode: "dir" | "remote";
+interface CommonUiServerOptions {
   port?: number;
-  /** REQUIRED in `--dir` mode: the in-process router mounted over the local bundle (`createRouter(bundle)`). */
-  router?: (req: Request) => Promise<Response>;
-  /** REQUIRED in `--dir` mode: the opened bundle — page-blob reads and the live-update watcher's snapshots go through it. */
-  bundle?: Bundle;
-  /** REQUIRED in `--remote` mode: the target origin's normalized base URL. */
-  remoteBase?: string;
-  /** `--remote` mode only: the stored API key for that origin, if any (absent ⇒ no `Authorization` header is sent — the zero-cloud E2E's keyless case). */
-  apiKey?: string;
   /**
-   * `--remote` mode only: a `RemoteBackend`-backed bundle over the same origin, for engine-level
-   * reads the wire protocol has no bespoke route for — kind-registry loads (`/__ui/kinds` ->
-   * core's `loadKinds`) and the derived edge list (`/__ui/edges` -> core's `queryEdges`, which
-   * itself rides `query`+`readMany` under the hood, so it needs no wire route of its own either).
-   * The SPA's `/v0/*` data path stays the reverse proxy; this is the same engine-level plumbing
-   * every other kind/graph-aware CLI command already rides for `--remote`.
+   * REQUIRED in both modes: the semantic bundle used by View launch, catalog, bridge, and
+   * engine-level reads. Remote mode supplies a RemoteBackend-backed bundle over `remoteBase`;
+   * the SPA's `/v0/*` data path still stays the reverse proxy.
    */
-  kindsBundle?: Bundle;
+  bundle: Bundle;
   /** Consumer-owned canonical document renderer; this host never imports presentation code. */
   renderDocument: BridgeDocumentRenderer;
   /** Asset bytes stay consumer-owned (the CLI injects its build-generated embedded table). */
   serveAsset: UiAssetHandler;
-  /** Consumer-owned display-name policy; the runtime never imports CLI naming rules. */
-  resolveBundleDisplayName?: (bundle: Bundle) => Promise<string>;
-  /**
-   * `--dir` mode, consumer-owned (the CLI injects its board-channel classification): the sharing
-   * summary for the home's trust chip. Called per config request — the consumer owns caching/TTL.
-   * A loader that THROWS reads as `unavailable` (never a fabricated "private"); absent loader in
-   * dir mode reads as no claim (`sharing: null`). Remote mode ignores it (`hosted` is derived here).
-   */
-  loadSharingSummary?: () => Promise<SharingSummary>;
-  /** `--dir` mode, consumer-owned: registered-workspace rows for the home's collapsed block (labels + paths only). A throwing loader reads as an empty list. */
-  loadWorkspaces?: () => Promise<WorkspaceSummaryEntry[]>;
   /** Injectable for tests; defaults to a fresh random secret per boot (never reused across runs). */
   sessionSecret?: string;
   /** Advisory identity recorded by a confirmed local View action. Read-only UI needs no actor. */
@@ -136,14 +111,38 @@ export interface UiServerOptions {
    * once without placing trust state in the synced bundle.
    */
   viewAuthorization?: ViewAuthorizationStore;
-  /**
-   * `--remote` mode only: override the watcher's boot-time initial-snapshot timeout (default
-   * `DEFAULT_REMOTE_BOOT_TIMEOUT_MS` in `watch.ts`, ~5s) — a test seam
-   * (tasks/ui-remote-watcher-boot-timeout) so a "never-responding remote" boot-bound test doesn't
-   * have to wait out the real default.
-   */
-  watcherBootTimeoutMs?: number;
 }
+
+export type UiServerOptions = CommonUiServerOptions &
+  (
+    | {
+        mode: "dir";
+        /** The in-process router mounted over the local bundle (`createRouter(bundle)`). */
+        router: (req: Request) => Promise<Response>;
+        /** Consumer-owned display-name policy; the runtime never imports CLI naming rules. */
+        resolveBundleDisplayName?: (bundle: Bundle) => Promise<string>;
+        /** Consumer-owned sharing classifier; absent means the shell makes no sharing claim. */
+        loadSharingSummary?: () => Promise<SharingSummary>;
+        /** Consumer-owned registered-workspace rows for the home surface. */
+        loadWorkspaces?: () => Promise<WorkspaceSummaryEntry[]>;
+        remoteBase?: never;
+        apiKey?: never;
+        watcherBootTimeoutMs?: never;
+      }
+    | {
+        mode: "remote";
+        /** The target origin's normalized base URL. */
+        remoteBase: string;
+        /** Stored API key for that origin, if any. */
+        apiKey?: string;
+        /** Override the remote watcher's boot-time initial-snapshot timeout. */
+        watcherBootTimeoutMs?: number;
+        router?: never;
+        resolveBundleDisplayName?: never;
+        loadSharingSummary?: never;
+        loadWorkspaces?: never;
+      }
+  );
 
 export interface UiServerHandle {
   host: string;
@@ -162,31 +161,6 @@ interface UiRuntime {
   sse: SseHub;
   watcher?: WatcherHandle;
   shutdown: AbortController;
-}
-
-async function viewLaunchIsCurrent(options: UiServerOptions, launch: PageLaunch): Promise<boolean> {
-  const bundle = options.mode === "dir" ? options.bundle : options.kindsBundle;
-  if (bundle) return launchIsCurrent(bundle, launch);
-  if (options.mode !== "remote" || launch.sourceKind !== "registered") return false;
-  const head = (await remoteRegistryHeads(options)).find(
-    (candidate) => candidate.id === launch.registryId,
-  );
-  const registration = head ? parseRegistration(head.id, head.frontmatter) : null;
-  const blob = registration ? await readPageBlob(options, registration.entry) : null;
-  const admitted = blob ? admitActiveView(blob.bytes, blob.contentType) : null;
-  return Boolean(
-    head &&
-    registration &&
-    head.version === launch.registryVersion &&
-    registration.type === launch.registryType &&
-    registration.entry === launch.entryKey &&
-    resolveDeclaredAccess(head.frontmatter) === launch.capability &&
-    blob &&
-    (!registration.entryVersion || registration.entryVersion === blob.version) &&
-    admitted?.contentType === launch.contentType &&
-    admitted !== null &&
-    blobVersion(admitted.bytes) === launch.contentVersion,
-  );
 }
 
 function jsonError(status: number, code: string, message: string): Response {
@@ -210,63 +184,11 @@ export function pageError(status: number, message: string): Response {
   });
 }
 
-/** Read a page blob's bytes + content-type in either mode: local backend (`--dir`) or the remote's blob route (`--remote`). `null` when absent. */
-async function readPageBlob(options: UiServerOptions, key: string): Promise<{ bytes: Uint8Array; contentType: string; version: string } | null> {
-  if (options.mode === "dir") {
-    const r = await readBlob(options.bundle!, key);
-    return r ? { bytes: r.bytes, contentType: r.contentType, version: r.version } : null;
-  }
-  const encoded = key.split("/").map(encodeURIComponent).join("/");
-  const target = `${options.remoteBase}/v0/bundles/${REMOTE_BUNDLE}/blobs/${encoded}`;
-  const headers: Record<string, string> = {};
-  if (options.apiKey) headers.authorization = `Bearer ${options.apiKey}`;
-  const res = await fetch(target, { headers });
-  if (!res.ok) return null;
-  const bytes = new Uint8Array(await res.arrayBuffer());
-  return { bytes, contentType: res.headers.get("content-type") ?? "application/octet-stream", version: res.headers.get("x-version") ?? blobVersion(bytes) };
-}
-
-interface RegistryHead {
-  id: string;
-  version: string;
-  frontmatter: Frontmatter;
-}
-
-/** Compatibility read for remote hosts that expose the wire surface but are not mounted as a Bundle. */
-async function remoteRegistryHeads(options: UiServerOptions): Promise<RegistryHead[]> {
-  const headers: Record<string, string> = {};
-  if (options.apiKey) headers.authorization = `Bearer ${options.apiKey}`;
-  const heads: RegistryHead[] = [];
-  for (const type of PAGE_TYPE_NAMES) {
-    let cursor: string | undefined;
-    do {
-      const url = new URL(`${options.remoteBase}/v0/bundles/${REMOTE_BUNDLE}/docs`);
-      url.searchParams.set("fields", "frontmatter");
-      url.searchParams.set("type", type);
-      url.searchParams.set("limit", "200");
-      if (cursor) url.searchParams.set("cursor", cursor);
-      const response = await fetch(url, { headers });
-      if (!response.ok) throw new Error(`type=${type} listing returned status ${response.status}`);
-      const body = (await response.json()) as { docs?: RegistryHead[]; next_cursor?: string | null };
-      if (!Array.isArray(body.docs)) throw new Error(`type=${type} listing returned malformed data`);
-      heads.push(...body.docs);
-      cursor = body.next_cursor ?? undefined;
-    } while (cursor);
-  }
-  return heads;
-}
-
 /** Serve a page's bytes for a resolved nonce — the ONLY thing a nonce authorizes, and only ITS one key. */
 async function servePageBytes(options: UiServerOptions, runtime: UiRuntime, nonce: string): Promise<Response> {
   const launch = runtime.launches.resolveNonce(nonce);
   if (!launch) return pageError(403, "This view link is unknown or has expired. Reopen the view from the launcher.");
-  let current = false;
-  try {
-    current = await viewLaunchIsCurrent(options, launch);
-  } catch (error) {
-    return pageError(502, `The bundle's View registry could not be read (${error instanceof Error ? error.message : String(error)}). Try again.`);
-  }
-  if (!current) {
+  if (!(await launchIsCurrent(options.bundle, launch))) {
     runtime.launches.revoke(launch.launchId);
     return pageError(403, "This view changed after it was opened. Reopen it from the launcher.");
   }
@@ -283,9 +205,34 @@ async function servePageBytes(options: UiServerOptions, runtime: UiRuntime, nonc
 }
 
 /**
- * Mint an immutable launch from a registry id. The server resolves the registration and exact HTML
- * itself; the shell never gets to pair an arbitrary key with a trusted registry identity.
+ * Mint an immutable launch through view-runtime's registered-source authority. The host owns only
+ * request parsing, legacy entry-key lookup, and translation into its HTTP response contract.
  */
+function mintFailureResponse(registryId: string, error: unknown): Response {
+  if (error instanceof ViewNotFoundError) {
+    const detail = error.storageCause instanceof Error ? error.storageCause.message : error.message;
+    return jsonError(404, "RUNTIME", detail);
+  }
+  if (error instanceof RegisteredViewLaunchError) {
+    switch (error.code) {
+      case "VIEW_REGISTRY_READ_FAILED":
+        return jsonError(502, "RUNTIME", error.message);
+      case "VIEW_INVALID_REGISTRATION":
+        return jsonError(403, "FORBIDDEN", `'${registryId}' is not a valid type:View registration (the legacy type:Page name no longer registers — migrate legacy content with the repo's migrate-legacy-view-names script)`);
+      case "VIEW_ENTRY_READ_FAILED":
+        return jsonError(500, "RUNTIME", error.message);
+      case "VIEW_ENTRY_NOT_FOUND":
+        return jsonError(404, "NOT_FOUND", error.message);
+      case "VIEW_ENTRY_VERSION_CONFLICT":
+        return jsonError(409, "VERSION_CONFLICT", error.message);
+      case "VIEW_ADMISSION_REJECTED":
+      case "VIEW_CHANGED_DURING_PREPARATION":
+        return jsonError(403, "FORBIDDEN", error.message);
+    }
+  }
+  return jsonError(500, "RUNTIME", error instanceof Error ? error.message : String(error));
+}
+
 async function handleMint(req: Request, runtime: UiRuntime, options: UiServerOptions): Promise<Response> {
   let payload: { registryId?: unknown; key?: unknown };
   try {
@@ -300,8 +247,6 @@ async function handleMint(req: Request, runtime: UiRuntime, options: UiServerOpt
   if (keys.length !== 1 || (keys[0] !== "registryId" && keys[0] !== "key")) {
     return jsonError(400, "USAGE", "request body must contain exactly registryId");
   }
-  const bundle = options.mode === "dir" ? options.bundle : options.kindsBundle;
-
   let registryId = typeof payload.registryId === "string" ? payload.registryId.trim() : "";
   const legacyKey = typeof payload.key === "string" ? payload.key.trim() : "";
   if (!registryId && legacyKey) {
@@ -312,9 +257,7 @@ async function handleMint(req: Request, runtime: UiRuntime, options: UiServerOpt
     }
     const matches: string[] = [];
     try {
-      const heads = bundle
-        ? (await Promise.all(PAGE_TYPE_NAMES.map((type) => queryHeads(bundle, { type })))).flat()
-        : await remoteRegistryHeads(options);
+      const heads = await queryHeads(options.bundle, { type: "View" });
       for (const head of heads) {
         const registration = parseRegistration(head.id, head.frontmatter);
         if (registration?.entry === legacyKey) matches.push(registration.id);
@@ -327,52 +270,11 @@ async function handleMint(req: Request, runtime: UiRuntime, options: UiServerOpt
   }
   if (!registryId) return jsonError(400, "USAGE", "request body must include a non-empty registryId");
 
-  let registryRead: Awaited<ReturnType<typeof readDocVersioned>>;
+  let launch: Awaited<ReturnType<typeof mintActiveViewLaunch>>;
   try {
-    if (bundle) {
-      registryRead = await readDocVersioned(bundle, registryId);
-    } else {
-      const head = (await remoteRegistryHeads(options)).find((candidate) => candidate.id === registryId);
-      if (!head) return jsonError(404, "NOT_FOUND", `View registry '${registryId}' does not exist`);
-      registryRead = { doc: { id: head.id, frontmatter: head.frontmatter, body: "" }, version: head.version };
-    }
-  } catch (err) {
-    return jsonError((err as NodeJS.ErrnoException)?.code === "ENOENT" ? 404 : 502, "RUNTIME", err instanceof Error ? err.message : String(err));
-  }
-  const registration = parseRegistration(registryRead.doc.id, registryRead.doc.frontmatter);
-  if (!registration) {
-    return jsonError(403, "FORBIDDEN", `'${registryId}' is not a valid type:View registration (the legacy type:Page name no longer registers — migrate legacy content with the repo's migrate-legacy-view-names script)`);
-  }
-  const blob = await readPageBlob(options, registration.entry);
-  if (!blob) return jsonError(404, "NOT_FOUND", `no View bytes found for '${registration.entry}'`);
-  if (registration.entryVersion && registration.entryVersion !== blob.version) {
-    return jsonError(409, "VERSION_CONFLICT", `View entry '${registration.entry}' no longer matches its pinned entry_version`);
-  }
-  let admitted: ReturnType<typeof admitActiveView>;
-  try {
-    admitted = admitActiveView(blob.bytes, blob.contentType);
+    launch = await mintActiveViewLaunch(options.bundle, runtime.launches, registryId);
   } catch (error) {
-    return jsonError(403, "FORBIDDEN", error instanceof Error ? error.message : String(error));
-  }
-  const launch = runtime.launches.mint({
-    sourceKind: "registered",
-    registryId: registration.id,
-    registryType: registration.type,
-    registryVersion: registryRead.version,
-    registryTitle: typeof registryRead.doc.frontmatter.title === "string" ? registryRead.doc.frontmatter.title : registration.id,
-    entryKey: registration.entry,
-    contentType: admitted.contentType,
-    contentVersion: blobVersion(admitted.bytes),
-    bytes: admitted.bytes,
-    capability: resolveDeclaredAccess(registryRead.doc.frontmatter),
-  });
-  if (!(await viewLaunchIsCurrent(options, launch))) {
-    runtime.launches.revoke(launch.launchId);
-    return jsonError(403, "FORBIDDEN", "the View changed while its launch was being prepared");
-  }
-  if (launch.sourceKind !== "registered") {
-    runtime.launches.revoke(launch.launchId);
-    return jsonError(500, "INTERNAL", "the web host minted an invalid transient launch");
+    return mintFailureResponse(registryId, error);
   }
   const subject = pageLaunchAuthorizationSubject(launch);
   const required = launch.capability !== "none";
@@ -413,10 +315,8 @@ async function configData(options: UiServerOptions): Promise<{
 }> {
   const name =
     options.mode === "dir"
-      ? options.bundle
-        ? options.resolveBundleDisplayName
-          ? await options.resolveBundleDisplayName(options.bundle)
-          : "bundle"
+      ? options.resolveBundleDisplayName
+        ? await options.resolveBundleDisplayName(options.bundle)
         : "bundle"
       : (() => {
           try {
@@ -428,7 +328,7 @@ async function configData(options: UiServerOptions): Promise<{
   return {
     mode: options.mode,
     remoteUrl: options.mode === "remote" ? (options.remoteBase ?? null) : null,
-    root: options.mode === "dir" ? (options.bundle?.root ?? null) : (options.remoteBase ?? null),
+    root: options.mode === "dir" ? options.bundle.root : options.remoteBase,
     name,
     sharing: await sharingSummary(options),
     workspaces: await workspacesSummary(options),
@@ -489,14 +389,11 @@ async function workspacesSummary(options: UiServerOptions): Promise<WorkspaceSum
  * with no terminal declarations (this endpoint feeds a display filter, not a security boundary).
  */
 async function kindsResponse(options: UiServerOptions): Promise<Response> {
-  const bundle = options.mode === "dir" ? options.bundle : options.kindsBundle;
   let kinds: unknown[] = [];
-  if (bundle) {
-    try {
-      kinds = Array.from((await loadKinds(bundle)).kinds.values());
-    } catch {
-      kinds = [];
-    }
+  try {
+    kinds = Array.from((await loadKinds(options.bundle)).kinds.values());
+  } catch {
+    kinds = [];
   }
   return new Response(JSON.stringify({ kinds }), {
     status: 200,
@@ -506,19 +403,8 @@ async function kindsResponse(options: UiServerOptions): Promise<Response> {
 
 /** The web launcher's projection of the same durable View catalog used by CLI and MCP. */
 async function viewsResponse(options: UiServerOptions): Promise<Response> {
-  const bundle = options.mode === "dir" ? options.bundle : options.kindsBundle;
   try {
-    const catalog = bundle
-      ? await listViewCatalog(bundle)
-      : await projectViewCatalog(await remoteRegistryHeads(options), {
-          admitEntry: async (entry, expectedVersion) => {
-            const blob = await readPageBlob(options, entry);
-            if (blob === null) return false;
-            if (expectedVersion && expectedVersion !== blob.version) return false;
-            admitActiveView(blob.bytes, blob.contentType);
-            return true;
-          },
-        });
+    const catalog = await listViewCatalog(options.bundle);
     return new Response(JSON.stringify({
       views: catalog.entries,
       total: catalog.total,
@@ -542,7 +428,7 @@ async function viewsResponse(options: UiServerOptions): Promise<Response> {
  * The bundle's derived edge list (graph-query-v0's `queryEdges`, gate 3: proxied, never
  * reimplemented) for the bridge's `edges` request. Mode-aware exactly like `kindsResponse` above:
  * dir mode calls `queryEdges` over the mounted `Bundle`; remote mode calls it over the SAME
- * `RemoteBackend`-backed bundle `kindsResponse` already uses (`options.kindsBundle`) — `queryEdges`
+ * `RemoteBackend`-backed bundle `kindsResponse` already uses (`options.bundle`) — `queryEdges`
  * rides `query`+`readMany` under the hood, so this costs no new wire route on the reference server.
  * `from`/`to` are repeatable query params (array-union, mirroring `link list --from/--to`); `text`
  * is exact-match. Row schema is AXI-minimal (`{from, to, text}`), the SAME projection `link list`
@@ -557,7 +443,6 @@ async function viewsResponse(options: UiServerOptions): Promise<Response> {
  * `fetchEdges` throws on any non-2xx rather than best-effort-emptying like `fetchKinds`).
  */
 async function edgesResponse(options: UiServerOptions, url: URL): Promise<Response> {
-  const bundle = options.mode === "dir" ? options.bundle : options.kindsBundle;
   const filter: EdgeFilter = {};
   const from = url.searchParams.getAll("from").map((v) => v.trim()).filter(Boolean);
   if (from.length > 0) filter.from = from;
@@ -568,7 +453,7 @@ async function edgesResponse(options: UiServerOptions, url: URL): Promise<Respon
 
   let links: Awaited<ReturnType<typeof queryEdges>>;
   try {
-    links = bundle ? await queryEdges(bundle, filter) : [];
+    links = await queryEdges(options.bundle, filter);
   } catch (err) {
     return jsonError(502, "RUNTIME", `could not read the bundle's edges (${err instanceof Error ? err.message : String(err)})`);
   }
@@ -666,14 +551,14 @@ async function resolveViewAuthorization(
   authorize: boolean,
 ): Promise<{ required: boolean; authorized: boolean } | null> {
   const launch = runtime.launches.resolveLaunch(launchId);
-  if (!launch || !(await viewLaunchIsCurrent(options, launch))) {
+  if (!launch || !(await launchIsCurrent(options.bundle, launch))) {
     if (launch) runtime.launches.revoke(launch.launchId);
     return null;
   }
   const subject = pageLaunchAuthorizationSubject(launch);
   const required = launch.capability !== "none";
   if (authorize && required) await runtime.authorizations.authorize(subject);
-  if (!(await viewLaunchIsCurrent(options, launch))) {
+  if (!(await launchIsCurrent(options.bundle, launch))) {
     runtime.launches.revoke(launch.launchId);
     return null;
   }
@@ -865,26 +750,20 @@ const CLOSE_DRAIN_WATCHDOG_MS = 5_000;
 export async function bootUiServer(options: UiServerOptions): Promise<UiServerHandle> {
   const sessionSecret = options.sessionSecret ?? mintSessionSecret();
   const launches = new PageLaunchRegistry();
-  const bundle = options.mode === "dir" ? options.bundle : options.kindsBundle;
   const authorizations = options.viewAuthorization ?? new SessionViewAuthorizationStore();
-  const bridgeAuthority = bundle
-    ? new PageBridgeLaunchAuthority(bundle, launches, authorizations)
-    : undefined;
+  const bridgeAuthority = new PageBridgeLaunchAuthority(options.bundle, launches, authorizations);
   const runtime: UiRuntime = {
     launches,
     authorizations,
-    bridge:
-      bundle && bridgeAuthority
-        ? new BridgeService({
-            bundle,
-            launches: bridgeAuthority,
-            renderDocument: options.renderDocument,
-            config: async () => {
-              const config = await configData(options);
-              return { root: config.root, name: config.name, mode: config.mode };
-            },
-          })
-        : undefined,
+    bridge: new BridgeService({
+      bundle: options.bundle,
+      launches: bridgeAuthority,
+      renderDocument: options.renderDocument,
+      config: async () => {
+        const config = await configData(options);
+        return { root: config.root, name: config.name, mode: config.mode };
+      },
+    }),
     actions:
       options.mode === "dir" && options.bundle
         ? new TrustedActionService(

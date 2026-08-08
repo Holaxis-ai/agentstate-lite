@@ -7,6 +7,7 @@ import {
   type UiServerHandle,
   type UiServerOptions as RuntimeUiServerOptions,
 } from "@agentstate-lite/ui-server";
+import type { Bundle } from "@agentstate-lite/core";
 import { renderDocumentToStaticHtml } from "@agentstate-lite/markdown-renderer/static";
 import { deriveBundleDisplayName } from "../bundle-name.js";
 import { serveEmbeddedUiAsset } from "./assets.js";
@@ -16,29 +17,33 @@ import { LocalViewAuthorizationStore } from "./view-authorizations.js";
 export { escapeHtml, pageError };
 export type { UiServerHandle };
 
-export type UiServerOptions = Omit<
-  RuntimeUiServerOptions,
-  "serveAsset" | "resolveBundleDisplayName" | "loadSharingSummary" | "loadWorkspaces" | "renderDocument"
->;
+type InjectedUiServerOption =
+  | "serveAsset"
+  | "resolveBundleDisplayName"
+  | "loadSharingSummary"
+  | "loadWorkspaces"
+  | "renderDocument";
+type WithoutInjectedOptions<T> = T extends unknown ? Omit<T, InjectedUiServerOption> : never;
+export type UiServerOptions = WithoutInjectedOptions<RuntimeUiServerOptions>;
 
 export function bootUiServer(options: UiServerOptions): Promise<UiServerHandle> {
   // Dir mode injects the CLI's board-channel classification + catalog projection through the
   // runtime's consumer-owned seams (remote mode derives `hosted` in the runtime itself).
-  const bundleRoot = options.mode === "dir" ? options.bundle?.root : undefined;
-  const bundleIdentity =
-    options.mode === "dir"
-      ? options.bundle?.root
-      : options.remoteBase;
+  if (options.mode === "dir") {
+    return bootUiServerRuntime({
+      ...options,
+      viewAuthorization: new LocalViewAuthorizationStore(options.bundle.root),
+      renderDocument: renderDocumentToStaticHtml,
+      serveAsset: serveEmbeddedUiAsset,
+      resolveBundleDisplayName: async (bundle: Bundle) => (await deriveBundleDisplayName(bundle)).name,
+      loadSharingSummary: createSharingLoader(options.bundle.root),
+      loadWorkspaces: createWorkspacesLoader(options.bundle.root),
+    });
+  }
   return bootUiServerRuntime({
     ...options,
-    ...(bundleIdentity
-      ? { viewAuthorization: new LocalViewAuthorizationStore(bundleIdentity) }
-      : {}),
+    viewAuthorization: new LocalViewAuthorizationStore(options.remoteBase),
     renderDocument: renderDocumentToStaticHtml,
     serveAsset: serveEmbeddedUiAsset,
-    resolveBundleDisplayName: async (bundle) => (await deriveBundleDisplayName(bundle)).name,
-    ...(bundleRoot !== undefined
-      ? { loadSharingSummary: createSharingLoader(bundleRoot), loadWorkspaces: createWorkspacesLoader(bundleRoot) }
-      : {}),
   });
 }

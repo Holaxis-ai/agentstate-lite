@@ -183,8 +183,8 @@ export async function ui(argv: string[], deps: Partial<UiCliDeps> = {}): Promise
     // Kind-registry loads (`/__ui/kinds`) and the derived edge list (`/__ui/edges`) ride the SAME
     // engine-level RemoteBackend plumbing every other kind/graph-aware command uses over --remote;
     // the SPA's /v0 data path stays the raw proxy.
-    const kindsBundle = await openBundle(undefined, remoteFlag);
-    options = { mode: "remote", port, remoteBase: base, apiKey, kindsBundle, actor };
+    const bundle = await openBundle(undefined, remoteFlag);
+    options = { mode: "remote", port, remoteBase: base, apiKey, bundle, actor };
     rootLabel = base;
   } else {
     const bundle = await openBundle(values.dir);
