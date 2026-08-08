@@ -8,6 +8,7 @@ import { promisify } from "node:util";
 import { fileURLToPath } from "node:url";
 
 import {
+  assertToken,
   inspectionInstructions,
   rejectOperation,
   approveOperation,
@@ -99,6 +100,43 @@ test("injection-shaped version / id / stage-id / tag are refused, not interpolat
   ];
   for (const attempt of injections) {
     assert.throws(attempt, /invalid (version|stageId|tag|releaseId)/);
+  }
+});
+
+// ── SECURITY: flag-shaped (leading-dash) tokens are REJECTED so no argv element can pose as an option ──
+test("assertToken refuses leading-dash tokens and accepts legitimate release values", () => {
+  const hostile = ["-v", "--registry=evil", "--", "-", "-rf", "-stage-1"];
+  for (const value of hostile) {
+    assert.throws(() => assertToken("tag", value), /invalid tag .*no leading dash/, `must reject ${JSON.stringify(value)}`);
+  }
+  const legitimate = [
+    "next",
+    "latest",
+    "stage-1",
+    "v0.1.0-pre.4",
+    "rel-42",
+    "a".repeat(64), // bare sha-shaped artifact id
+    "holaxis-aslite-0.1.0-pre.4-stage-1.tgz",
+  ];
+  for (const value of legitimate) {
+    assert.equal(assertToken("tag", value), value, `must accept ${JSON.stringify(value)}`);
+  }
+});
+
+test("flag-shaped values are refused at every operation entry point", () => {
+  const attempts = [
+    () => rejectOperation({ stageId: "--registry=evil" }),
+    () => approveOperation({ stageId: "-v" }),
+    () => secondaryTagOperation({ version: "0.1.0", tag: "--otp=0" }),
+    () => removeSecondaryTagOperation({ tag: "--" }),
+    () => rollbackOperation({ failedVersion: "0.1.0", priorVersion: "0.0.9", track: "-next" }),
+    () => promoteOperation({ version: "0.1.0", tag: "-latest" }),
+    () => inspectionInstructions({ stageId: "-s", tarballSha256: SHA, version: "0.1.0" }),
+    () => immutableReleaseOperations({ releaseId: "--jq", tag: "v0.1.0" }),
+    () => immutableReleaseOperations({ releaseId: "rel-1", tag: "-v0.1.0" }),
+  ];
+  for (const attempt of attempts) {
+    assert.throws(attempt, /invalid (stageId|tag|track|releaseId)/);
   }
 });
 
