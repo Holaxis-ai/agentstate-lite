@@ -3,7 +3,7 @@ type: Task
 title: >-
   P5A pre-live hardening: signed inspection/approval receipts + wire reconciler
   as finalize gate; ban leading-dash tokens
-status: todo
+status: in_progress
 priority: '2'
 description: >-
   Two non-blocking P5A follow-ups that MUST land before E7A/live enablement. (a)
@@ -16,8 +16,8 @@ description: >-
   separator before execFile. Not command-injection (no shell) and not reachable
   via automation today (dispatch inputs are SemVer/embedded), but close it
   before live.
-actor: claude-main-p5a
-timestamp: '2026-08-03T23:35:29.394Z'
+actor: anthropic/claude
+timestamp: '2026-08-08T13:46:59.783Z'
 ---
 [hardens](npm-staged-release-automation.md)
 

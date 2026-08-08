@@ -4,7 +4,7 @@ title: >-
   Release-conventions program: recorded + enforced conventions, cadence
   decision, first-stable path (orchestrated)
 actor: anthropic/claude
-timestamp: '2026-08-08T13:38:49.022Z'
+timestamp: '2026-08-08T13:46:59.974Z'
 ---
 # Goal
 
@@ -115,3 +115,8 @@ trustworthy primary distribution channel.
   contract carries Amendment A1; implementation plan recorded
   (plans/continuous-staging-implementation) — build gated behind PR #219 merge -> p5a -> P5B ->
   P5S. Records-reconciliation RR to Mike still open (factual corrections, unaffected).
+- 2026-08-08: PR #219 MERGED (2d86768); release-audit gate LIVE and green on main (first push
+  run success) — target B operational. p5a claim verified STALE (todo, authorship-actor only,
+  no activity since 08-03, no branches) -> claimed by anthropic/claude per convention; split per
+  plan: (i) assertToken leading-dash ban dispatched now; (ii) signed-receipt reconciler-as-
+  finalize-gate follows as its own reviewed unit.
