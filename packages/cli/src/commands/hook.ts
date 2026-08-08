@@ -1,6 +1,6 @@
 // `agentstate-lite hook install|status|uninstall` — manage the SessionStart board-aware hook.
 //
-// Since sync-verb §U4 the installed hook runs `<bin> session-start` — ONE subcommand doing a
+// The installed hook runs `<bin> session-start` — ONE subcommand doing a
 // time-boxed best-effort board pull and THEN rendering the home view (identity + auth + bundle
 // dashboard + board awareness) as ambient context, so an agent orients — with its teammates'
 // board changes already pulled — before its first action. It is a single unconditional hook
@@ -102,7 +102,7 @@ export function isManagedHookCommand(command: string): boolean {
 }
 /** SessionStart hook timeout, in seconds (matches the SDK default; session-start budgets under it). */
 export const HOOK_TIMEOUT_SECONDS = 10;
-/** The subcommand the installed hook runs (sync-verb §U4's pull-then-render command). */
+/** The pull-then-render subcommand the installed hook runs. */
 export const HOOK_SUBCOMMAND = "session-start";
 /** The OpenCode plugin filename (SDK naming convention for this marker) and its managed-file marker. */
 const OPENCODE_PLUGIN_FILENAME = "axi-agentstate-lite.js";
@@ -770,10 +770,10 @@ function readOpenCodeHookStatus(path: string, expectedSource?: string): OpenCode
 }
 
 /**
- * U6-inherited re-install prompt signal (consumed by the home render): TRUE when a MANAGED
+ * Re-install prompt signal (consumed by the home render): TRUE when a MANAGED
  * SessionStart hook is installed at any of the given scope bases (default: the cwd project scope
  * and each host's configured global target) whose command predates {@link HOOK_SUBCOMMAND} — i.e. the
- * pre-U4 home-only hook. Fs-only reads, tolerant of anything malformed; self-clearing (a re-run
+ * former home-only hook. Fs-only reads, tolerant of anything malformed; self-clearing (a re-run
  * `hook install` rewrites the command and this goes quiet).
  */
 export function hookNeedsUpdate(bases?: string[], deps: HookLocationDeps = {}): boolean {

@@ -117,8 +117,7 @@ interface CommonWatcherOptions {
 }
 
 /**
- * Bound on `--remote` mode's boot-time INITIAL snapshot fetch (tasks/ui-remote-watcher-boot-timeout,
- * same disease class as the stdin-probe hang fixed in PR #117): `startWatcher` is awaited directly by
+ * Bound on `--remote` mode's boot-time INITIAL snapshot fetch: `startWatcher` is awaited directly by
  * `bootUiServer`, and a dead/unreachable upstream left this fetch on undici's default (~300s) timeout
  * — a hung remote hung the entire `ui` boot. Exported so a test can assert on the exact bound rather
  * than a magic number duplicated at the call site; `bootTimeoutMs` on `WatcherOptions` overrides it

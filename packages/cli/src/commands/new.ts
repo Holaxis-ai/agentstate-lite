@@ -15,9 +15,9 @@
 //
 // `new` is create-only, not create-or-overwrite. Calling `writeDoc` unconditionally on an existing
 // id would replace its title/body/every field with the freshly scaffolded ones — the same
-// silent-data-loss class F1
-// closed for `doc write`. It now writes with the engine's expect-absent compare-and-swap
-// (`expectedVersion: null`, the same create-race-closing pattern the CLI's recipe machinery
+// silent-data-loss class already closed for `doc write`. It writes with the engine's expect-absent
+// compare-and-swap (`expectedVersion: null`, the same create-race-closing pattern the CLI's recipe
+// machinery
 // (`applyRecipe`) uses): the write succeeds only if the target id does not yet exist, and a
 // pre-existing doc maps the resulting `VersionConflict` to a structured ALREADY_EXISTS error
 // (exit 5) that hints `doc update` (to patch it) or `doc write` (to overwrite it outright and
@@ -405,7 +405,7 @@ export async function newCommand(argv: string[], deps: Partial<NewCliDeps> = {})
     stdout(renderKindHelp(kind, registry, cliInvocation()));
     return;
   }
-  // Review F3b (tasks/remove-legacy-page-bridge-support): scaffolding from the KNOWN SHIPPED
+  // Scaffolding from the KNOWN SHIPPED
   // legacy Page convention would produce a doc the runtime ignores — refuse with the remedy. A
   // genuinely-custom kind that merely reuses the legacy 'Page' name (a different declared
   // shape) is not matched and scaffolds normally (the write-time hint still fires).

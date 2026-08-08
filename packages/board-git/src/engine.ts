@@ -74,9 +74,9 @@ function retargetStaleBoardInteriorByPath(dir: string): string | null {
 
 /**
  * Sync run from INSIDE the board worktree — exactly where an agent sits right after
- * `doc write --dir .agentstate-lite` — used to fail with a leaked doubled path (sync review
- * round 2, finding 2). The structural signature of "standing inside the board" is a repo top that
- * is BOTH named `.agentstate-lite` AND a linked worktree; retarget to its parent directory (the
+ * `doc write --dir .agentstate-lite` — must not leak a doubled path. The structural signature of
+ * "standing inside the board" is a repo top that is BOTH named `.agentstate-lite` AND a linked
+ * worktree; retarget to its parent directory (the
  * enclosing project), where the normal resolution — heal probe, then provisioning's idempotent
  * "already" branch — proceeds against the REAL board path.
  */
@@ -121,7 +121,7 @@ export function healStaleRebaseBeforeProvisioning(dir: string): void {
 }
 
 /**
- * The per-clone cursor/cache/marker key (U2's `bundleKey`) for THIS board worktree — THE one
+ * The per-clone cursor/cache/marker key for THIS board worktree — THE one
  * derivation: sync, home, session-start, and autopull all reuse this because a second independent
  * derivation would split state. NOTE for callers: this
  * realpaths the board path itself (`realOrSame`) — pass the board worktree path as resolved from
@@ -129,8 +129,7 @@ export function healStaleRebaseBeforeProvisioning(dir: string): void {
  * worktrees share one remote config with their main worktree) with an empty subpath (the board
  * branch's root IS the bundle root — gate 2) PLUS the board worktree's own realpath as the
  * checkout identity — two clones of one origin on one machine must never share a state file.
- * Falls back to the absolute board path alone when no origin URL resolves
- * (U2's own path fallback for a remote-less repo).
+ * Falls back to the absolute board path alone when no origin URL resolves.
  */
 export function resolveBundleKey(boardPath: string): string {
   const checkoutRoot = realOrSame(boardPath);

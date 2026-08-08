@@ -47,8 +47,8 @@ async function walkRecipeFiles(
     const abs = path.join(dir, entry.name);
     const rel = relPrefix ? `${relPrefix}/${entry.name}` : entry.name;
     if (skip.has(rel)) continue;
-    // Fail fast on a dot-prefixed entry — BEFORE recursing into it or reading its bytes (PR #54
-    // review finding 2, tasks/pr-54-review-followups). The recipe grammar can never accept a
+    // Fail fast on a dot-prefixed entry — BEFORE recursing into it or reading its bytes. The
+    // recipe grammar can never accept a
     // dot-prefixed path (parseRecipeFiles's definitions-only check would reject it anyway, as an
     // undeclared file), so a `.git/` directory in a recipe root was previously walked and read
     // OBJECT-BY-OBJECT as UTF-8 before that rejection ever fired — same eventual strictness, now

@@ -2,7 +2,7 @@
 // PR-B). Maps this bundle's board-channel evidence into ui-server's `SharingSummary` — the CLI
 // owns the mapping, ui-server owns the shape vocabulary, the SPA owns the words.
 //
-// OFFLINE LOCAL-EVIDENCE ONLY (gate 5; design-review F4): no `ls-remote`, no network — the
+// OFFLINE LOCAL-EVIDENCE ONLY: no `ls-remote`, no network — the
 // classification reads only what git already holds locally (fetched refs, remote config, HEAD
 // trees), reusing board-git's ONE porcelain layer rather than growing a second git-parsing path.
 // Consequence, stated: a shallow/single-branch clone whose shared board was never fetched can read
@@ -10,7 +10,7 @@
 // The plan's "async spawns" is deliberately traded for porcelain reuse: the sync git reads run
 // only on TTL expiry (~30s), tens of milliseconds, not per request.
 //
-// TRUTHFULNESS RULES (the review's F2/F3, pinned by test/ui-sharing.test.ts):
+// TRUTHFULNESS RULES (pinned by test/ui-sharing.test.ts):
 //  - never fabricate in EITHER direction — a wrong "shared" equals a wrong "private";
 //  - any classification failure is `unavailable` with a reason, never a guessed state;
 //  - the WRONG-TARGET guard: sharing is claimed ONLY for the repo's conventional board
@@ -47,7 +47,7 @@ function realOr(p: string): string {
 
 /**
  * Humanize a git remote URL for the chip: a GitHub-shaped URL (https or scp-like ssh) degrades to
- * `org/repo`; anything else degrades to its host, else its path tail (review F2's non-GitHub rule).
+ * `org/repo`; anything else degrades to its host, else its path tail.
  */
 export function humanizeRemote(url: string): string {
   const trimmed = url.trim().replace(/\.git$/, "");
@@ -98,7 +98,7 @@ export function classifySharing(bundleRoot: string, now: () => Date = () => new 
 
     if (branchMode) {
       // Shared requires EVIDENCE the branch left this machine (a fetched origin/board ref) —
-      // "origin exists" alone is a code remote, not a shared board (F2's local-only-branch row).
+      // "origin exists" alone is a code remote, not a shared board.
       if (evidence.fetchedBoardRef && evidence.originUrl) {
         return { kind: "shared_branch", remote: humanizeRemote(evidence.originUrl), as_of: asOf };
       }
@@ -116,7 +116,7 @@ export function classifySharing(bundleRoot: string, now: () => Date = () => new 
         };
       }
       if (!evidence.originUrl) return { kind: "private_intree_no_remote", as_of: asOf };
-      // shared_intree is EVIDENCE-GATED (review F-1, same rule as the branch arm): the committed
+      // shared_intree is EVIDENCE-GATED, like the branch arm: the committed
       // folder must be PRESENT on the branch's fetched tracking upstream — resolved through
       // intree.ts's decision table (never a guessed origin/<branch>), checked with a local
       // cat-file. A commit that never provably reached the remote reads not-yet-pushed, and the
@@ -135,7 +135,7 @@ export function classifySharing(bundleRoot: string, now: () => Date = () => new 
 
     // Untracked local folder + a fetched origin/board: a shared board EXISTS, but the SERVED
     // folder is not connected to it (provisioning's foreign-dir refusal zone — the chip describes
-    // the served bundle, not the project's board location; review F-2). Never "shared" over
+    // the served bundle, not the project's board location). Never "shared" over
     // content that never left this machine.
     if (evidence.fetchedBoardRef) {
       return {

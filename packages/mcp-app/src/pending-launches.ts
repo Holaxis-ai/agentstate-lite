@@ -8,7 +8,7 @@
  * result's text content (the channel that provably survives), and records {claimId -> launchId}
  * here. The app-only resolve_launch tool redeems it by EXACT match only — an unknown or reused
  * claim fails closed, never falls back to another launch, so concurrent panels can never swap
- * launches (PR #178 review's blocking finding). The marker is model-visible by construction and
+ * launches. The marker is model-visible by construction and
  * conveys no model authority: the resolver is app-only, same-connection, bounded, and one-shot.
  */
 export interface PendingLaunchEntry {

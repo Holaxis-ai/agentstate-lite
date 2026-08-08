@@ -51,7 +51,7 @@ export interface InitCliDeps {
  * FS-only: true when `dir` or any ancestor contains a `.git` entry (directory OR file — a `.git`
  * FILE is how git marks a secondary checkout, so both shapes count). Deliberately never invokes
  * the git binary: `init` stays engine-only/offline, and this probe exists solely to print a hint,
- * so a cheap, dependency-free walk is the whole contract (plan §U6: "detected by `.git` up-tree,
+ * so a cheap, dependency-free walk is the whole contract (detected by `.git` up-tree,
  * NO git binary invoked").
  */
 export function insideGitRepo(dir: string): boolean {
@@ -103,7 +103,7 @@ export async function init(argv: string[], deps: Partial<InitCliDeps> = {}): Pro
     );
   }
 
-  // Recipe RESOLUTION is hoisted before any write (QA F2): a recipe typo must fail at exit 2
+  // Recipe RESOLUTION is hoisted before any write: a recipe typo must fail at exit 2
   // with NOTHING created — under --create-only the old ordering left a bundle behind and wedged
   // the retry at exit 5. Resolution needs no bundle; APPLICATION still runs after create.
   const recipeRef = values.recipe?.trim() || DEFAULT_RECIPE_REF;

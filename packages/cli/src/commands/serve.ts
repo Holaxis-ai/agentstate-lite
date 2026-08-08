@@ -1,7 +1,7 @@
 // `agentstate-lite serve [--dir <path>] [--host <h>] [--port <p>]` — boot the reference
 // wire-protocol server (`@agentstate-lite/server`) over a local bundle.
 //
-// This is the CLI's half of Stage 1 Unit 3: with `serve` running, `--remote <url>` on every
+// With `serve` running, `--remote <url>` on every
 // other bundle command (doc/list/link/status) talks to it over `docs/WIRE-PROTOCOL.md` v0 —
 // the complete remote loop (CLI -> HTTP -> engine) on one machine, zero cloud infra.
 //

@@ -3,7 +3,7 @@
 // the provisioning state machine: callers run it AFTER `retargetBoardInterior` and the heal/repair
 // steps (`healStaleRebaseBeforeProvisioning`, `provisionBoardWorktree`'s worktree repair), and it
 // never mutates anything — no fetch, no ref deletion, no repair. It may DESCRIBE a state the
-// provisioning machine refuses; it must never re-route that machine's reviewed guidance.
+// provisioning machine refuses; it must never re-route that machine's guidance.
 //
 // Rule 1 keys on the WEAK structural signature (worktree machinery owned by this repo — the
 // porcelain signature helpers), NEVER `isProvisioned`: a rebase detaches HEAD, so a genuinely
@@ -241,7 +241,7 @@ export function detectBoardChannel(dir: string, options: DetectBoardChannelOptio
 
   if (tracked) {
     if (remote === "exists") {
-      // The REMNANT state routes FIRST (F3): a folder whose removal already landed and was pulled
+      // The REMNANT state routes FIRST: a folder whose removal already landed and was pulled
       // is straggler paths, not a competing board — its tree never matching the branch roots is
       // exactly why the dual-board probe would otherwise misclassify it. The factory carries the
       // untrack escape.

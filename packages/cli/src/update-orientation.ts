@@ -137,7 +137,7 @@ function stringArrayEquals(actual: unknown, expected: readonly string[]): boolea
   );
 }
 
-/** Strictly revalidate a complete successful U3 result before trusting private cached bytes. */
+/** Strictly revalidate a complete successful check before trusting private cached bytes. */
 function parseSuccessfulCheck(
   value: unknown,
   runningVersion: string,

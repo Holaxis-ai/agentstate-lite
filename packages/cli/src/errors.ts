@@ -39,13 +39,13 @@ export type CliErrorCode =
    */
   | "LAST_ADMIN"
   /**
-   * sync U1 (plans/sync-verb-implementation §U1): the `git` binary itself is absent (the spawn
+   * The `git` binary itself is absent (the spawn
    * fails ENOENT). Exit 1 with a DISTINCT code — the FORBIDDEN/LAST_ADMIN distinct-code-shared-exit
    * pattern — so an agent can branch on "install git" vs. a transient runtime failure.
    */
   | "GIT_MISSING"
   /**
-   * sync U1: the board branch has no usable remote counterpart — no `origin` remote, or `origin`
+   * The board branch has no usable remote counterpart — no `origin` remote, or `origin`
    * exists but carries no `board` ref (`origin/board` unresolvable). Exit 1, distinct code.
    */
   | "NO_UPSTREAM"
@@ -56,7 +56,7 @@ export type CliErrorCode =
    */
   | "GIT_BUSY"
   /**
-   * sync U1: an unresolved same-doc divergence between the local board and `origin/board` (or a
+   * An unresolved same-doc divergence between the local board and `origin/board` (or a
    * worktree left with unmerged paths). The CAS-semantics bucket: same exit (5) as
    * `STALE_HEAD`/`ALREADY_EXISTS` — "the precondition moved under you" — with a distinct code.
    */

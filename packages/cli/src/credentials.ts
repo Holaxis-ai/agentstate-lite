@@ -48,7 +48,7 @@ export function credentialsPath(home: string = homedir()): string {
 /**
  * THE `~/.agentstate/` atomic-write discipline, shared by every module that persists state under
  * that directory (credentials here; the per-bundle sync/cursor state in `cursor.ts`). ONE
- * implementation — do not fork it (the sync-verb plan's U2 explicitly reuses this machinery).
+ * implementation — do not fork it.
  *
  * Ensures `dir` exists at 0700 (enforced even if it pre-existed with looser bits — mkdir mode is
  * masked by umask), then writes `content` to a freshly O_EXCL-created temp file (mode 0600) in the
@@ -120,7 +120,7 @@ export async function loadCredentials(
     return null;
   }
   if (!parsed || typeof parsed !== "object") return null;
-  // Valid iff it carries at least one origin-keyed `remotes` entry (Stage-1 Unit 2b Part C) — a file
+  // Valid iff it carries at least one origin-keyed `remotes` entry — a file
   // with none is unusable for anything this module's callers do, and routes to the clean "not logged
   // in" path instead of surfacing a raw low-level error downstream.
   const hasRemotes =

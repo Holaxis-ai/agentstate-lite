@@ -71,7 +71,7 @@ export type { WriteResult } from "./bundle.js";
 // the blob wrappers above.
 export { deleteDoc, deleteBlob } from "./bundle.js";
 
-// Blob storage engine wrappers (additive; Stage-1 Unit 2a Part A): opaque bytes + a
+// Blob storage engine wrappers: opaque bytes + a
 // content-type, addressed by a bundle-relative key DISJOINT from the concept-document
 // namespace, versioned by a raw-byte content hash, CAS-able, actor-attributed — reusing
 // the doc seam's version/CAS/actor machinery. Future consumers (the CLI's `promote`/

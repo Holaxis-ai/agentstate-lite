@@ -121,7 +121,7 @@ function sharingDetail(sharing: SharingSummary | null): string {
     case "unscoped":
       return "no sharing claim — this folder is not the repo's conventional board";
     default:
-      // Unknown future kind: refuse honestly, mirroring the chip (review F-3).
+      // Unknown future kind: refuse honestly, mirroring the chip.
       return "sharing status unavailable";
   }
 }
@@ -163,7 +163,7 @@ export function Launcher() {
       if (e.docs.changed.length > 0 || e.docs.removed.length > 0) {
         void queryClient.invalidateQueries({ queryKey: ["pages"] });
         // Board doc changes are how a mid-session `sync` manifests — refetch the config so the
-        // sharing chip cannot freeze for a days-long server run (design-review F4; the server's
+        // sharing chip cannot freeze for a days-long server run (the server's
         // TTL caps the cost of these invalidations).
         void queryClient.invalidateQueries({ queryKey: ["ui-config"] });
       }
@@ -203,7 +203,7 @@ export function Launcher() {
 
   // On a step CHANGE (never the initial render — no focus stealing on load), move focus to the
   // entering panel's heading. This announces the panel and keeps a repeated Enter on the nav slot
-  // from landing on the control that replaced Next (PR review P2's keyboard variant).
+  // from landing on the control that replaced Next.
   useEffect(() => {
     if (!orientationStepSeenRef.current) {
       orientationStepSeenRef.current = true;

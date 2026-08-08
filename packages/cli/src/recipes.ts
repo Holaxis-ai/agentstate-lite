@@ -353,7 +353,7 @@ export interface RecipeDocResult {
   changed: boolean;
   /** Set when creation was skipped because this existing legacy-located doc satisfies the artifact. */
   legacy_present?: ConceptId;
-  /** NON-SUCCESS skip (review F3c): the counterpart still carries the RETIRED legacy names, so it
+  /** NON-SUCCESS skip: the counterpart still carries the RETIRED legacy names, so it
    * no longer works at runtime — the bundle needs the migration script before this artifact is
    * genuinely satisfied. Named alongside a receipt-level warning carrying the remedy. */
   migration_required?: ConceptId;
@@ -494,7 +494,7 @@ export async function applyRecipe(
     if (legacyConventionId !== null && governsKind(d, VIEW_KIND_NAME)) {
       // A convention still governing the RETIRED legacy name is unmigrated state: skip creating
       // the current-name convention (never two conventions for one kind), but as an explicit
-      // NON-SUCCESS (review F3c) — not a satisfied-looking skip.
+      // NON-SUCCESS — not a satisfied-looking skip.
       docs.push({ id: d.id, changed: false, migration_required: legacyConventionId });
       migrationWarnings.push({
         code: "MIGRATION_REQUIRED",
@@ -531,7 +531,7 @@ export async function applyRecipe(
       // prefixes), and the leftover is the audit's business, not the installer's.
       const legacyBlob = await readBlob(bundle, entryAlias);
       if (legacyBlob !== null) {
-        // The counterpart's KIND decides the outcome (review F3c): a registering View at the
+        // The counterpart's KIND decides the outcome: a registering View at the
         // legacy location genuinely satisfies the artifact; a RETIRED-name (Page-typed or
         // otherwise non-registering) counterpart holds the slot but no longer works — an
         // explicit non-success naming the remedy, never a satisfied-looking skip.

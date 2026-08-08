@@ -369,7 +369,7 @@ function renderResult(result: CallToolResult): void {
 // tool-result notifications with prose only, stripping structuredContent while PRESERVING text —
 // and proxy the App's own tools/call requests faithfully. The delivered text carries an exact
 // one-shot claim marker; redeem it over the app channel. No marker means fail closed: guessing
-// (e.g. most-recent fallback) could hand this panel another launch's payload (PR #178 review).
+// (e.g. most-recent fallback) could hand this panel another launch's payload.
 async function recoverPayload(result: CallToolResult): Promise<void> {
   const claim = extractClaimId(result);
   if (!claim) {

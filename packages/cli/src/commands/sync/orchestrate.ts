@@ -6,8 +6,8 @@
 // state-store schema. It keeps COMMAND UX: arg parsing, envelopes, help text, and the git tier's
 // CLI command boundary (BoardGitError → CliError, see `sync()`).
 //
-// TWO CALLERS, ONE `ffPull` PRIMITIVE, DIFFERENT TOLERANCE: U1's `ffPull` is deliberately
-// fail-soft for U4's SessionStart caller. `--pull-only` is an interactive verb that must report a
+// TWO CALLERS, ONE `ffPull` PRIMITIVE, DIFFERENT TOLERANCE: `ffPull` is deliberately
+// fail-soft for the SessionStart caller. `--pull-only` is an interactive verb that must report a
 // REAL structured outcome, so `ffSwallowToError` translates every swallowed reason into the
 // capped CliError taxonomy instead of silently no-op'ing.
 import path from "node:path";
@@ -215,8 +215,8 @@ export const SYNC_IN_TREE_NO_BASIS = "no-comparison-basis";
 
 /**
  * "N incoming board changes not yet in this checkout — run 'git pull' to get them" — the receipt's
- * own rendering of the same template home's `inTreePullHintLine` uses (byte-identical twin, filed
- * PR #92 item 6; kept as ONE row, `line.home.in-tree.pull-hint`, looked up from both sites).
+ * own rendering of the same template home's `inTreePullHintLine` uses, kept as ONE row
+ * (`line.home.in-tree.pull-hint`) and looked up from both sites.
  */
 export function inTreePullHint(behind: number): string {
   return syncOutcomeLine("line.home.in-tree.pull-hint", { n: behind });
@@ -456,7 +456,7 @@ async function commitPhase(board: SyncBoard, pullOnly: boolean): Promise<CommitR
   if (!pullOnly) {
     commitResult = stageAndCommit(board.boardPath);
     if (commitResult.committed && commitResult.docs.length > 0) {
-      // U4's "self" identity: the actors THIS clone just committed are recorded per-clone, so the
+      // The actors THIS clone just committed are recorded per-clone, so the
       // home render can filter self-authored rows out of the human "since" count.
       await defaultSyncStore.recordSelfActors(board.key, commitResult.docs.map((d) => d.actor));
     }
@@ -505,8 +505,8 @@ async function pullPhase(run: SyncRun, board: SyncBoard, commitResult: CommitRes
 /**
  * The delta phase, after a successful pull. The RECEIPT's pulled/incoming is ONLY what
  * origin/board itself gained this run (see `originDocsBetween`'s header for why a HEAD-anchored
- * diff can't express this); the CACHE's enriched delta (U4's "since I last read" feed) is
- * deliberately SEPARATE and self-inclusive — U4 filters self-authored rows at the human face.
+ * diff can't express this); the CACHE's enriched "since I last read" delta is deliberately
+ * SEPARATE and self-inclusive — the human-facing render filters self-authored rows.
  * Prefer the STORED cursor; an absent or foreign-tier cursor falls back to the board's OWN
  * pre-sync HEAD, so a teammate's very first sync still reports everything that just arrived. A
  * stored cursor whose object no longer exists (history rewritten under it) re-anchors: the honest

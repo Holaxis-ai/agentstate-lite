@@ -1,8 +1,8 @@
 /**
  * Source hygiene gate: no SPA source file may contain a raw NUL (or other C0 control byte
- * besides tab/newline/CR). A stray NUL once slipped into an edge dedupe-key separator (PR #140),
- * caught in review only because git flagged the file "binary" -- such a byte is invisible in the
- * Read tool and most editors and makes the file unreviewable in a diff. This gate makes the class
+ * besides tab/newline/CR). A stray NUL in an edge dedupe-key separator makes git flag the file
+ * "binary"; such a byte is invisible in most editors and makes the file unreviewable in a diff.
+ * This gate makes the class
  * impossible to reintroduce silently: use unicode escapes, never the raw byte.
  */
 import { readFileSync, readdirSync, statSync } from "node:fs";

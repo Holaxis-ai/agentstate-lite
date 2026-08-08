@@ -71,8 +71,8 @@ const PAGE_SEGMENT = /^[A-Za-z0-9._-]+$/;
  * `.md` (checked case-insensitively) is rejected on EVERY segment, not just the last: a mid-path
  * segment like `x.md` in `pages-registry/x.md/y` would create an on-disk DIRECTORY literally named
  * `x.md`, blocking a future concept-doc write to id `pages-registry/x` (the exact
- * doc/dir collision {@link assertSafeBlobKey} already documents on the entry-key side) — PR #54
- * review finding 1 (tasks/pr-54-review-followups). ONE shared check for both the registry-id and
+ * doc/dir collision {@link assertSafeBlobKey} already documents on the entry-key side). ONE
+ * shared check for both the registry-id and
  * entry-key grammars, so the two paths can't drift again the way they did before this fix (the
  * entry-key side already inherited this via `assertSafeBlobKey`; the registry-id side did not).
  */

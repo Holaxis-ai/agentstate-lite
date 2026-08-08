@@ -1,4 +1,4 @@
-/** formatWhen pins (review follow-up): compact — never seconds; year only when it differs from now; non-dates pass through; absent is null. Locale-agnostic assertions (shape, not exact strings). */
+/** formatWhen stays compact: never seconds; year only when it differs from now; non-dates pass through; absent is null. Locale-agnostic assertions pin shape, not exact strings. */
 import { describe, expect, it } from "vitest";
 import { formatWhen } from "./format.js";
 

@@ -128,9 +128,7 @@ function errorFromCaught(err: unknown): Response {
 /**
  * Read `If-Match` / `If-None-Match: *` off a request into the seam's `WriteOptions.expectedVersion`.
  *
- * `If-Match` is passed through `stripETagWrapper` (production repair, Stage-1 Unit 2b): the
- * router has always ACCEPTED the bare, unwrapped token here — that direction is proven working
- * (the repair's own forensics confirmed request-side `If-Match` survives the edge unmodified) —
+ * `If-Match` is passed through `stripETagWrapper`: the router accepts the bare, unwrapped token,
  * but a client or intermediary MAY reflect back a quoted (`"sha256:..."`) or weak (`W/"sha256:..."`)
  * form now that the router's OWN responses are correctly quoted (see `versionHeaders` below), so
  * parsing tolerates both wrapped and bare forms rather than requiring the bare one.
@@ -170,17 +168,10 @@ function deleteOptionsFromHeaders(req: Request): DeleteOptions {
  * token — the PRIMARY vehicle, a custom header no intermediary has any reason to rewrite) and a
  * properly RFC-7232-QUOTED `ETag` (secondary, for HTTP-ecosystem tooling that expects one).
  *
- * PRODUCTION FINDING (Stage-1 Unit 2b): the unquoted bare-token `ETag` this router originally
- * emitted (`ETag: sha256:<hex>`) is RFC-7232-INVALID — strong ETags MUST be a quoted string.
- * Cloudflare's edge silently STRIPS an invalid ETag header when applying Brotli compression (the
- * CLI's default `fetch` sends `Accept-Encoding: br`), while preserving it on an uncompressed
- * response. `RemoteBackend` then read the header as ABSENT and, before this fix, defaulted the
- * version to `""` — which became an EMPTY `If-Match` on the caller's next write, and the seam
- * treats an absent/empty CAS guard as UNCONDITIONAL — silently downgrading a compare-and-swap
- * write to last-writer-wins and losing concurrent updates. Verified via D1 ground truth + R2
- * content forensics in production; request-direction `If-Match` was proven UNAFFECTED (only
- * response headers pass through the edge's compression path). `X-Version` is now the primary,
- * edge-proof vehicle; the ETag is kept, correctly quoted, for compatibility.
+ * A bare-token `ETag` (`ETag: sha256:<hex>`) is RFC-7232-invalid and may be stripped by an
+ * intermediary. Losing this version can silently downgrade the next guarded write to an
+ * unconditional one. `X-Version` is therefore the primary transport; the correctly quoted ETag
+ * remains for HTTP compatibility.
  */
 function versionHeaders(version: Version): Record<string, string> {
   return { "X-Version": version, ETag: `"${version}"` };

@@ -160,8 +160,8 @@ function isGlobalOnlyHomeInvocation(argv: string[]): boolean {
  * erroring "options must follow the command". The leading global-flag block is moved to the END —
  * `<subcommand> [rest…] [global flags…]` — so it lands after the FULL command path; splicing the
  * flags in right after the first word would break TWO-word commands (`doc read`, `link add`, `kind
- * field`) whose sub-dispatch reads its OWN first positional (round 4 caught exactly this: `--dir x
- * doc read` mis-hoisted to `doc --dir x read` → "unknown doc subcommand: --dir"). Returns the
+ * field`) whose sub-dispatch reads its OWN first positional: `--dir x doc read` must not become
+ * `doc --dir x read` and fail with "unknown doc subcommand: --dir". Returns the
  * reordered argv, or null when it isn't that shape (leaving the existing USAGE error to fire).
  * Guarded to a KNOWN command as the first positional: a stray non-global flag before the command
  * leaks a positional that fails the known-command check, so nothing is mis-hoisted.

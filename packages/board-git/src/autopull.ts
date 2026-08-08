@@ -42,7 +42,7 @@
 // provisioned, stale board.
 //
 // CONSTRAINTS (all binding, from the task):
-//   • ff-only ONLY — the pull is U1's `ffPull` (fetch + merge --ff-only), NEVER a rebase; a
+//   • ff-only ONLY — the pull is `ffPull` (fetch + merge --ff-only), NEVER a rebase; a
 //     diverged board is swallowed per ffPull's matrix and left exactly as it was (the interactive
 //     `sync` verb reports that state with real exit codes — this trigger never does).
 //   • DETECTION-GATED — a read must NEVER provision: nothing on this path calls
@@ -155,7 +155,7 @@ export interface BoardPullRecordResult {
  * THE shared pull-and-record step (extracted VERBATIM from session-start's pull — one code path,
  * per the task's binding constraint): versioned-cursor read → ff-only pull → on success, the
  * cursor advanced to the post-pull HEAD + the awareness cache rewritten with the enriched delta
- * and live backstop counts (mirroring sync's step 5), with U2's honest re-anchor when the stored
+ * and live backstop counts (mirroring sync's step 5), with an honest re-anchor when the stored
  * cursor's object no longer exists. A swallowed pull writes NOTHING (the cursor advances only on
  * a successful pull — test-pinned in the session-start suite). The caller owns provisioning
  * detection, the marker refresh, and budget slicing; this step owns the state discipline.
@@ -192,7 +192,7 @@ export async function pullBoardAndRecord(
       uncommittedCount: countUncommitted(boardPath),
     });
   } else {
-    // Dangling cursor (history rewritten) — U2's honest re-anchor: empty delta + note, never a
+    // Dangling cursor (history rewritten) — honestly re-anchor with an empty delta + note, never a
     // silent skip, never fatal.
     await store.recordReanchor(
       key,
@@ -317,7 +317,7 @@ export async function maybeAutoPull(
     // Attempt recorded BEFORE the network op: a pull that hangs into its kill or fails outright
     // must still back off for a full window (otherwise an offline machine pays the budget on
     // EVERY read). Marker refreshed too — every pull step that confirmed a provisioned board
-    // refreshes it (U2's contract, same as sync's and session-start's pull steps).
+    // refreshes it, matching sync's and session-start's pull steps.
     await deps.store.recordAutoPullAttempt(key, now);
     await deps.store.refreshMarker(key, now);
 
