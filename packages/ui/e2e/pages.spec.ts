@@ -72,6 +72,61 @@ test("a directly opened data Page completes its startup bridge queries before if
   }
 });
 
+test("an access:none View is denied every data-bearing v0 bridge request through the real frame broker", async ({ page }) => {
+  const ui = await bootUiOverPagesBundle(TASKS);
+  try {
+    await page.goto(ui.url);
+    await openRegisteredView(page, "pages-registry/about");
+    const about = page.frameLocator("iframe.page-frame-iframe");
+    await expect(about.getByRole("heading", { name: "About this bundle" })).toBeVisible();
+
+    const replies = await about.locator("body").evaluate(async () => {
+      const requests = [
+        { bridge: "v0", type: "hello", id: "denied-hello" },
+        { bridge: "v0", type: "query", id: "denied-query", params: {} },
+        { bridge: "v0", type: "read", id: "denied-read", docId: "tasks/alpha" },
+        { bridge: "v0", type: "render-document", id: "denied-render", docId: "tasks/alpha" },
+        { bridge: "v0", type: "edges", id: "denied-edges", params: {} },
+        { bridge: "v0", type: "subscribe", id: "denied-subscribe" },
+      ];
+      return await new Promise<Array<{ id: string; code?: string; leaked?: boolean }>>((resolve, reject) => {
+        const received = new Map<string, { id: string; code?: string; leaked?: boolean }>();
+        const timeout = window.setTimeout(() => {
+          window.removeEventListener("message", onMessage);
+          reject(new Error(`timed out waiting for denied bridge replies: ${[...received.keys()].join(",")}`));
+        }, 5_000);
+        const onMessage = (event: MessageEvent) => {
+          if (event.source !== window.parent || event.data?.bridge !== "v0") return;
+          const id = typeof event.data?.id === "string" ? event.data.id : "";
+          if (!id.startsWith("denied-")) return;
+          received.set(id, {
+            id,
+            code: event.data?.error?.code,
+            leaked: JSON.stringify(event.data).includes("Alpha task"),
+          });
+          if (received.size !== requests.length) return;
+          window.clearTimeout(timeout);
+          window.removeEventListener("message", onMessage);
+          resolve(requests.map((request) => received.get(request.id)!));
+        };
+        window.addEventListener("message", onMessage);
+        for (const request of requests) window.parent.postMessage(request, "*");
+      });
+    });
+
+    expect(replies).toEqual([
+      { id: "denied-hello", code: "FORBIDDEN", leaked: false },
+      { id: "denied-query", code: "FORBIDDEN", leaked: false },
+      { id: "denied-read", code: "FORBIDDEN", leaked: false },
+      { id: "denied-render", code: "FORBIDDEN", leaked: false },
+      { id: "denied-edges", code: "FORBIDDEN", leaked: false },
+      { id: "denied-subscribe", code: "FORBIDDEN", leaked: false },
+    ]);
+  } finally {
+    await ui.cleanup();
+  }
+});
+
 test("a bundle-propose View can change one governed scalar only after trusted-shell confirmation", async ({ page }) => {
   const ui = await bootUiOverPagesBundle(TASKS);
   try {
