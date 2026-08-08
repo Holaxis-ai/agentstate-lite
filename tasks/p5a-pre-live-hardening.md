@@ -17,7 +17,7 @@ description: >-
   via automation today (dispatch inputs are SemVer/embedded), but close it
   before live.
 actor: openai/codex
-timestamp: '2026-08-08T17:48:33.583Z'
+timestamp: '2026-08-08T18:08:00.329Z'
 ---
 [hardens](npm-staged-release-automation.md)
 
@@ -59,6 +59,7 @@ Full design: the designer report logged on plans/release-conventions-program. Br
   control could tamper with a shape-valid publication plan before the final proof rejects
   publication. That prerequisite already amounts to controlling the `contents:write` job. A
   future hardening pass may pass the dispatch draft id separately and recheck delete membership.
-- This task remains `in_progress` until Brian's PR/merge gate completes. Human PR review must
-  verify `.github/release-allowed-signers` contains exactly the intended Brian and Mike key lines.
-  P5B remains the next dependent task; P5S and continuous staging follow it.
+- PR [#229](https://github.com/Holaxis-ai/agentstate-lite/pull/229) is open from the exact reviewed
+  SHA. This task remains `in_progress` until Brian's review/merge gate completes. Human PR review
+  must verify `.github/release-allowed-signers` contains exactly the intended Brian and Mike key
+  lines. P5B remains the next dependent task; P5S and continuous staging follow it.

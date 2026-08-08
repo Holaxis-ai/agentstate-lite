@@ -1,13 +1,14 @@
 ---
 type: Task
 title: Independently review compaction checkpoint lifecycle v1 design
-status: in_progress
+status: done
 priority: '1'
 description: >-
-  Critique the selected lifecycle protocol, schemas, costs, support tiers, and
-  host-exception boundaries before planning.
+  Completed independent review: FAIL; implementation planning is blocked pending
+  protocol repairs and re-review. Brian decision pending on default automatic
+  semantic persistence for shared/public bundles.
 actor: codex-checkpoint-design-critic
-timestamp: '2026-08-08T17:48:47.018Z'
+timestamp: '2026-08-08T17:56:49.684Z'
 ---
 # Goal
 
@@ -69,3 +70,7 @@ At minimum test:
 - Persist a phase-result Context Note, update this Task outcome/status, and do not run `aslite sync`.
 
 [depends on](compaction-checkpoint-design-v1.md)
+
+[produced review](../reviews/compaction-context-checkpoint-lifecycle-v1-design-review.md)
+
+[phase handoff](../context-notes/compaction-checkpoint-design-review-v1-result.md)

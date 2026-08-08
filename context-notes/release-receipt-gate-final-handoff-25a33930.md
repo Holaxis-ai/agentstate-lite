@@ -2,7 +2,7 @@
 type: Context Note
 title: P5A receipt-gate final handoff at 25a33930
 actor: openai/codex
-timestamp: '2026-08-08T17:48:43.979Z'
+timestamp: '2026-08-08T18:08:00.557Z'
 ---
 # Summary
 
@@ -20,15 +20,16 @@ prerelease/stable policy and split operator roles.
 **Where are we?** Implementation is pushed on `feat/release-receipt-gate` at exact SHA
 `25a33930ca978e400cc19f6bc53cccb3de436e91` (main ancestor `56b5693d`). Independent exact-SHA
 Review approved it, targeted adversarial QA passed it with one low residual, and root
-`npm run check` exited 0. P5A stays `in_progress` until the human PR/merge gate completes.
+`npm run check` exited 0. PR [#229](https://github.com/Holaxis-ai/agentstate-lite/pull/229) is open
+from that exact SHA. P5A stays `in_progress` until the human review/merge gate completes.
 
-**What's next?** Brian opens and reviews the PR, explicitly verifies
+**What's next?** Brian reviews PR #229, explicitly verifies
 `.github/release-allowed-signers` contains exactly the intended Brian and Mike public-key lines,
 and owns the merge. After merge, update/close P5A and claim P5B; the durable dependency chain is
 P5A -> P5B -> P5S -> continuous staging.
 
 **What's blocking?** No engineering gate is blocked. The remaining gate is intentionally human:
-PR creation/review/merge. One low defense-in-depth observation remains: an attacker already able to
+PR review/merge. One low defense-in-depth observation remains: an attacker already able to
 control the job filesystem and `contents:write` token could tamper with a shape-valid local
 publication plan before final proof prevents publication. Future hardening may separately pass the
 dispatch draft id and recheck deletion membership; this is not an external bypass.

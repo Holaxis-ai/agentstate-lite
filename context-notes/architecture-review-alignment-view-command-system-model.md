@@ -2,7 +2,7 @@
 type: Context Note
 title: Review portfolio command-rendering system model
 actor: codex-orchestrator
-timestamp: '2026-08-08T16:06:56.804Z'
+timestamp: '2026-08-08T17:54:01.759Z'
 ---
 # Summary
 
@@ -41,4 +41,17 @@ The exact `70ee30c9…` View closes the unsupported-field, count-integrity, and 
 - the portfolio may query up to 500 Review rows, but one v0 edge selector admits at most 32 values; a 33-value request is rejected before a correlatable response and can leave the initial snapshot pending; and
 - the owning v0 selector parser trims leading/trailing whitespace from core-valid opaque concept IDs. A numerically complete response can therefore describe a different identity and permit a false standalone-currentness conclusion.
 
-The first failure requires bounded batching and aggregate validation in the View. The second is not honestly solved by restricting Review IDs or duplicating an identity codec in bundle HTML; the owning parser must use trimming only to reject all-whitespace selectors while preserving the exact nonblank string. That is a source-code/protocol-implementation change outside the accepted bundle-only implementation contract. It requires a feature branch, core/view-runtime regression tests, independent code review before QA, and then renewed exact View review and scratch/browser QA. Until the user authorizes that scope expansion, the implementation-review and umbrella Tasks are blocked; no approval Review or QA addendum may be recorded.
+The first failure requires bounded batching and aggregate validation in the View. The second is not honestly solved by restricting Review IDs or duplicating an identity codec in bundle HTML; the owning parser must use trimming only to reject all-whitespace selectors while preserving the exact nonblank string. That is a source-code/protocol-implementation change outside the accepted bundle-only implementation contract. It requires a feature branch, core/view-runtime regression tests, independent code review before QA, and then renewed exact View review and scratch/browser QA. The user has now authorized that source expansion under the gated model below; implementation approval remains unavailable until its exact source and candidate View subjects pass review and QA.
+
+## Authorized source-repair reorientation
+
+Direct specialist probes added four constraints to the model before implementation:
+
+- `edges.params.text` is also trimmed by view-runtime even though core relation-text matching is exact. The owning repair therefore preserves exact raw nonblank `from`, `to`, and `text` values and applies the 1,024-byte bound to those raw UTF-8 bytes. This is v0 edge-selector parity only; separate `query.prefix` and Markdown-link whitespace behavior are not silently folded into the claim.
+- Error liveness may be repaired without admitting malformed work: on full-parse failure, correlate only a plain v0 envelope whose id already passes the existing bounded `requestId` primitive and whose type is a string. This path emits one generic `USAGE` response and performs no launch resolution, authorization, bundle read, or v1 broadening.
+- Batching must preserve the pre-batching exposure bound. Run at most one edge request at a time, stop after the first bad response, and accept at most 1,000 validated rows cumulatively per direction. Otherwise sixteen individually legal replies could amplify the View to 16,000 edges.
+- Edge aggregation is multiset reconciliation, not Set deduplication. Within each direction, repeated identical `(from,to,text)` rows can represent repeated literal links and must retain their multiplicity. Across outbound and inbound direction multisets, keep the maximum multiplicity for each exact tuple: summing double-counts overlap, while Set conversion erases genuine repeated links.
+
+Before batching, the View must also reject malformed or exact-duplicate Review row ids against the documented transport contract. These lightweight checks prevent invalid or broad requests; they do not create a second concept-ID grammar. Each batch is independently validated before its rows are retained, and any invalid row id, failed batch, contradictory count, or cumulative-budget breach suppresses all currentness.
+
+The accepted rollout model is host first, View second. Candidate View and replay-harness bytes remain inert, exact-hashed bundle blobs through feature-branch review and scratch QA. Only after a compatible released/installed host is verified may the candidate replace `pages/reviews.html` by CAS and undergo exact-byte reapproval and live smoke.

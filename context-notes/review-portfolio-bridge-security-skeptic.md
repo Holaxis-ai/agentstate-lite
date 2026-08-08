@@ -1,98 +1,118 @@
 ---
 type: Context Note
 title: Review portfolio bridge security skeptic
-actor: bridge-security-skeptic
-timestamp: '2026-08-08T17:44:38.164Z'
+actor: bridge-security-adjudicator
+timestamp: '2026-08-08T17:54:18.040Z'
 ---
 # Summary
+
+## Final revised-Plan re-review
+
+- **status:** COMPLETE
+- **verdict:** APPROVED
+- **exact subject:** `plans/review-portfolio-bridge-identity-repair@sha256:624ea79a22241cbd53e0bea26ca100d7afd1572b5e4f5ca8a238228f16d4c35b`
+- **confidence:** high
+- **remaining security blockers:** none at Plan stage
+
+The revised Plan incorporates all eight mandatory conditions from the initial adjudication:
+
+1. It preserves the executable fail-closed grammar: only absent `from`/`to` facets mean unrestricted; supplied blank/all-whitespace values, empty arrays, blank/invalid array entries, and over-cardinality arrays remain invalid, while the inaccurate blank-as-omitted prose is corrected.
+2. It preserves exact raw UTF-8 bytes and applies the original-byte bound for nonblank `from`, `to`, and `text`, including the exact-to-prefix widening regression, without narrowing core IDs or adding fields.
+3. It limits invalid-envelope correlation to a plain v0 envelope with string type and an ID accepted by the one existing 1–128-byte helper; parsing still rejects, the error stays generic, v1 remains uncorrelated, and no launch/bundle authority is touched.
+4. It requires deterministic batches of at most 32, one edge request in flight, first-failure short circuit, and a cumulative accepted budget of 1,000 rows per direction.
+5. It fails graph evidence closed on malformed or exact-duplicate Review row IDs while leaving safe records visible and avoiding normalization.
+6. It replaces lossy Set deduplication with maximum multiplicity per exact `(from,to,text)` across outbound/inbound multisets, after per-batch validation.
+7. It requires red-first owning tests plus an exact-candidate harness routed through the real parser/service/core, a parser-validating fault broker, threshold/deadline/resource/multiplicity fixtures, and an actual sandboxed-host correlation regression.
+8. It makes exact-SHA review a hard predecessor of QA and keeps candidate bytes inert until a compatible released/installed host is verified; live CAS promotion and byte reapproval are a separate host-first/View-second gate.
+
+The Plan also correctly narrows the delivery claim to v0 edge-selector parity and leaves `query.prefix` and broader Markdown-link whitespace behavior as separate follow-ups. Its View-side row checks are transport conformance checks only: they reject or mark incomplete and never normalize, alias, or redefine an OKF identity. The 1,000-row cumulative limit is explicitly a conservative View resource policy matching the pre-batching exposure boundary; it does not change v0.
+
+Approval is for the Plan only. Builder output still requires the specified red/green evidence, independent exact-SHA code and exact-byte View reviews, adversarial QA, and host-compatible rollout gate. Any substantive Plan change requires re-review.
+
+## Initial repair-shape adjudication
 
 ## Result Envelope
 
 - **status:** COMPLETE
-- **repair-shape verdict:** PLAN_CHANGES_REQUIRED; conditionally approve the shared owning-layer exact-selector and bounded-error-correlation repairs, but reject naive batching or View-first rollout.
-- **confidence:** high on parser/core/service findings; medium-high on aggregate resource policy because the exact performance budget is a product choice, although an explicit budget is security-required.
-- **review subject:** main/source at `56b5693d`; `packages/view-runtime/src/bridge.ts` SHA-256 `1430be3af30e830ddd862ecfede9e7d9a494a5bdb63921c55641bff7fa941325`; Review View SHA-256 `70ee30c9a5842ba8e1bb2192ede66c002ef1d5f78efe5e8d52ababc5612788ea` (`50,182` bytes).
+- **verdict:** PLAN_CHANGES_REQUIRED
+- **approval state:** conditionally approvable only after the mandatory contract, resource, aggregation, test, and rollout changes below are in the implementation plan; no source or View candidate is approved by this note.
+- **confidence:** high on selector/correlation/aggregation semantics and rollout ordering; medium-high on the chosen cumulative View budget because it is a local resource-policy decision, albeit one needed to prevent batching from widening the former host boundary.
+- **review subject:** source branch base `56b5693d9aa205d9d65d8513ca07642fcbf596dc`; `packages/view-runtime/src/bridge.ts` SHA-256 `1430be3af30e830ddd862ecfede9e7d9a494a5bdb63921c55641bff7fa941325`; Review View `/private/tmp/reviews-current.html` / bundle `pages/reviews.html` SHA-256 `70ee30c9a5842ba8e1bb2192ede66c002ef1d5f78efe5e8d52ababc5612788ea`.
 
 ## Goals
 
 **Ultimate goal:** agentstate-lite remains human-visible, conflict-safe, local-first shared memory whose durable conclusions and graph relationships preserve exact OKF identity across every supported surface.
 
-**Proximate goal:** adversarially determine the smallest owning-layer and Review-View repair that preserves exact selector identity, correlates invalid-envelope failure, and bounds request/response work; this serves the ultimate goal by preventing a trusted read projection from manufacturing false graph truth or becoming a denial-of-service amplifier.
+**Proximate goal:** adjudicate the v0 selector, invalid-envelope, and Review portfolio batching contracts before implementation; this serves the ultimate goal by keeping exact identity, bounded work, and evidence completeness in their owning layers rather than in a brittle View-local workaround.
 
-## Findings by severity
+## Conflict decision: supplied blank selectors stay invalid
 
-### HIGH — trimming can widen one exact identity into a namespace prefix
+The shipped prose says an empty/blank `from` or `to` value is treated as omitted. The actual v0 parser rejects a supplied empty/all-whitespace scalar, an empty array, and any array containing a blank entry; only an absent facet is omitted. The Task expressly forbids expanding the v0 grammar.
 
-Core accepts nonblank IDs verbatim (`assertSafeConceptId` uses trim only for blank detection). `queryEdges` treats only a value whose actual final character is `/` as a prefix; otherwise it compares exact strings. The bridge currently trims `from`/`to` selectors before core sees them. A real parser/core probe proved:
+**Security adjudication:** preserve the safer implemented grammar and correct the prose. Supplied blank/all-whitespace values must remain invalid. Treating them as omitted would newly admit requests that are rejected today, erase a caller-supplied restriction, and turn a typo or all-blank array into an unfiltered whole-graph query. Filtering blank array entries has the same fail-open outcome when every entry is blank. This is both a protocol expansion and an avoidable disclosure/work amplification.
 
-- core `queryEdges({from: "reviews/ "})` matched only the exact document `"reviews/ "`;
-- core `queryEdges({from: "reviews/"})` matched every `reviews/*` source;
-- `parseBridgeRequest(...{from:"reviews/ "})` returned `"reviews/"`.
+The reference must instead say: omit the `from`/`to` property to mean no restriction; a supplied selector is one exact nonblank string, or an array of 1–32 exact nonblank strings; empty/all-whitespace strings, empty arrays, blank array entries, non-string entries, and arrays above 32 are invalid. The 1,024-byte bound applies to each original UTF-8 string. This resolves the prose/code conflict without changing the wire grammar.
 
-This is a selector-class change, not cosmetic normalization. It can over-return graph rows and allow a complete response for the wrong evidence universe. The owning parser must preserve the original exact nonblank string and apply its byte limit to the original bytes. Required fixtures include `"reviews/ "`, leading/trailing Unicode whitespace, `" /abs"`, quotes, option-like prefixes, 1,024/1,025 UTF-8-byte boundaries, single values, and arrays.
+## Mandatory plan changes
 
-The same exact-match defect exists for `params.text`: core preserves Markdown link label text and compares it exactly, while the bridge trims it. A real probe found core matched `"  succeeds review  "`, did not match `"succeeds review"`, and the bridge normalized the former to the latter. Fixing `text` in the same edge-selector repair is necessary, not scope creep. Do not normalize Unicode, case, slash spelling, or whitespace.
+### 1. Preserve exact edge selectors in the owning parser
 
-### HIGH — selector batching otherwise multiplies the work and row boundary
+- For `from` and `to`, use `trim()` only as the all-whitespace predicate. Return the original string byte-for-byte and enforce the 1,024-byte bound on those original bytes. Keep supplied array cardinality 1–32 and preserve duplicate entries; semantic deduplication must not bypass the transport bound.
+- Apply the same exact-nonblank rule to `params.text`. Core documents `text` as an exact link-label match, but the bridge currently trims it too. Boundary whitespace in a nonblank label must not alias another label. Supplied all-whitespace text remains invalid. This is correction of an existing exact-match field, not a new grammar field.
+- Include the selector-class regression `"reviews/ "`: core treats it as one exact ID, while current bridge trimming changes it to the `"reviews/"` namespace prefix. Include leading/trailing Unicode whitespace, internal whitespace, quotes, option-like strings, newline-bearing values, and raw 1,024/1,025 UTF-8-byte boundaries.
+- Do not narrow or normalize core concept IDs, add a View-side identity codec, raise the selector limit, add pagination/limit fields, or modify v1.
+- Narrow delivery claims to exact **v0 edge-selector parity used by the Review portfolio**. `normalizeQueryParams.prefix` also trims, and core link emission/resolution has broader whitespace limitations; those pre-existing cross-surface issues require separate follow-up rather than an inflated universal-identity claim in this unit.
 
-Every `Bridge.edges` call invokes core `queryEdges`, which performs a whole-bundle document/body scan before the service checks the 1,000-edge limit. Over `RemoteBackend`, that is a paged list plus a full `readMany` body transfer. At 500 Reviews, 32-value outbound/inbound chunking emits 32 whole-bundle scans per refresh. Parallel `Promise.allSettled` over all chunks would create an avoidable local/remote CPU, memory, and bandwidth burst; accepting 1,000 rows per chunk would silently expand the former per-direction result boundary to 16,000.
+### 2. Correlate invalid v0 requests without weakening validation
 
-Required plan changes:
+- Add one small bounded envelope-ID extractor beside the full parser, reusing `isPlainRecord` and the existing byte-counted `requestId` helper. It may recover an ID only when `bridge === "v0"`, `type` is a string, and `id` is a nonempty string of at most 128 UTF-8 bytes.
+- Full parsing still decides admission. On parse failure, return the same static/generic `USAGE` error with the recovered ID; do not echo the type, params, raw payload, parser reason, bundle state, or launch state.
+- Missing/non-string/oversized IDs, non-record input, non-v0 envelopes, and invalid v1 messages remain uncorrelated. Do not broaden the action protocol silently.
+- Correlation must require no launch resolution or bundle read. The current syntax-error path already precedes authorization and reveals no protected state; echoing only the caller-supplied bounded ID keeps that property and lets the shipped client settle its Promise.
+- Pin extra top-level fields, bad params, unknown string type, 33 selectors, 128/129-byte IDs, malformed envelopes, valid v0, and valid/invalid v1. Ordinary valid reply shapes and before/after launch revalidation must remain unchanged.
 
-1. Run edge batch requests sequentially (maximum in-flight edge request one), with each selector array at most 32 and a fixed maximum of 32 calls for 500 Review ids.
-2. Validate one batch's array and exact finite nonnegative safe-integer count before retaining any rows or issuing dependent conclusions.
-3. Stop on the first rejection/invalid/contradictory batch and mark the graph incomplete; do not continue spending work once currentness is already impossible.
-4. Define an explicit cumulative View graph budget. The security-preserving default is at most 1,000 accepted rows per direction, matching the former host boundary; crossing it stops further batches, produces an incomplete notice, and suppresses currentness. This is a View work budget, not a change to v0.
-5. Retain at most the budgeted rows. Per-reply 2 MiB checking alone is insufficient because it occurs after core materializes a result and does not bound cumulative batching.
+### 3. Batch sequentially and preserve the former resource boundary
 
-The pre-existing lack of core early-abort/indexing and the shared client timeout are residual risks, not reasons to add a new protocol or graph implementation here.
+- Extract unique, string Review IDs without trimming or canonicalization. A malformed or duplicate Review-row ID makes graph evidence incomplete rather than being silently normalized/deduplicated.
+- Partition exact IDs deterministically into arrays of at most 32; emit no empty array. For 0/1/32/33/500 Reviews, the successful edge-request totals are 0/2/2/4/32.
+- Run edge requests sequentially with maximum in-flight edge requests **one**. Stop on the first rejected, malformed, contradictory, `TOO_LARGE`, or over-budget batch; once currentness is impossible, later whole-bundle scans add cost but no authority.
+- Validate each response before retaining it: `edges` must be an array and `count` a finite nonnegative safe integer exactly equal to that batch's array length. Missing, fractional, unsafe, negative, under-, or over-counted results fail closed.
+- Add a cumulative accepted-row budget of at most **1,000 per direction**, matching the previous one-query-per-direction host boundary. Check before retaining the batch that would cross it, stop, show partial evidence, and suppress currentness. Without this, 16 individually valid batches silently expand a former 1,000-row direction into 16,000 rows and turn the View into a scan/reply amplifier.
+- Retain the existing query cap of 500, per-reply 1,000-row host limit, 2 MiB reply limit, serialized/coalesced refresh authority, and generation fences. Batching remains bounded to 32 whole-bundle scans per successful refresh; lack of core indexing/early abort is residual risk, not a reason to invent another graph authority here.
 
-### HIGH — invalid requests with a valid v0 id strand the shipped client
+### 4. Aggregate with multiset union, not set deduplication
 
-`BridgeService.handle` discards the id when full request parsing fails. A 33-selector probe produced a generic `USAGE` reply with no `id`; the shipped client ignores it and leaves the Promise pending.
+The current View's exact-triple `Set` is too lossy. Core is explicitly per-literal-link and `parseLinksFromDoc` does not deduplicate; two identical Markdown links can therefore yield two identical `(from,to,text)` rows. The same underlying edge is also expected to appear once in the outbound projection and once in the inbound projection when both endpoints are Reviews.
 
-Add one bounded envelope extractor beside the full parser, reusing the existing byte-counted `requestId` helper. It may recover an id only when the top-level value is a plain record with `bridge === "v0"` and a nonempty request id of at most 128 UTF-8 bytes. The error remains static/generic and must not serialize the raw payload, parser reason, bundle state, or launch state. Oversize/missing ids and non-v0/malformed envelopes remain uncorrelated. Do not create a second request codec and do not broaden v1 behavior silently.
+After every admitted batch has passed its own count check, aggregate by exact triple using **maximum multiplicity across the outbound and inbound direction multisets**. This removes only the duplicate projection of the same graph while preserving literal-link multiplicity. Summing would double cross-direction overlap; a Set would erase legitimate repeated literal links. Different `text` values remain separate. Sort deterministically after aggregation. Deduplication/aggregation must never repair a bad batch count or make an incomplete direction complete.
 
-Tests must prove invalid params, unknown fields, and 33 selectors reject the matching client Promise; a 128-byte id correlates, a 129-byte id does not; authorization/data resolution is not needed to formulate the generic syntax error; and ordinary valid replies are byte-shape compatible.
+### 5. Fail closed at every evidence boundary
 
-### MEDIUM — blank-selector prose contradicts the safer implemented behavior
+- `edgesKnown` is true only if the Review query is exact, all required direction/batch requests completed, every batch passed strict count/shape validation, and neither direction crossed its cumulative budget.
+- On any impairment, retain only already validated, budgeted rows as useful evidence; set `partial`, identify the direction and batch, terminate refresh, label last-good data `not live`, and render **Effective conclusion not asserted**. Never infer currentness from aggregate counts alone.
+- Preserve the selected-record single-ID path, strict count check, read-only retry, `detailGeneration` fence, watcher serialization, trusted shared renderer, and metadata-through-text-node boundary.
 
-The shipped reference says an empty/blank selector is treated as omitted. The implementation rejects a supplied blank string/blank array entry; only an absent facet is omitted. Changing supplied blank to omitted would turn a selector error into an unfiltered whole-graph query, increasing disclosure and work and making a typo fail open.
+### 6. Make the feedback and rollout gates executable
 
-Security decision: preserve rejection for every supplied empty/all-whitespace scalar and every blank array entry. Omission is represented only by omitting `from`/`to`. Update the authoritative reference in the same source unit to state this explicitly and regenerate copies through the documented workflow. Do not filter blank array entries, because an all-blank array could otherwise become an unfiltered facet.
+- Red-first owning tests must pin core exact ID acceptance, bridge `from`/`to`/`text` exactness, blank rejection, raw byte/cardinality bounds, exact-to-prefix widening, parser/service agreement, and invalid-v0 correlation without bundle access.
+- The exact-blob View harness must route successful requests through the real built parser/service and use a parser-validating fault broker for degraded replies. Cover 0/1/32/33/500, maximum in-flight one, failure stops later calls, cumulative-budget crossing, whitespace IDs, duplicate row IDs, strict bad-count/shape rows, cross-batch succession, repeated identical literal edges, cross-direction overlap, and later-refresh failure.
+- Update both canonical authoring references and mechanically regenerate only the npm-target copy through the documented generator/drift gate. Do not edit committed plugin bytes or versions; those remain bot-owned after merge.
+- Builder must produce a committed/pushed exact SHA, then independent source review must approve that SHA before adversarial QA. A changed SHA restarts review.
+- Test the candidate View only in a scratch bundle against the branch-built web and MCP hosts until compatible host bytes are actually available. Then release/verify the parser-service repair first, CAS-promote the exact approved View, require exact-byte reapproval, and rerun source/security plus browser/scratch QA. V0 `hello` carries no implementation version, so a portable View cannot prove an old host is safe. Do not promote the batched View first and do not add a View-local trim guard. If the source repair is rolled back after View promotion, disable/unapprove the View until a compatible host is restored.
 
-### MEDIUM — exact-identity claims must be narrower than this repair
+## Survived attacks and compatibility assessment
 
-`normalizeQueryParams.prefix` also trims an identity-bearing prefix, and the probe changed `"reviews/ "` to `"reviews/"`. Core link emission/resolution also has broader whitespace limitations (`relativeHref` trims targets; the Markdown href grammar excludes spaces). These are real pre-existing parity gaps, but the Review View does not issue prefix queries and repairing the link grammar is a separate, larger contract decision.
+- The View remains `bundle-read`, read-only, exact-byte approved, CSP/sandboxed, and has one HTML sink fed only by unmodified shared-renderer output. Metadata, IDs, errors, counts, and command guidance remain text nodes; no mutation, credential, network, form, or arbitrary navigation path was found.
+- Exact-selector preservation changes accidental trim-dependent behavior: a padded selector will now address the padded identity (or return no match) instead of the unpadded identity/prefix. That is the required correction to the documented exact-match contract. Ordinary selectors and valid reply shapes remain compatible.
+- Correlated `USAGE` adds only the caller's already-bounded ID. It creates no authorization result, data result, or launch oracle.
+- Sequential batching plus the per-direction 1,000-row budget bounds concurrency and retained data, but a successful 500-Review refresh still performs 32 whole-bundle scans. Watch serialization prevents overlap, not cumulative repeated cost under sustained changes. Treat observed performance as a follow-up signal for an owning graph index/pagination decision; do not solve it with an unreviewed protocol extension here.
 
-Do not silently add those changes here. Either record a separate follow-up or narrow the PR/task claim to exact **edge selectors used by the Review portfolio**. Do not claim universal cross-surface whitespace-ID parity after this unit.
+## Evidence
 
-## Aggregation and deduplication criteria
+The exact source and prior notes were inspected. A direct built-authority probe reproduced: `from:"reviews/ "` parsing as `"reviews/"`; `text:"  succeeds review  "` parsing as `"succeeds review"`; supplied blank rejection; 32 accepted and 33 rejected; and a 33-selector `BridgeService` reply with no correlating `id`. Source inspection confirmed core preserves nonblank IDs, treats only an actual trailing slash as a prefix marker, compares text exactly, scans the bundle once per `queryEdges` call, preserves per-literal links, caps each edge result at 1,000, and caps each serialized reply at 2 MiB.
 
-- Construct disjoint 32-value chunks from exact Review row ids without trimming or canonicalization. A malformed duplicate/non-string Review id should fail closed rather than be silently normalized.
-- Validate every batch independently before aggregation. Missing arrays/counts, unequal count/length, unsafe/fractional/negative counts, rejection, or budget overflow makes `edgesKnown:false` and suppresses all effective/standalone currentness.
-- Sum per-direction counts only from validated batches and before deduplication.
-- Deduplicate only after all admitted batches are validated, using the exact `(from,to,text)` triple. Cross-direction duplication is expected. Deduplication must never be used to repair a contradictory count or to make an incomplete direction complete.
-- Harness cases: 0/1/32/33/500 Reviews; exact whitespace IDs; 33 gives four valid calls and 500 gives 32; maximum in-flight one; one bad middle batch stops later calls; cumulative-budget crossing fails closed; duplicate outbound/inbound triples render once; ordinary <=32 corpus output remains behaviorally unchanged.
+No source, Plan, Task, View, registry, or sync mutation was performed. This Context Note is the sole persistent mutation.
 
-## Backward compatibility, rollout, and rollback
+## Approval conditions
 
-Exact preservation is a corrective behavior change: callers that accidentally relied on trimming will now address the exact padded selector (often yielding no match) rather than an unpadded identity/prefix. That is required by the documented exact-match contract and must be release-noted/tested. Valid ordinary selectors and reply shapes remain unchanged; correlated `USAGE` adds only the id clients already expect.
-
-Rollout order is a blocking gate:
-
-1. Merge/release the parser + correlated-error + reference/test repair and independently review/QA it.
-2. Prove the actual web and MCP host bytes used to launch the View contain that repair.
-3. Only then promote the new batched View bytes, require exact-byte reapproval, rerun source/security review, and perform scratch/browser QA.
-
-Promoting the View first leaves whitespace IDs normalized by an old host. V0 `hello` has no implementation-version signal, so a portable shared bundle cannot self-prove host readiness. If old hosts may consume the shared board, withhold the View rollout or explicitly require their upgrade; do not add a View-side trim guard/identity codec. If the source repair is rolled back after View rollout, stop/unapprove the View until the host repair is restored. The prior View is not a safe rollback for 33+ or whitespace IDs.
-
-Non-goals: no selector limit increase; no v0 grammar/pagination/batch verb; no core ID narrowing; no View identity codec; no link resolver/emitter rewrite; no trust/access/registry change; no ad hoc timeout without cancellation; no claim that the post-materialization 2 MiB check bounds backend scan cost.
-
-## Disclosure
-
-No new private disclosure material was found. The defects are already documented on the public project board/source and affect integrity/availability of an exact-byte-approved, bundle-read View; no credential exposure, cross-origin escape, mutation authority, or code execution path was found. Treat hostile shared-bundle data as capable of triggering the failure, but keep remediation prose generic and avoid adding unnecessary exploit payloads to public release notes.
-
-## Evidence and phase end
-
-Read `CLAUDE.md`, `docs/core`, the task/system/security notes, the shipped View authoring v0 reference, parser/service/core/link source and tests, and the exact View. Real in-memory probes reproduced exact-to-prefix widening, exact link-text normalization, query-prefix normalization, 33-selector rejection, and an uncorrelated service error. No source, Plan, Task, artifact, or sync mutation was performed. The only persistent mutation is this required Context Note.
+The plan is approved only when every mandatory item above is explicit: blank rejection/prose correction; exact `from`/`to`/**text** preservation on raw bytes; v0-only bounded correlation; sequential stop-on-failure batching; 1,000-row per-direction cumulative budget; multiset-max aggregation; red-first real-authority tests; exact-SHA Review-before-QA; and host-first/View-second rollout. Absent any one of those, verdict remains **BLOCKED / CHANGES_REQUIRED**.

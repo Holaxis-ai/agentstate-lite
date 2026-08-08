@@ -2,31 +2,37 @@
 type: Context Note
 title: Review portfolio bridge Plan product review
 actor: bridge-product-plan
-timestamp: '2026-08-08T17:47:52.819Z'
+timestamp: '2026-08-08T17:53:57.242Z'
 ---
 # Summary
 
-## Subject and verdict
+## Subject and final verdict
 
-**Subject:** `plans/review-portfolio-bridge-identity-repair@sha256:1129defbc12d67d0e8670f0864113f64e26cae57aebabe7672ba2f54b4f33d98`
+**Revised subject:** `plans/review-portfolio-bridge-identity-repair@sha256:624ea79a22241cbd53e0bea26ca100d7afd1572b5e4f5ca8a238228f16d4c35b`
 
-**Verdict: APPROVED.** No blocking product, architecture, acceptance, dependency, rollout, or open-world compatibility changes are required.
+**Prior subject:** `plans/review-portfolio-bridge-identity-repair@sha256:1129defbc12d67d0e8670f0864113f64e26cae57aebabe7672ba2f54b4f33d98`
+
+**Final verdict: APPROVED.** The testing and security additions do not distort the product outcome, open-world OKF flexibility, executable selector grammar, or rollout boundary. No concrete Plan changes are required.
 
 ## Review basis
 
 **Ultimate goal:** agentstate-lite remains human-visible, conflict-safe, local-first shared memory whose durable conclusions and graph relationships preserve exact OKF identity across every supported surface.
 
-**Proximate goal:** verify that the version-pinned implementation Plan is a complete and executable contract for the authorized bridge identity/scale repair; this serves the ultimate goal by preventing implementation or rollout from converting partial evidence or normalized identity into false currentness.
+**Proximate goal:** verify that the revised testing/security contract strengthens the authorized identity/scale repair without adding a second schema, expanding v0, or prematurely deploying candidate View bytes; this serves the ultimate goal by keeping new assurance proportional to the same evidence-honest user outcome.
 
-## Findings
+## Re-review findings
 
-- **Outcome:** The Plan states one bounded outcome: 0–500 open-world Reviews terminate with exact identity and fail-closed currentness. It distinguishes feature-branch completion from live deployment and names the exact source/View/registry subjects.
-- **Acceptance completeness:** Criteria cover raw byte preservation, scalar/array/cardinality/byte boundaries, prefix/union/AND/text compatibility, service correlation without authorization/data work, exact service/core agreement, deterministic batching thresholds, strict per-batch validation, post-validation tuple deduplication, incomplete-state recovery, generation fencing, real-host liveness, browser/trust regression, package contents, generated-artifact ownership, exact-SHA review, branch delivery, and CAS rollout. Each has an observable oracle.
-- **Dependency DAG:** Source and View work are safely parallel after contract approval; integration precedes commit/gates; independent code and exact-View reviews both depend on the pushed exact SHA; all QA lanes depend on both approvals. Any changed SHA loops back through review. This satisfies code-review-before-QA and separates the later compatible-runtime rollout.
-- **Rollout:** Candidate View bytes remain scratch-only until the host with exact selector and correlated-error behavior is available. Live promotion is hard-CAS over the known View hash, with readback, unchanged-registry verification, live smoke, immutable subject binding, and board sync. Source completion cannot be mislabeled as deployed View repair.
-- **Open-world OKF flexibility:** Core remains the only ID/edge semantics authority. The Plan preserves arbitrary safe paths, boundary/internal whitespace, UTF-8, quotes, newlines, option-like strings, unknown metadata/types/relation labels, cycles, dangling targets, and ambiguity. It adds neither a View-local codec nor a closed Review schema.
-- **Blank-selector decision:** The Plan does not expand wire grammar. It preserves the executable parser contract: every supplied scalar/array entry must be nonblank, arrays contain 1–32 supplied exact strings, empty/all-whitespace values and invalid entries remain rejected, and the supplied cardinality bound is not bypassed. Correcting the shipped prose is safer than turning a previously rejected facet into an omitted/unrestricted whole-graph query. Future blank-as-omitted behavior is correctly isolated as a separate protocol/security decision.
-- **Artifacts and delivery:** Ignored `dist`, committed plugin bundle/skill tree, and manifest versions are excluded; only authorized reference sources/npm projection are updated in-branch, while post-merge plugin regeneration stays bot-owned. The branch is pushed with paste-ready PR material; the agent neither opens the PR nor merges main.
+- **Product outcome is unchanged:** 0–500 open-world Reviews must terminate with exact identity/relation semantics, bounded resource use, useful degraded evidence, and no effective/standalone currentness unless the row set and every required graph batch are complete. The revised criteria add observable failure boundaries but do not redefine what the View decides.
+- **Exact relation text is a compatibility repair, not scope expansion:** `text` was already a v0 selector and core already compares it exactly. Preserving its admitted nonblank raw bytes removes the same parser-normalization defect without adding fields or changing matching grammar. The Plan explicitly excludes adjacent `query.prefix` and Markdown-link whitespace behavior.
+- **Open-world identity remains core-owned:** View row checks require only the existing transport shape—distinct exact string, nonblank, at most 1,024 raw UTF-8 bytes. They do not validate canonical path segments, infer type/family/status, normalize identity, or replace core. Malformed/duplicate transport rows fail graph evidence closed while safe records remain visible.
+- **Open-world graph multiplicity is better preserved:** revised multiset-max aggregation removes only outbound/inbound overlap while retaining repeated identical literal links and distinct relation text. This corrects the prior Set-shaped loss and aligns the View with core’s per-literal-link semantics.
+- **Resource additions preserve the existing exposure boundary:** one request in flight, stop-first-failure, explicit deadlines, pending-id/batch diagnostics, and 1,000 accepted rows per direction prevent 16 batches from multiplying a host’s per-query edge exposure. Exceeding the budget yields an honest incomplete graph and recovery path rather than a closed-world rejection of bundle content.
+- **Blank-selector grammar remains unexpanded:** supplied empty/all-whitespace `from`, `to`, or `text`, empty arrays, invalid entries, and 33 supplied values remain invalid. Only absent facets are unrestricted. The prose is corrected to match executable behavior; no rejected value becomes an omitted whole-graph query.
+- **Correlation remains bounded:** only a plain v0 envelope with string type and an id accepted by the one existing `requestId` primitive receives the generic same-id `USAGE` response. v1/wrong/malformed/oversize envelopes stay uncorrelated; parser failure performs zero launch or bundle work.
+- **Feedback artifacts remain inert:** the exact harness and candidate HTML are retained as unregistered blob keys with readback hashes and literal replay commands. They receive no View registration, capability, or execution path. This makes the acceptance oracle durable without changing the live product.
+- **Review/QA dependencies remain compliant:** host/View red gates precede repairs, integration produces exact subjects, commit/push and the full machine gate precede two independent reviews, and every QA lane depends on both review approvals. Any changed SHA restarts review.
+- **Rollout remains safe and separate:** candidate storage is not deployment. Live promotion is explicitly host-first then View-second, hard-CAS over the known bytes, exact-byte reapproval, readback/registry verification, live smoke, and board sync. Feature-branch completion cannot claim the shared View is repaired.
+- **Artifact ownership remains correct:** tracked source/reference/npm-projection changes may ship; ignored dist, committed plugin bundle/skill tree, and manifest versions remain excluded and post-merge bot-owned.
 
 ## Concrete changes required
 
@@ -34,4 +40,4 @@ None.
 
 ## Confidence
 
-**High (0.97).** Exact Plan bytes were pulled through the bundle byte channel and matched the requested version. The Plan resolves the only prior product ambiguity—blank selectors—without broadening authority or weakening the safety boundary.
+**High (0.98).** Exact revised bytes were pulled through the bundle channel and diffed against the previously approved subject. Every material addition strengthens an existing invariant or oracle while retaining the same authority, grammar, user outcome, and deployment gate.

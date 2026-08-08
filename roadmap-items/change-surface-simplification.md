@@ -18,7 +18,7 @@ actor: codex-orchestrator
 sequence: >-
   Registered-View launch authority consolidation → core import-direction gate;
   all other candidates remain trigger-gated
-timestamp: '2026-08-08T17:31:23.429Z'
+timestamp: '2026-08-08T17:55:43.469Z'
 ---
 [contains](../tasks/sync-establish-phase-carve.md)
 
@@ -73,3 +73,13 @@ timestamp: '2026-08-08T17:31:23.429Z'
 [contains](../tasks/architecture-review-template-v1-1-design-skeptic-review.md)
 
 [contains](../tasks/review-portfolio-bridge-identity-repair.md)
+
+[contains](../tasks/review-portfolio-host-red-gates.md)
+
+[contains](../tasks/review-portfolio-host-repair.md)
+
+[contains](../tasks/review-portfolio-view-red-harness.md)
+
+[contains](../tasks/review-portfolio-view-repair.md)
+
+[contains](../tasks/review-portfolio-bridge-integration.md)
