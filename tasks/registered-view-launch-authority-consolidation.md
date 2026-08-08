@@ -1,14 +1,14 @@
 ---
 type: Task
 title: Consolidate registered-View launch authority into view-runtime
-status: in_progress
+status: done
 priority: '2'
 description: >-
   Delete the web host's parallel registered-View preparation/currentness/catalog
   path and route web plus MCP through one view-runtime authority while
   preserving exact local/remote behavior.
 actor: openai/codex
-timestamp: '2026-08-08T14:24:36.838Z'
+timestamp: '2026-08-08T14:44:17.051Z'
 ---
 # Objective
 
@@ -61,3 +61,15 @@ focused adversarial QA centered on fixture provenance and fail-closed remote beh
 [Finding](../findings/registered-view-launch-authority-investigation.md)
 
 [Synthesis](../findings/architectural-smell-investigation-synthesis.md)
+
+# Completion
+
+Implemented and merged in [PR #227](https://github.com/Holaxis-ai/agentstate-lite/pull/227)
+(`6d1b811`, merge commit `d65af30`). The web and MCP hosts now delegate registered-View minting
+to `view-runtime`; the web host's private remote registry/blob/currentness path and fallback-only
+tests were deleted. The change removed 108 net lines.
+
+The full repository gate passed on Node 20, 22, and 26. Exact-SHA independent review approved the
+change after one remote error-parity correction. Focused adversarial QA then passed registry and
+blob swaps, stale-approval isolation, nonce revocation, HTTP-versus-transport error mapping, and
+exact-ID/legacy-key anti-pairing with no remaining findings.
