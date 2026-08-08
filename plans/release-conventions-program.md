@@ -4,7 +4,7 @@ title: >-
   Release-conventions program: recorded + enforced conventions, cadence
   decision, first-stable path (orchestrated)
 actor: anthropic/claude
-timestamp: '2026-08-08T00:46:11.438Z'
+timestamp: '2026-08-08T00:47:24.511Z'
 ---
 # Goal
 
@@ -90,3 +90,8 @@ trustworthy primary distribution channel.
   Brian+Mike ratification. Proposal recorded (decisions/release-cadence-continuous-staging,
   PENDING) with exact four-clause amendment language; ratification RR filed to Mike
   (review-requests/cadence-continuous-staging). PR #219 (audit gate) open, review in flight.
+- 2026-08-08: Audit-gate REVIEW: APPROVE WITH FINDINGS. Finding 1 (transition false-reds during
+  promote/rollback windows) being fixed as appended commit on PR #219 before merge. Follow-ups
+  recorded: post-stable removed-vs-collapsed next (recorded decision needed BEFORE 0.1.0 —
+  feeds the cadence amendment's invariant redefinition); over-enforcement override hatches;
+  buffering nit. Reviewer endorsed the packument-fetch design fork. PR #219 comment posted.
