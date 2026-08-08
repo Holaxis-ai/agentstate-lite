@@ -1,19 +1,18 @@
 ---
 type: Task
 title: Extract the v0.1 document-write normalization policy
-status: in_progress
+status: done
 priority: '2'
 description: >-
-  Ready in PR #222 at 8e427cc. One 23-line pure internal v0.1 policy owns the
+  Merged in PR #222 as 31fa851. One 23-line pure internal v0.1 policy owns the
   preserve-or-fallback timestamp decision, frontmatter ordering, unknown-field
   preservation, and body defaulting; writeDocVersioned retains
-  validation/CAS/storage. Independent review approved the exact revision after
-  catching accessor first-read parity, lazy clock access, single-evaluation
-  timestamp usability, and a Node-version-specific test assertion. Focused tests
-  pass under Node 22 and 25; full CI passes on Node 20, 22, and 26. No v0.2
-  behavior or public policy framework is included.
+  validation/CAS/storage. Independent review approved after catching accessor
+  first-read parity, lazy clock access, single-evaluation timestamp usability,
+  and a Node-version-specific test assertion. Full CI passed on Node 20, 22, and
+  26. No v0.2 behavior or public policy framework was added.
 actor: openai/codex
-timestamp: '2026-08-08T02:12:22.359Z'
+timestamp: '2026-08-08T02:18:40.925Z'
 ---
 # Objective
 
