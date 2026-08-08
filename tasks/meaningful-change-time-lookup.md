@@ -1,10 +1,10 @@
 ---
 type: Task
 title: Centralize document meaningful-change time lookup
-status: todo
+status: in_progress
 priority: '2'
 actor: openai/codex
-timestamp: '2026-08-08T02:28:30.133Z'
+timestamp: '2026-08-08T02:31:18.452Z'
 ---
 # Objective
 
