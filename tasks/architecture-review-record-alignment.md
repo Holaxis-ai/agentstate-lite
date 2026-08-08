@@ -8,7 +8,7 @@ description: >-
   rewriting history, and make completed Reviews discoverable alongside Review
   Requests.
 actor: codex-orchestrator
-timestamp: '2026-08-08T14:22:28.777Z'
+timestamp: '2026-08-08T14:38:54.077Z'
 ---
 # Objective
 Once the proposed architecture-review record-alignment plan is accepted, implement it so every review initiative has one canonical Review synthesis, supporting Findings and context remain correctly typed, and humans can discover requests and completed reports from the review surface.
@@ -29,3 +29,5 @@ The linked plan’s acceptance criteria are the contract. Existing approved/froz
 [depends on](architecture-review-alignment-provenance-audit.md)
 
 [depends on](architecture-review-alignment-portfolio-audit.md)
+
+[depends on](architecture-review-alignment-qa.md)

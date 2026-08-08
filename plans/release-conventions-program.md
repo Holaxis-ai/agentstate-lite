@@ -4,7 +4,7 @@ title: >-
   Release-conventions program: recorded + enforced conventions, cadence
   decision, first-stable path (orchestrated)
 actor: anthropic/claude
-timestamp: '2026-08-08T14:01:52.992Z'
+timestamp: '2026-08-08T14:38:57.119Z'
 ---
 # Goal
 
@@ -124,3 +124,6 @@ trustworthy primary distribution channel.
   no execFile bypass, red-probe killed both ways; closes the single-dash gap run-operations'
   arg() missed). Branch fix/release-token-leading-dash @ ce7ee73, awaiting PR/merge. p5a
   remaining half: signed-receipt reconciler-as-finalize-gate (own reviewed unit, next build).
+- 2026-08-08 (post harness upgrade): PR #226 MERGED — assertToken hardening on main. p5a trivial
+  half DONE. Dispatching the substantive half: signed-receipt reconciler-as-finalize-gate,
+  design-first (design report gate before build), high-risk ladder + external review at PR time.
