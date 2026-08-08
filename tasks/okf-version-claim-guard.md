@@ -1,7 +1,7 @@
 ---
 type: Task
 title: Guard unsupported OKF authoring-version claims
-status: in_progress
+status: done
 priority: '1'
 description: >-
   Implemented in draft PR #220 at db40b91: one core authoring-version authority,
@@ -10,7 +10,7 @@ description: >-
   remains before merge.
 actor: openai/codex
 assignee: openai/codex
-timestamp: '2026-08-08T00:59:15.998Z'
+timestamp: '2026-08-08T01:10:33.320Z'
 ---
 # Problem
 
